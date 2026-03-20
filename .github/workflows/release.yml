@@ -40,12 +40,9 @@ jobs:
         run: uv python install ${{ fromJSON(inputs.plan).python_version }}
       - name: Build package
         run: |
-          pkg_path=$(echo '${{ inputs.plan }}' | jq -r '.changed["${{ matrix.package }}"].path // empty')
-          if [ -n "$pkg_path" ]; then
-            uv build "$pkg_path" --out-dir dist/
-          else
-            echo "${{ matrix.package }} not in changed list, skipping"
-          fi
+          uv run uvr-steps execute-build \
+            --plan '${{ inputs.plan }}' \
+            --package '${{ matrix.package }}'
       - name: Upload built wheels
         if: always()
         uses: actions/upload-artifact@v4
@@ -68,14 +65,7 @@ jobs:
           merge-multiple: true
           path: dist
       - name: Set up
-        run: |
-          uv python install ${{ fromJSON(inputs.plan).python_version }}
-          uvr_wheel=$(ls dist/uv_release_monorepo-*.whl 2>/dev/null | head -1)
-          if [ -n "$uvr_wheel" ]; then
-            uv tool install "$uvr_wheel"
-          else
-            uv tool install ${{ inputs.uvr_version && format('uv-release-monorepo=={0}', inputs.uvr_version) || 'uv-release-monorepo' }}
-          fi
+        run: uv python install ${{ fromJSON(inputs.plan).python_version }}
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
@@ -84,17 +74,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          uvr-steps fetch-unchanged \
+          uv run uvr-steps fetch-unchanged \
             --plan '${{ inputs.plan }}'
       - name: Publish GitHub releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          uvr-steps publish-releases \
+          uv run uvr-steps publish-releases \
             --plan '${{ inputs.plan }}'
       - name: Finalize release
         run: |
-          uvr-steps finalize \
+          uv run uvr-steps finalize \
             --plan '${{ inputs.plan }}'
       - name: Push commits and tags
         run: |
