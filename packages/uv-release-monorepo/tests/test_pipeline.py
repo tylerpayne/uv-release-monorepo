@@ -1235,13 +1235,14 @@ class TestBuildPlan:
         }
         mock_detect.return_value = ["pkg-a"]
 
-        plan = build_plan(force_all=False, matrix={}, uvr_version="0.3.0")
+        plan, pin_updates = build_plan(force_all=False, matrix={}, uvr_version="0.3.0")
 
         assert isinstance(plan, ReleasePlan)
         assert "pkg-a" in plan.changed
         assert "pkg-b" in plan.unchanged
         assert plan.uvr_version == "0.3.0"
         assert plan.force_all is False
+        assert pin_updates == []  # no deps, no pins to update
 
     @patch("uv_release_monorepo.pipeline.detect_changes")
     @patch("uv_release_monorepo.pipeline.find_dev_baselines")
@@ -1264,7 +1265,7 @@ class TestBuildPlan:
         mock_find_dev.return_value = {"pkg-a": None, "pkg-b": None}
         mock_detect.return_value = ["pkg-a"]  # only pkg-a changed
 
-        plan = build_plan(
+        plan, _ = build_plan(
             force_all=False,
             matrix={"pkg-a": ["ubuntu-latest", "macos-14"], "pkg-b": ["ubuntu-latest"]},
             uvr_version="0.3.0",
@@ -1294,7 +1295,7 @@ class TestBuildPlan:
         mock_find_dev.return_value = {"pkg-a": None}
         mock_detect.return_value = ["pkg-a"]
 
-        plan = build_plan(force_all=False, matrix={}, uvr_version="0.3.0")
+        plan, _ = build_plan(force_all=False, matrix={}, uvr_version="0.3.0")
 
         assert len(plan.matrix) == 1
         assert plan.matrix[0].package == "pkg-a"
@@ -1318,7 +1319,7 @@ class TestBuildPlan:
         mock_find_dev.return_value = {"pkg-a": "pkg-a/v1.0.0-dev"}
         mock_detect.return_value = []
 
-        plan = build_plan(force_all=False, matrix={}, uvr_version="0.3.0")
+        plan, _ = build_plan(force_all=False, matrix={}, uvr_version="0.3.0")
 
         assert plan.changed == {}
         assert "pkg-a" in plan.unchanged

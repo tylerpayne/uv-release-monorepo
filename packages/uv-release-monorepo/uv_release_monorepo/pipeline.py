@@ -24,7 +24,7 @@ from pathlib import Path
 
 from packaging.utils import canonicalize_name
 
-from .deps import dep_canonical_name, rewrite_pyproject
+from .deps import dep_canonical_name, rewrite_pyproject, update_dep_pins
 from .graph import topo_sort
 from .models import (
     BumpPlan,
@@ -662,8 +662,12 @@ def build_plan(
     matrix: dict[str, list[str]],
     uvr_version: str,
     python_version: str = "3.12",
-) -> ReleasePlan:
-    """Run discovery locally and return a ReleasePlan. Makes no git writes.
+) -> tuple[ReleasePlan, list[str]]:
+    """Run discovery locally and return a ReleasePlan and list of pin-updated packages.
+
+    Applies internal dep pin updates to local pyproject.toml files so the
+    correct constraints are baked into the released wheels. The caller should
+    commit any pin changes before dispatching to CI.
 
     Args:
         force_all: If True, mark all packages as changed.
@@ -671,7 +675,8 @@ def build_plan(
         uvr_version: The uvr version to embed in the plan.
 
     Returns:
-        A ReleasePlan ready for inspection or dispatch to the executor workflow.
+        (plan, pin_updates) where pin_updates is a list of package names whose
+        pyproject.toml was modified. Empty list means no pin changes were needed.
     """
     packages = discover_packages()
     release_tags = find_release_tags(packages)
@@ -695,18 +700,29 @@ def build_plan(
                 tag.split("/v")[-1] if tag and "/v" in tag else info.version
             )
 
-    # Pre-compute version bumps so CI is a pure executor.
-    bumps: dict[str, BumpPlan] = {}
+    # Apply dep pin updates locally so they're baked into the released wheels.
+    # CI only needs to apply the version bump; it never touches dep pins.
+    step("Updating dep pins")
+    pin_updates: list[str] = []
     for name in changed_names:
         info = packages[name]
-        bumps[name] = BumpPlan(
-            new_version=bump_patch(info.version),
-            internal_dep_versions={
-                dep: published_versions[dep]
-                for dep in info.deps
-                if dep in published_versions
-            },
-        )
+        dep_versions = {
+            dep: published_versions[dep]
+            for dep in info.deps
+            if dep in published_versions
+        }
+        if dep_versions and update_dep_pins(
+            Path(info.path) / "pyproject.toml", dep_versions
+        ):
+            pin_updates.append(name)
+            print(f"  {info.path}/pyproject.toml")
+    if not pin_updates:
+        print("  (none needed)")
+
+    # Pre-compute version bumps. Dep pins are already applied locally above.
+    bumps: dict[str, BumpPlan] = {}
+    for name in changed_names:
+        bumps[name] = BumpPlan(new_version=bump_patch(packages[name].version))
 
     # Expand matrix — only changed packages need build runners
     matrix_entries: list[MatrixEntry] = []
@@ -715,7 +731,7 @@ def build_plan(
         for runner in runners:
             matrix_entries.append(MatrixEntry(package=name, runner=runner))
 
-    return ReleasePlan(
+    plan = ReleasePlan(
         uvr_version=uvr_version,
         python_version=python_version,
         force_all=force_all,
@@ -725,6 +741,7 @@ def build_plan(
         matrix=matrix_entries,
         bumps=bumps,
     )
+    return plan, pin_updates
 
 
 def apply_bumps(plan: ReleasePlan) -> dict[str, VersionBump]:
@@ -741,7 +758,7 @@ def apply_bumps(plan: ReleasePlan) -> dict[str, VersionBump]:
         rewrite_pyproject(
             Path(info.path) / "pyproject.toml",
             bump_plan.new_version,
-            bump_plan.internal_dep_versions,
+            {},  # dep pins were committed locally before the release was triggered
         )
         bumped[name] = VersionBump(old=info.version, new=bump_plan.new_version)
         print(f"  {name}: {info.version} → {bump_plan.new_version}")

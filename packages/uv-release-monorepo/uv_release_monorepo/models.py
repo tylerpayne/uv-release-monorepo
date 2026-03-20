@@ -63,17 +63,14 @@ class PublishedPackage(BaseModel):
 class BumpPlan(BaseModel):
     """Pre-computed version bump for a single package.
 
-    Computed locally during planning so CI only needs to apply the bump,
-    not re-derive which version to pin for internal dependencies.
+    Computed locally during planning so CI only needs to apply the patch
+    bump — dep pin updates are applied locally before the release is triggered.
 
     Attributes:
         new_version: The patch-bumped version to write into pyproject.toml.
-        internal_dep_versions: Map of internal dep name → version to pin.
-            Uses the published version from this cycle (not the bumped dev version).
     """
 
     new_version: str
-    internal_dep_versions: dict[str, str] = Field(default_factory=dict)
 
 
 class MatrixEntry(BaseModel):

@@ -242,13 +242,23 @@ def cmd_release(args: argparse.Namespace) -> None:
     # Read stored matrix from pyproject.toml
     package_runners = _read_matrix(root)
 
-    # Build the plan locally (runs discovery + change detection)
-    plan = build_plan(
+    # Build the plan locally (runs discovery + change detection + pin updates)
+    plan, pin_updates = build_plan(
         force_all=args.force_all,
         matrix=package_runners,
         uvr_version=__version__,
         python_version=args.python_version,
     )
+
+    if pin_updates:
+        print()
+        print("Dep pins updated — commit these changes before releasing:")
+        for name in pin_updates:
+            print(f"  git add {plan.changed[name].path}/pyproject.toml")
+        print("  git commit -m 'chore: update dep pins'")
+        print("  git push")
+        print("  uvr release")
+        return
 
     if not plan.changed:
         print("Nothing changed since last release. Use --force-all to rebuild all.")

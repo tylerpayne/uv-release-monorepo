@@ -665,7 +665,10 @@ class TestCmdRelease:
         workflow_dir.mkdir(parents=True)
         (workflow_dir / "release.yml").write_text("some: yaml\n")
 
-        mock_build_plan.return_value = _make_plan(changed=[], unchanged=["pkg-alpha"])
+        mock_build_plan.return_value = (
+            _make_plan(changed=[], unchanged=["pkg-alpha"]),
+            [],
+        )
 
         args = argparse.Namespace(
             force_all=False,
@@ -695,7 +698,7 @@ class TestCmdRelease:
         (workflow_dir / "release.yml").write_text("some: yaml\n")
 
         plan = _make_plan(changed=["pkg-alpha"])
-        mock_build_plan.return_value = plan
+        mock_build_plan.return_value = plan, []
 
         args = argparse.Namespace(
             force_all=False,
@@ -728,7 +731,7 @@ class TestCmdRelease:
         (workflow_dir / "release.yml").write_text("some: yaml\n")
 
         plan = _make_plan(changed=["pkg-alpha"])
-        mock_build_plan.return_value = plan
+        mock_build_plan.return_value = plan, []
 
         mock_subprocess_run.return_value = MagicMock(returncode=0, stdout="[]")
 

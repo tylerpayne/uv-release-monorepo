@@ -95,7 +95,49 @@ def rewrite_pyproject(
     save_pyproject(pyproject_path, doc)
 
 
-def _pin_dep_list(deps: list, versions: dict[str, str]) -> None:
+def update_dep_pins(path: Path, versions: dict[str, str]) -> bool:
+    """Pin internal dep constraints in a pyproject.toml without changing the version.
+
+    Updates [project].dependencies, [project].optional-dependencies.*, and
+    [dependency-groups].* sections. Uses tomlkit to preserve formatting.
+
+    Args:
+        path: Path to the pyproject.toml file.
+        versions: Map of package name → version to pin.
+
+    Returns:
+        True if the file was modified, False if all pins were already current.
+    """
+    if not versions:
+        return False
+    doc = load_pyproject(path)
+    project = doc["project"]
+    assert isinstance(project, Table)
+
+    changed = 0
+    deps = project.get("dependencies")
+    if isinstance(deps, list):
+        changed += _pin_dep_list(deps, versions)
+
+    opt_deps = project.get("optional-dependencies")
+    if isinstance(opt_deps, dict):
+        for group in opt_deps.values():
+            if isinstance(group, list):
+                changed += _pin_dep_list(group, versions)
+
+    dep_groups = doc.get("dependency-groups")
+    if isinstance(dep_groups, dict):
+        for group in dep_groups.values():
+            if isinstance(group, list):
+                changed += _pin_dep_list(group, versions)
+
+    if not changed:
+        return False
+    save_pyproject(path, doc)
+    return True
+
+
+def _pin_dep_list(deps: list, versions: dict[str, str]) -> int:
     """Pin internal dependencies in a list, modifying in place.
 
     Iterates through a list of PEP 508 dependency strings and replaces
@@ -104,8 +146,16 @@ def _pin_dep_list(deps: list, versions: dict[str, str]) -> None:
     Args:
         deps: List of dependency strings (modified in place).
         versions: Map of canonical package name → version to pin.
+
+    Returns:
+        Number of entries that were changed.
     """
+    changed = 0
     for i, dep_str in enumerate(deps):
         name = dep_canonical_name(str(dep_str))
         if name in versions:
-            deps[i] = pin_dep(str(dep_str), versions[name])
+            new = pin_dep(str(dep_str), versions[name])
+            if new != str(dep_str):
+                deps[i] = new
+                changed += 1
+    return changed
