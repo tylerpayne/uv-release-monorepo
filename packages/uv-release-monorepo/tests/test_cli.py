@@ -668,7 +668,9 @@ class TestCmdRelease:
         mock_build_plan.return_value = _make_plan(changed=[], unchanged=["pkg-alpha"])
 
         args = argparse.Namespace(
-            force_all=False, dry_run=False, workflow_dir=".github/workflows",
+            force_all=False,
+            dry_run=False,
+            workflow_dir=".github/workflows",
             python_version="3.12",
         )
         cmd_release(args)
@@ -696,7 +698,9 @@ class TestCmdRelease:
         mock_build_plan.return_value = plan
 
         args = argparse.Namespace(
-            force_all=False, dry_run=True, workflow_dir=".github/workflows",
+            force_all=False,
+            dry_run=True,
+            workflow_dir=".github/workflows",
             python_version="3.12",
         )
         cmd_release(args)
@@ -729,7 +733,9 @@ class TestCmdRelease:
         mock_subprocess_run.return_value = MagicMock(returncode=0, stdout="[]")
 
         args = argparse.Namespace(
-            force_all=False, dry_run=False, workflow_dir=".github/workflows",
+            force_all=False,
+            dry_run=False,
+            workflow_dir=".github/workflows",
             python_version="3.12",
         )
         cmd_release(args)

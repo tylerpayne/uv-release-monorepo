@@ -335,28 +335,6 @@ class TestDetectChanges:
 
     @patch("uv_release_monorepo.pipeline.git")
     @patch("uv_release_monorepo.pipeline.step")
-    def test_uv_lock_change_marks_package_dirty(
-        self,
-        mock_step: MagicMock,
-        mock_git: MagicMock,
-        sample_packages: dict[str, PackageInfo],
-        all_tags: dict[str, str],
-    ) -> None:
-        """When uv.lock changes since a package's tag, it's marked dirty."""
-        mock_git.side_effect = [
-            "uv.lock",  # pkg-a: lock file changed
-            "uv.lock",  # pkg-b: lock file changed
-            "uv.lock",  # pkg-c: lock file changed
-        ]
-
-        changed = detect_changes(
-            sample_packages, dev_baselines=all_tags, force_all=False
-        )
-
-        assert set(changed) == {"pkg-a", "pkg-b", "pkg-c"}
-
-    @patch("uv_release_monorepo.pipeline.git")
-    @patch("uv_release_monorepo.pipeline.step")
     def test_no_changes_returns_empty(
         self,
         mock_step: MagicMock,
@@ -1352,10 +1330,9 @@ class TestExecutePlan:
     @patch("uv_release_monorepo.pipeline.git")
     @patch("uv_release_monorepo.pipeline.tag_dev_baselines")
     @patch("uv_release_monorepo.pipeline.commit_bumps")
-    @patch("uv_release_monorepo.pipeline.bump_versions")
+    @patch("uv_release_monorepo.pipeline.apply_bumps")
     @patch("uv_release_monorepo.pipeline.tag_changed_packages")
     @patch("uv_release_monorepo.pipeline.publish_release")
-    @patch("uv_release_monorepo.pipeline.collect_published_state")
     @patch("uv_release_monorepo.pipeline.build_packages")
     @patch("uv_release_monorepo.pipeline.fetch_unchanged_wheels")
     @patch("uv_release_monorepo.pipeline.check_for_existing_wheels")
@@ -1366,10 +1343,9 @@ class TestExecutePlan:
         mock_check: MagicMock,
         mock_fetch: MagicMock,
         mock_build: MagicMock,
-        mock_collect: MagicMock,
         mock_publish: MagicMock,
         mock_tag_pkg: MagicMock,
-        mock_bump: MagicMock,
+        mock_apply: MagicMock,
         mock_commit: MagicMock,
         mock_tag_dev: MagicMock,
         mock_git: MagicMock,
@@ -1386,17 +1362,16 @@ class TestExecutePlan:
         )
         mock_path.return_value.mkdir = MagicMock()
         bumped = {"pkg-alpha": MagicMock(old="0.1.5", new="0.1.6")}
-        mock_bump.return_value = bumped
+        mock_apply.return_value = bumped
 
         execute_plan(plan, push=False)
 
         mock_check.assert_called_once()
         mock_fetch.assert_called_once()
         mock_build.assert_called_once()
-        mock_collect.assert_called_once()
         mock_publish.assert_called_once()
         mock_tag_pkg.assert_called_once()
-        mock_bump.assert_called_once()
+        mock_apply.assert_called_once()
         mock_commit.assert_called_once()
         mock_tag_dev.assert_called_once_with(bumped)
         mock_git.assert_not_called()  # push=False
@@ -1405,10 +1380,9 @@ class TestExecutePlan:
     @patch("uv_release_monorepo.pipeline.step")
     @patch("uv_release_monorepo.pipeline.tag_dev_baselines")
     @patch("uv_release_monorepo.pipeline.commit_bumps")
-    @patch("uv_release_monorepo.pipeline.bump_versions")
+    @patch("uv_release_monorepo.pipeline.apply_bumps")
     @patch("uv_release_monorepo.pipeline.tag_changed_packages")
     @patch("uv_release_monorepo.pipeline.publish_release")
-    @patch("uv_release_monorepo.pipeline.collect_published_state")
     @patch("uv_release_monorepo.pipeline.build_packages")
     @patch("uv_release_monorepo.pipeline.fetch_unchanged_wheels")
     @patch("uv_release_monorepo.pipeline.check_for_existing_wheels")
@@ -1419,10 +1393,9 @@ class TestExecutePlan:
         mock_check: MagicMock,
         mock_fetch: MagicMock,
         mock_build: MagicMock,
-        mock_collect: MagicMock,
         mock_publish: MagicMock,
         mock_tag_pkg: MagicMock,
-        mock_bump: MagicMock,
+        mock_apply: MagicMock,
         mock_commit: MagicMock,
         mock_tag_dev: MagicMock,
         mock_step: MagicMock,
@@ -1439,7 +1412,7 @@ class TestExecutePlan:
             matrix=[MatrixEntry(package="pkg-alpha", runner="ubuntu-latest")],
         )
         mock_path.return_value.mkdir = MagicMock()
-        mock_bump.return_value = {}
+        mock_apply.return_value = {}
 
         execute_plan(plan, push=True)
 

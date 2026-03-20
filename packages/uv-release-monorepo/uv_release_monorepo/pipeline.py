@@ -26,7 +26,14 @@ from packaging.utils import canonicalize_name
 
 from .deps import dep_canonical_name, rewrite_pyproject
 from .graph import topo_sort
-from .models import MatrixEntry, PackageInfo, PublishedPackage, ReleasePlan, VersionBump
+from .models import (
+    BumpPlan,
+    MatrixEntry,
+    PackageInfo,
+    PublishedPackage,
+    ReleasePlan,
+    VersionBump,
+)
 from .shell import fatal, gh, git, run, step
 from .toml import (
     get_all_dependency_strings,
@@ -226,7 +233,7 @@ def detect_changes(
                 print(f"  {name}: changed since {baseline}")
 
             # Root config changes affect this package
-            elif changed_files & {"pyproject.toml", "uv.lock"}:
+            elif "pyproject.toml" in changed_files:
                 dirty.add(name)
                 print(f"  {name}: root config changed since {baseline}")
 
@@ -676,6 +683,31 @@ def build_plan(
         name: info for name, info in packages.items() if name not in changed_names
     }
 
+    # Compute published versions for internal dep pinning:
+    # changed packages publish at their current version; unchanged at their last tag.
+    published_versions: dict[str, str] = {}
+    for name in changed_names:
+        published_versions[name] = packages[name].version
+    for name, info in packages.items():
+        if name not in changed_names:
+            tag = release_tags.get(name)
+            published_versions[name] = (
+                tag.split("/v")[-1] if tag and "/v" in tag else info.version
+            )
+
+    # Pre-compute version bumps so CI is a pure executor.
+    bumps: dict[str, BumpPlan] = {}
+    for name in changed_names:
+        info = packages[name]
+        bumps[name] = BumpPlan(
+            new_version=bump_patch(info.version),
+            internal_dep_versions={
+                dep: published_versions[dep]
+                for dep in info.deps
+                if dep in published_versions
+            },
+        )
+
     # Expand matrix — only changed packages need build runners
     matrix_entries: list[MatrixEntry] = []
     for name in sorted(changed_names):
@@ -691,7 +723,30 @@ def build_plan(
         unchanged=unchanged,
         release_tags=release_tags,
         matrix=matrix_entries,
+        bumps=bumps,
     )
+
+
+def apply_bumps(plan: ReleasePlan) -> dict[str, VersionBump]:
+    """Apply pre-computed version bumps from the plan to pyproject.toml files.
+
+    Uses the bumps computed locally during planning, so CI never needs to
+    derive versions or internal dep pins itself.
+    """
+    step("Bumping versions for next release")
+
+    bumped: dict[str, VersionBump] = {}
+    for name, bump_plan in plan.bumps.items():
+        info = plan.changed[name]
+        rewrite_pyproject(
+            Path(info.path) / "pyproject.toml",
+            bump_plan.new_version,
+            bump_plan.internal_dep_versions,
+        )
+        bumped[name] = VersionBump(old=info.version, new=bump_plan.new_version)
+        print(f"  {name}: {info.version} → {bump_plan.new_version}")
+
+    return bumped
 
 
 def execute_plan(plan: ReleasePlan, *, push: bool = True) -> None:
@@ -711,12 +766,9 @@ def execute_plan(plan: ReleasePlan, *, push: bool = True) -> None:
     fetch_unchanged_wheels(plan.unchanged, plan.release_tags)
     build_packages(plan.changed)
 
-    published_state = collect_published_state(
-        plan.changed, plan.unchanged, plan.release_tags
-    )
     publish_release(plan.changed, plan.release_tags)
     tag_changed_packages(plan.changed)
-    bumped = bump_versions(published_state)
+    bumped = apply_bumps(plan)
     commit_bumps(plan.changed, bumped)
     tag_dev_baselines(bumped)
 

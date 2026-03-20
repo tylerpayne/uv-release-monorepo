@@ -60,6 +60,22 @@ class PublishedPackage(BaseModel):
     changed: bool
 
 
+class BumpPlan(BaseModel):
+    """Pre-computed version bump for a single package.
+
+    Computed locally during planning so CI only needs to apply the bump,
+    not re-derive which version to pin for internal dependencies.
+
+    Attributes:
+        new_version: The patch-bumped version to write into pyproject.toml.
+        internal_dep_versions: Map of internal dep name → version to pin.
+            Uses the published version from this cycle (not the bumped dev version).
+    """
+
+    new_version: str
+    internal_dep_versions: dict[str, str] = Field(default_factory=dict)
+
+
 class MatrixEntry(BaseModel):
     """A single (package, runner) pair in the build matrix."""
 
@@ -71,8 +87,9 @@ class ReleasePlan(BaseModel):
     """Self-contained release plan generated locally and executed by CI.
 
     Contains everything the executor workflow needs: which packages changed,
-    what their last release tags were, and which runners to use for each build.
-    The executor never needs to run git commands or change detection.
+    what their last release tags were, which runners to use for each build,
+    and the pre-computed version bumps. The executor never needs to run git
+    commands, change detection, or version arithmetic.
     """
 
     schema_version: int = 2
@@ -83,3 +100,4 @@ class ReleasePlan(BaseModel):
     unchanged: dict[str, PackageInfo]
     release_tags: dict[str, str | None]
     matrix: list[MatrixEntry]
+    bumps: dict[str, BumpPlan] = Field(default_factory=dict)
