@@ -30,6 +30,7 @@ from .models import (
     BumpPlan,
     MatrixEntry,
     PackageInfo,
+    PublishEntry,
     PublishedPackage,
     ReleasePlan,
     VersionBump,
@@ -39,10 +40,11 @@ from .toml import (
     get_all_dependency_strings,
     get_project_name,
     get_project_version,
+    get_uvr_config,
     get_workspace_member_globs,
     load_pyproject,
 )
-from .versions import bump_patch
+from .versions import bump_patch, make_dev, strip_dev
 
 
 def discover_packages(root: Path | None = None) -> dict[str, PackageInfo]:
@@ -90,6 +92,18 @@ def discover_packages(root: Path | None = None) -> dict[str, PackageInfo]:
             version=get_project_version(doc),
         )
         raw_deps[name] = get_all_dependency_strings(doc)
+
+    # Apply include/exclude filters from [tool.uvr.config]
+    uvr_config = get_uvr_config(root_doc)
+    include = uvr_config["include"]
+    exclude = uvr_config["exclude"]
+    if include:
+        packages = {n: p for n, p in packages.items() if n in include}
+        raw_deps = {n: d for n, d in raw_deps.items() if n in packages}
+    if exclude:
+        for name in exclude:
+            packages.pop(name, None)
+            raw_deps.pop(name, None)
 
     # Second pass: identify which deps are internal (within workspace)
     workspace_names = set(packages.keys())
@@ -475,10 +489,10 @@ def bump_versions(
 ) -> dict[str, VersionBump]:
     """Bump patch versions for changed packages, preparing for next release.
 
-    After releasing 1.2.3, bumps to 1.2.4 so the next release will have
-    a higher version. Pins internal dep constraints to the just-published
-    versions (not the bumped dev versions) so that published wheels remain
-    installable even when only a subset of packages change.
+    After releasing 1.2.3, bumps to 1.2.4.dev0 so pyproject.toml always
+    reflects development state. Pins internal dep constraints to the
+    just-published versions (not the bumped dev versions) so that published
+    wheels remain installable even when only a subset of packages change.
 
     Args:
         published_state: Per-package published state from collect_published_state().
@@ -488,9 +502,8 @@ def bump_versions(
     changed_pkgs = {name: pkg for name, pkg in published_state.items() if pkg.changed}
     bumped: dict[str, VersionBump] = {}
     for name, pkg in changed_pkgs.items():
-        bumped[name] = VersionBump(
-            old=pkg.info.version, new=bump_patch(pkg.info.version)
-        )
+        new_version = bump_patch(pkg.info.version)
+        bumped[name] = VersionBump(old=strip_dev(pkg.info.version), new=new_version)
         # Pin internal deps to the version that was actually published this cycle,
         # not the bumped dev version — so the wheel stays installable if only
         # some packages change in the next cycle.
@@ -501,10 +514,10 @@ def bump_versions(
         }
         rewrite_pyproject(
             Path(pkg.info.path) / "pyproject.toml",
-            bumped[name].new,
+            make_dev(new_version),
             internal_dep_versions,
         )
-        print(f"  {name}: {bumped[name].old} → {bumped[name].new}")
+        print(f"  {name}: {bumped[name].old} → {make_dev(new_version)}")
 
     return bumped
 
@@ -535,6 +548,38 @@ def commit_bumps(
     print("  Committed")
 
 
+def generate_release_notes(
+    name: str,
+    info: PackageInfo,
+    baseline_tag: str | None,
+) -> str:
+    """Generate markdown release notes for a single package.
+
+    Args:
+        name: Package name.
+        info: Package metadata (version, path).
+        baseline_tag: Git tag to diff from (e.g. "pkg/v1.0.0"), or None.
+
+    Returns:
+        Markdown string with release header and commit log.
+    """
+    lines: list[str] = [f"**Released:** {name} {info.version}"]
+    if baseline_tag:
+        log = git(
+            "log",
+            "--oneline",
+            f"{baseline_tag}..HEAD",
+            "--",
+            info.path,
+            check=False,
+        )
+        if log:
+            lines += ["", "**Commits:**"]
+            for entry in log.splitlines()[:10]:
+                lines.append(f"- {entry}")
+    return "\n".join(lines)
+
+
 def publish_release(
     changed: dict[str, PackageInfo],
     release_tags: Mapping[str, str | None],
@@ -563,22 +608,7 @@ def publish_release(
                 "Ensure build_packages ran successfully."
             )
 
-        # Per-package release notes
-        lines: list[str] = [f"**Released:** {name} {info.version}"]
-        baseline = release_tags.get(name)
-        if baseline:
-            log = git(
-                "log",
-                "--oneline",
-                f"{baseline}..HEAD",
-                "--",
-                info.path,
-                check=False,
-            )
-            if log:
-                lines += ["", "**Commits:**"]
-                for entry in log.splitlines()[:10]:
-                    lines.append(f"- {entry}")
+        notes = generate_release_notes(name, info, release_tags.get(name))
 
         gh(
             "release",
@@ -588,7 +618,7 @@ def publish_release(
             "--title",
             f"{name} {info.version}",
             "--notes",
-            "\n".join(lines),
+            notes,
         )
         print(f"  {release_tag} ({len(wheels)} wheels)")
 
@@ -629,23 +659,39 @@ def run_release(
         print(f"  Would build: {', '.join(sorted(changed)) or 'none'}")
         print(f"  Would reuse: {', '.join(sorted(unchanged)) or 'none'}")
         for name, info in changed.items():
+            release_ver = strip_dev(info.version)
             new_ver = bump_patch(info.version)
-            print(f"  Would bump {name}: {info.version} → {new_ver}")
+            print(
+                f"  Would release {name} {release_ver}, then bump to {make_dev(new_ver)}"
+            )
         return
 
     # Check for duplicate versions before any build work
-    check_for_existing_wheels(changed)
+    # Strip .dev0 for version comparison since that's the release version
+    release_changed = {
+        name: PackageInfo(
+            path=info.path, version=strip_dev(info.version), deps=info.deps
+        )
+        for name, info in changed.items()
+    }
+    check_for_existing_wheels(release_changed)
+
+    # Strip .dev0 from pyproject.toml before building so wheels get clean versions
+    for name, info in changed.items():
+        release_ver = strip_dev(info.version)
+        if release_ver != info.version:
+            rewrite_pyproject(Path(info.path) / "pyproject.toml", release_ver, {})
 
     # Phase 2: Build
     fetch_unchanged_wheels(unchanged, release_tags)
-    build_packages(changed)
+    build_packages(release_changed)
 
     # Phase 3: Publish first, then tag/bump only on success
-    published_state = collect_published_state(changed, unchanged, release_tags)
-    publish_release(changed, release_tags)
-    tag_changed_packages(changed)
+    published_state = collect_published_state(release_changed, unchanged, release_tags)
+    publish_release(release_changed, release_tags)
+    tag_changed_packages(release_changed)
     bumped = bump_versions(published_state)
-    commit_bumps(changed, bumped)
+    commit_bumps(release_changed, bumped)
     tag_dev_baselines(bumped)
 
     if push:
@@ -662,6 +708,7 @@ def build_plan(
     matrix: dict[str, list[str]],
     uvr_version: str,
     python_version: str = "3.12",
+    dry_run: bool = False,
 ) -> tuple[ReleasePlan, list[str]]:
     """Run discovery locally and return a ReleasePlan and list of pin-updated packages.
 
@@ -673,10 +720,12 @@ def build_plan(
         force_all: If True, mark all packages as changed.
         matrix: Stored per-package runner config from the workflow file.
         uvr_version: The uvr version to embed in the plan.
+        dry_run: If True, detect pin updates but do not write them to disk.
 
     Returns:
         (plan, pin_updates) where pin_updates is a list of package names whose
-        pyproject.toml was modified. Empty list means no pin changes were needed.
+        pyproject.toml was modified (or would be modified in dry_run mode).
+        Empty list means no pin changes were needed.
     """
     packages = discover_packages()
     release_tags = find_release_tags(packages)
@@ -688,11 +737,17 @@ def build_plan(
         name: info for name, info in packages.items() if name not in changed_names
     }
 
+    # Strip .dev0 suffixes — the plan stores clean release versions.
+    for name, info in changed.items():
+        changed[name] = PackageInfo(
+            path=info.path, version=strip_dev(info.version), deps=info.deps
+        )
+
     # Compute published versions for internal dep pinning:
     # changed packages publish at their current version; unchanged at their last tag.
     published_versions: dict[str, str] = {}
     for name in changed_names:
-        published_versions[name] = packages[name].version
+        published_versions[name] = changed[name].version
     for name, info in packages.items():
         if name not in changed_names:
             tag = release_tags.get(name)
@@ -711,25 +766,51 @@ def build_plan(
             for dep in info.deps
             if dep in published_versions
         }
-        if dep_versions and update_dep_pins(
-            Path(info.path) / "pyproject.toml", dep_versions
-        ):
+        changes = update_dep_pins(
+            Path(info.path) / "pyproject.toml", dep_versions, write=not dry_run
+        )
+        if changes:
             pin_updates.append(name)
             print(f"  {info.path}/pyproject.toml")
+            for old, new in changes:
+                print(f"    {old} → {new}")
     if not pin_updates:
         print("  (none needed)")
 
     # Pre-compute version bumps. Dep pins are already applied locally above.
     bumps: dict[str, BumpPlan] = {}
     for name in changed_names:
-        bumps[name] = BumpPlan(new_version=bump_patch(packages[name].version))
+        bumps[name] = BumpPlan(new_version=bump_patch(changed[name].version))
 
     # Expand matrix — only changed packages need build runners
     matrix_entries: list[MatrixEntry] = []
     for name in sorted(changed_names):
+        info = changed[name]
         runners = matrix.get(name, ["ubuntu-latest"])
         for runner in runners:
-            matrix_entries.append(MatrixEntry(package=name, runner=runner))
+            matrix_entries.append(
+                MatrixEntry(
+                    package=name,
+                    runner=runner,
+                    path=info.path,
+                    version=info.version,
+                )
+            )
+
+    # Build publish matrix — one entry per changed package with precomputed notes
+    publish_entries: list[PublishEntry] = []
+    for name in sorted(changed_names):
+        info = changed[name]
+        baseline = release_tags.get(name)
+        publish_entries.append(
+            PublishEntry(
+                package=name,
+                version=info.version,
+                tag=f"{name}/v{info.version}",
+                title=f"{name} {info.version}",
+                body=generate_release_notes(name, info, baseline),
+            )
+        )
 
     plan = ReleasePlan(
         uvr_version=uvr_version,
@@ -740,6 +821,8 @@ def build_plan(
         release_tags=release_tags,
         matrix=matrix_entries,
         bumps=bumps,
+        publish_matrix=publish_entries,
+        ci_publish=True,
     )
     return plan, pin_updates
 
@@ -747,21 +830,23 @@ def build_plan(
 def apply_bumps(plan: ReleasePlan) -> dict[str, VersionBump]:
     """Apply pre-computed version bumps from the plan to pyproject.toml files.
 
-    Uses the bumps computed locally during planning, so CI never needs to
-    derive versions or internal dep pins itself.
+    Writes ``.dev0`` suffixed versions so pyproject.toml always reflects
+    development state between releases. The plan stores clean release
+    versions; CI never needs to derive them.
     """
     step("Bumping versions for next release")
 
     bumped: dict[str, VersionBump] = {}
     for name, bump_plan in plan.bumps.items():
         info = plan.changed[name]
+        dev_version = make_dev(bump_plan.new_version)
         rewrite_pyproject(
             Path(info.path) / "pyproject.toml",
-            bump_plan.new_version,
+            dev_version,
             {},  # dep pins were committed locally before the release was triggered
         )
         bumped[name] = VersionBump(old=info.version, new=bump_plan.new_version)
-        print(f"  {name}: {info.version} → {bump_plan.new_version}")
+        print(f"  {name}: {info.version} → {dev_version}")
 
     return bumped
 

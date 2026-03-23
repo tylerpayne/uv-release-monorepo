@@ -16,11 +16,32 @@ from .pipeline import (
     tag_changed_packages,
     tag_dev_baselines,
 )
+from .shell import git
 
 
 def run_pipeline(force_all: bool, push: bool = True, dry_run: bool = False) -> None:
     """Run the full release pipeline."""
     run_release(force_all=force_all, push=push, dry_run=dry_run)
+
+
+def execute_prepare_release(plan_json: str, package: str) -> None:
+    """CI step: strip .dev0 from a package's version before building."""
+    from pathlib import Path
+
+    from .deps import rewrite_pyproject
+    from .versions import strip_dev
+
+    plan = ReleasePlan.model_validate_json(plan_json)
+    if package not in plan.changed:
+        return
+    info = plan.changed[package]
+    # The plan stores the clean release version (already stripped).
+    # Write it to pyproject.toml in case the checked-out file has .dev0.
+    rewrite_pyproject(
+        Path(info.path) / "pyproject.toml",
+        strip_dev(info.version),
+        {},
+    )
 
 
 def execute_build(plan_json: str, package: str) -> None:
@@ -45,12 +66,25 @@ def execute_publish_releases(plan_json: str) -> None:
 
 
 def execute_finalize(plan_json: str) -> None:
-    """CI step: tag packages, apply pre-computed bumps, commit, tag dev baselines."""
+    """CI step: tag packages, apply pre-computed bumps, commit, tag dev baselines, push.
+
+    Behavior is driven entirely by the plan:
+    - ``ci_publish=True``: skip release tag creation (the publish action already
+      created them), configure git identity, and push at the end.
+    - ``ci_publish=False``: create release tags locally (default for local execution).
+    """
     plan = ReleasePlan.model_validate_json(plan_json)
-    tag_changed_packages(plan.changed)
+    if plan.ci_publish:
+        git("config", "user.name", "github-actions[bot]")
+        git("config", "user.email", "github-actions[bot]@users.noreply.github.com")
+    if not plan.ci_publish:
+        tag_changed_packages(plan.changed)
     bumped = apply_bumps(plan)
     commit_bumps(plan.changed, bumped)
     tag_dev_baselines(bumped)
+    if plan.ci_publish:
+        git("push")
+        git("push", "--tags")
 
 
 def execute_release(plan_json: str) -> None:
@@ -76,6 +110,14 @@ def main(argv: list[str] | None = None) -> None:
         "--package", required=True, help="Package name to build."
     )
 
+    prepare_release_parser = subparsers.add_parser("prepare-release")
+    prepare_release_parser.add_argument(
+        "--plan", required=True, help="Release plan JSON."
+    )
+    prepare_release_parser.add_argument(
+        "--package", required=True, help="Package name to prepare."
+    )
+
     execute_release_parser = subparsers.add_parser("execute-release")
     execute_release_parser.add_argument(
         "--plan", required=True, help="Release plan JSON."
@@ -97,6 +139,8 @@ def main(argv: list[str] | None = None) -> None:
     parsed = parser.parse_args(args)
     if parsed.command == "execute-build":
         execute_build(parsed.plan, parsed.package)
+    elif parsed.command == "prepare-release":
+        execute_prepare_release(parsed.plan, parsed.package)
     elif parsed.command == "execute-release":
         execute_release(parsed.plan)
     elif parsed.command == "fetch-unchanged":

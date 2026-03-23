@@ -78,6 +78,18 @@ class MatrixEntry(BaseModel):
 
     package: str
     runner: str
+    path: str = ""
+    version: str = ""
+
+
+class PublishEntry(BaseModel):
+    """A single entry in the publish matrix — one GitHub release per package."""
+
+    package: str
+    version: str
+    tag: str
+    title: str
+    body: str
 
 
 class ReleasePlan(BaseModel):
@@ -89,7 +101,7 @@ class ReleasePlan(BaseModel):
     commands, change detection, or version arithmetic.
     """
 
-    schema_version: int = 2
+    schema_version: int = 3
     uvr_version: str
     python_version: str = "3.12"
     force_all: bool
@@ -98,3 +110,5 @@ class ReleasePlan(BaseModel):
     release_tags: dict[str, str | None]
     matrix: list[MatrixEntry]
     bumps: dict[str, BumpPlan] = Field(default_factory=dict)
+    publish_matrix: list[PublishEntry] = Field(default_factory=list)
+    ci_publish: bool = False

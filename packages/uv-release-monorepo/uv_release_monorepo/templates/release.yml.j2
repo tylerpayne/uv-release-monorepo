@@ -24,9 +24,31 @@ on:
 
 permissions:
   contents: write
+[% set pre_release_needs = ['post-build'] if hooks.post_build else ['build'] %]
+[% set publish_needs = ['pre-release'] if hooks.pre_release else pre_release_needs %]
 
 jobs:
+[% if hooks.pre_build %]
+  pre-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Export plan context
+        env:
+          UVR_PLAN: ${{ inputs.plan }}
+        run: |
+          echo "UVR_CHANGED=$(echo "$UVR_PLAN" | jq -r '.changed | keys | join(" ")')" >> "$GITHUB_ENV"
+          echo "UVR_PLAN=$UVR_PLAN" >> "$GITHUB_ENV"
+[% for step in hooks.pre_build %]
+      - [[ step | step_yaml | indent(8, first=false) ]]
+[% endfor %]
+[% endif %]
   build:
+[% if hooks.pre_build %]
+    needs: [pre-build]
+[% endif %]
     strategy:
       fail-fast: false
       matrix:
@@ -54,9 +76,45 @@ jobs:
           path: dist/*.whl
           if-no-files-found: error
 
-  publish:
+[% if hooks.post_build %]
+  post-build:
     runs-on: ubuntu-latest
     needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Export plan context
+        env:
+          UVR_PLAN: ${{ inputs.plan }}
+        run: |
+          echo "UVR_CHANGED=$(echo "$UVR_PLAN" | jq -r '.changed | keys | join(" ")')" >> "$GITHUB_ENV"
+          echo "UVR_PLAN=$UVR_PLAN" >> "$GITHUB_ENV"
+[% for step in hooks.post_build %]
+      - [[ step | step_yaml | indent(8, first=false) ]]
+[% endfor %]
+[% endif %]
+[% if hooks.pre_release %]
+  pre-release:
+    runs-on: ubuntu-latest
+    needs: [[ '[' + pre_release_needs | join(', ') + ']' ]]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Export plan context
+        env:
+          UVR_PLAN: ${{ inputs.plan }}
+        run: |
+          echo "UVR_CHANGED=$(echo "$UVR_PLAN" | jq -r '.changed | keys | join(" ")')" >> "$GITHUB_ENV"
+          echo "UVR_PLAN=$UVR_PLAN" >> "$GITHUB_ENV"
+[% for step in hooks.pre_release %]
+      - [[ step | step_yaml | indent(8, first=false) ]]
+[% endfor %]
+[% endif %]
+  publish:
+    runs-on: ubuntu-latest
+    needs: [[ '[' + publish_needs | join(', ') + ']' ]]
     strategy:
       fail-fast: false
       matrix:
@@ -90,3 +148,21 @@ jobs:
       - name: Finalize release
         run: uvr-steps finalize --plan '${{ inputs.plan }}'
 
+[% if hooks.post_release %]
+  post-release:
+    runs-on: ubuntu-latest
+    needs: [finalize]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Export plan context
+        env:
+          UVR_PLAN: ${{ inputs.plan }}
+        run: |
+          echo "UVR_CHANGED=$(echo "$UVR_PLAN" | jq -r '.changed | keys | join(" ")')" >> "$GITHUB_ENV"
+          echo "UVR_PLAN=$UVR_PLAN" >> "$GITHUB_ENV"
+[% for step in hooks.post_release %]
+      - [[ step | step_yaml | indent(8, first=false) ]]
+[% endfor %]
+[% endif %]
