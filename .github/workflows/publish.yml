@@ -1,43 +1,36 @@
 name: Publish to PyPI
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish (leave empty to use current)"
+        description: "Version to publish (e.g. 0.4.0). Must match an existing GitHub release."
         type: string
-        required: false
-  release:
-    types: [published]
+        required: true
 
 jobs:
   publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.release.tag_name, 'uv-release-monorepo/v')
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      id-token: write  # Required for trusted publishing
+      contents: write
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: astral-sh/setup-uv@v5
-
-      - name: Set up Python
-        run: uv python install 3.12
-
-      - name: Build uv-release-monorepo only
+      - name: Download wheel from release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && format('uv-release-monorepo/v{0}', inputs.version) || github.event.release.tag_name }}
         run: |
-          # Only build the uv-release-monorepo package, NOT the dummy test packages
-          uv build packages/uv-release-monorepo --out-dir dist/
-
-      - name: Verify only uv-release-monorepo is being published
-        run: |
-          echo "Wheels to publish:"
+          mkdir dist
+          gh release download "$TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern "uv_release_monorepo-*.whl" \
+            --dir dist
           ls -la dist/
-          # Fail if any non-uv-release-monorepo packages are present
-          if ls dist/*.whl | grep -v "uv_release_monorepo"; then
-            echo "ERROR: Found non-uv-release-monorepo packages in dist/"
-            exit 1
-          fi
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@release/v1
