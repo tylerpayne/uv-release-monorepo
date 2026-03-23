@@ -3,7 +3,7 @@ name: Publish to PyPI
 on:
   push:
     tags:
-      - 'uv-release-monorepo/v[0-9]*'
+      - 'uv-release-monorepo/v*'
       - '!uv-release-monorepo/v*-dev'
   workflow_dispatch:
     inputs:
