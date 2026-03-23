@@ -56,7 +56,15 @@ def _make_plan(
         changed={name: packages[name] for name in changed},
         unchanged={name: packages[name] for name in unchanged},
         release_tags={name: None for name in all_pkgs},
-        matrix=[MatrixEntry(package=name, runner="ubuntu-latest") for name in changed],
+        matrix=[
+            MatrixEntry(
+                package=name,
+                runner="ubuntu-latest",
+                path=f"packages/{name}",
+                version="1.0.0",
+            )
+            for name in changed
+        ],
     )
 
 
@@ -672,7 +680,7 @@ class TestCmdRelease:
 
         args = argparse.Namespace(
             force_all=False,
-            dry_run=False,
+            yes=False,
             workflow_dir=".github/workflows",
             python_version="3.12",
         )
@@ -682,14 +690,14 @@ class TestCmdRelease:
         assert "Nothing changed" in output
 
     @patch("uv_release_monorepo.cli.build_plan")
-    def test_release_dry_run_prints_plan_json(
+    def test_release_prints_plan_json(
         self,
         mock_build_plan: MagicMock,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """cmd_release --dry-run prints the plan as JSON without dispatching."""
+        """cmd_release prints the plan as JSON and prompts before dispatching."""
         _write_workspace_repo(tmp_path, ["pkg-alpha"])
         monkeypatch.chdir(tmp_path)
 
@@ -700,29 +708,34 @@ class TestCmdRelease:
         plan = _make_plan(changed=["pkg-alpha"])
         mock_build_plan.return_value = plan, []
 
+        # Simulate user declining the prompt
+        monkeypatch.setattr("builtins.input", lambda _: "n")
+
         args = argparse.Namespace(
             force_all=False,
-            dry_run=True,
+            yes=False,
             workflow_dir=".github/workflows",
             python_version="3.12",
         )
         cmd_release(args)
 
         output = capsys.readouterr().out
-        parsed = json.loads(output)
+        # Extract just the JSON block (starts at the first '{')
+        json_part = output[output.index("{") :]
+        parsed = json.loads(json_part)
         assert "changed" in parsed
         assert "pkg-alpha" in parsed["changed"]
 
     @patch("subprocess.run")
     @patch("uv_release_monorepo.cli.build_plan")
-    def test_release_dispatches_with_plan_json(
+    def test_release_dispatches_with_yes_flag(
         self,
         mock_build_plan: MagicMock,
         mock_subprocess_run: MagicMock,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """cmd_release passes plan JSON to gh workflow run."""
+        """cmd_release --yes dispatches via gh without prompting."""
         _write_workspace_repo(tmp_path, ["pkg-alpha"])
         monkeypatch.chdir(tmp_path)
 
@@ -737,7 +750,7 @@ class TestCmdRelease:
 
         args = argparse.Namespace(
             force_all=False,
-            dry_run=False,
+            yes=True,
             workflow_dir=".github/workflows",
             python_version="3.12",
         )

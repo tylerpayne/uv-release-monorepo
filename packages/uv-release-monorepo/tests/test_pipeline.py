@@ -24,6 +24,7 @@ from uv_release_monorepo.pipeline import (
     fetch_unchanged_wheels,
     find_dev_baselines,
     find_release_tags,
+    generate_release_notes,
     get_existing_wheels,
     publish_release,
     run_release,
@@ -1323,6 +1324,103 @@ class TestBuildPlan:
 
         assert plan.changed == {}
         assert "pkg-a" in plan.unchanged
+
+    @patch("uv_release_monorepo.pipeline.generate_release_notes")
+    @patch("uv_release_monorepo.pipeline.detect_changes")
+    @patch("uv_release_monorepo.pipeline.find_dev_baselines")
+    @patch("uv_release_monorepo.pipeline.find_release_tags")
+    @patch("uv_release_monorepo.pipeline.discover_packages")
+    def test_populates_publish_matrix_and_ci_publish(
+        self,
+        mock_discover: MagicMock,
+        mock_find_release: MagicMock,
+        mock_find_dev: MagicMock,
+        mock_detect: MagicMock,
+        mock_gen_notes: MagicMock,
+    ) -> None:
+        """build_plan populates publish_matrix with precomputed notes and sets ci_publish=True."""
+        packages = {
+            "pkg-a": PackageInfo(path="packages/a", version="1.0.0", deps=[]),
+        }
+        mock_discover.return_value = packages
+        mock_find_release.return_value = {"pkg-a": "pkg-a/v0.9.0"}
+        mock_find_dev.return_value = {"pkg-a": None}
+        mock_detect.return_value = ["pkg-a"]
+        mock_gen_notes.return_value = "**Released:** pkg-a 1.0.0"
+
+        plan, _ = build_plan(force_all=False, matrix={}, uvr_version="0.3.0")
+
+        assert plan.ci_publish is True
+        assert len(plan.publish_matrix) == 1
+        entry = plan.publish_matrix[0]
+        assert entry.package == "pkg-a"
+        assert entry.version == "1.0.0"
+        assert entry.tag == "pkg-a/v1.0.0"
+        assert entry.title == "pkg-a 1.0.0"
+        assert entry.body == "**Released:** pkg-a 1.0.0"
+
+    @patch("uv_release_monorepo.pipeline.detect_changes")
+    @patch("uv_release_monorepo.pipeline.find_dev_baselines")
+    @patch("uv_release_monorepo.pipeline.find_release_tags")
+    @patch("uv_release_monorepo.pipeline.discover_packages")
+    def test_matrix_entries_include_path_and_version(
+        self,
+        mock_discover: MagicMock,
+        mock_find_release: MagicMock,
+        mock_find_dev: MagicMock,
+        mock_detect: MagicMock,
+    ) -> None:
+        """MatrixEntry includes path and version from the plan."""
+        packages = {
+            "pkg-a": PackageInfo(path="packages/a", version="1.0.0", deps=[]),
+        }
+        mock_discover.return_value = packages
+        mock_find_release.return_value = {"pkg-a": None}
+        mock_find_dev.return_value = {"pkg-a": None}
+        mock_detect.return_value = ["pkg-a"]
+
+        plan, _ = build_plan(force_all=False, matrix={}, uvr_version="0.3.0")
+
+        assert plan.matrix[0].path == "packages/a"
+        assert plan.matrix[0].version == "1.0.0"
+
+
+class TestGenerateReleaseNotes:
+    """Tests for generate_release_notes()."""
+
+    @patch("uv_release_monorepo.pipeline.git")
+    def test_with_baseline_and_commits(self, mock_git: MagicMock) -> None:
+        """Includes commit log when baseline tag exists."""
+        mock_git.return_value = "abc1234 fix: something\ndef5678 feat: another"
+        info = PackageInfo(path="packages/a", version="1.0.0", deps=[])
+
+        result = generate_release_notes("pkg-a", info, "pkg-a/v0.9.0")
+
+        assert "**Released:** pkg-a 1.0.0" in result
+        assert "**Commits:**" in result
+        assert "- abc1234 fix: something" in result
+        assert "- def5678 feat: another" in result
+
+    @patch("uv_release_monorepo.pipeline.git")
+    def test_without_baseline(self, mock_git: MagicMock) -> None:
+        """No commit log when no baseline tag."""
+        info = PackageInfo(path="packages/a", version="1.0.0", deps=[])
+
+        result = generate_release_notes("pkg-a", info, None)
+
+        assert result == "**Released:** pkg-a 1.0.0"
+        mock_git.assert_not_called()
+
+    @patch("uv_release_monorepo.pipeline.git")
+    def test_with_baseline_no_commits(self, mock_git: MagicMock) -> None:
+        """No commit section when git log returns empty."""
+        mock_git.return_value = ""
+        info = PackageInfo(path="packages/a", version="1.0.0", deps=[])
+
+        result = generate_release_notes("pkg-a", info, "pkg-a/v0.9.0")
+
+        assert result == "**Released:** pkg-a 1.0.0"
+        assert "Commits" not in result
 
 
 class TestExecutePlan:

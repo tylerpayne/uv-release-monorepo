@@ -17,7 +17,12 @@ from uv_release_monorepo.workflow_steps import (
 )
 
 
-def _make_plan_json(changed: list[str], unchanged: list[str]) -> str:
+def _make_plan_json(
+    changed: list[str],
+    unchanged: list[str],
+    *,
+    ci_publish: bool = False,
+) -> str:
     """Helper to build a minimal ReleasePlan JSON string."""
     all_pkgs = changed + unchanged
     packages = {
@@ -30,7 +35,16 @@ def _make_plan_json(changed: list[str], unchanged: list[str]) -> str:
         changed={name: packages[name] for name in changed},
         unchanged={name: packages[name] for name in unchanged},
         release_tags={name: None for name in all_pkgs},
-        matrix=[MatrixEntry(package=name, runner="ubuntu-latest") for name in changed],
+        matrix=[
+            MatrixEntry(
+                package=name,
+                runner="ubuntu-latest",
+                path=f"packages/{name}",
+                version="1.0.0",
+            )
+            for name in changed
+        ],
+        ci_publish=ci_publish,
     )
     return plan.model_dump_json()
 
@@ -67,6 +81,7 @@ def test_execute_publish_releases_calls_publish(mock_publish: MagicMock) -> None
     mock_publish.assert_called_once()
 
 
+@patch("uv_release_monorepo.workflow_steps.git")
 @patch("uv_release_monorepo.workflow_steps.tag_dev_baselines")
 @patch("uv_release_monorepo.workflow_steps.commit_bumps")
 @patch("uv_release_monorepo.workflow_steps.apply_bumps")
@@ -76,8 +91,9 @@ def test_execute_finalize_calls_sequence(
     mock_apply: MagicMock,
     mock_commit: MagicMock,
     mock_tag_dev: MagicMock,
+    mock_git: MagicMock,
 ) -> None:
-    """execute_finalize runs the tag/bump/commit/tag-dev sequence."""
+    """execute_finalize with ci_publish=False creates release tags, no push."""
     mock_apply.return_value = {}
     plan_json = _make_plan_json(changed=["pkg-a"], unchanged=["pkg-b"])
     execute_finalize(plan_json)
@@ -86,8 +102,39 @@ def test_execute_finalize_calls_sequence(
     mock_apply.assert_called_once()
     mock_commit.assert_called_once()
     mock_tag_dev.assert_called_once()
+    # ci_publish=False: no git config, no push
+    mock_git.assert_not_called()
 
 
+@patch("uv_release_monorepo.workflow_steps.git")
+@patch("uv_release_monorepo.workflow_steps.tag_dev_baselines")
+@patch("uv_release_monorepo.workflow_steps.commit_bumps")
+@patch("uv_release_monorepo.workflow_steps.apply_bumps")
+@patch("uv_release_monorepo.workflow_steps.tag_changed_packages")
+def test_execute_finalize_ci_publish_skips_tags_and_pushes(
+    mock_tag_pkg: MagicMock,
+    mock_apply: MagicMock,
+    mock_commit: MagicMock,
+    mock_tag_dev: MagicMock,
+    mock_git: MagicMock,
+) -> None:
+    """execute_finalize with ci_publish=True skips release tags, configures git, pushes."""
+    mock_apply.return_value = {}
+    plan_json = _make_plan_json(changed=["pkg-a"], unchanged=["pkg-b"], ci_publish=True)
+    execute_finalize(plan_json)
+
+    mock_tag_pkg.assert_not_called()
+    mock_apply.assert_called_once()
+    mock_commit.assert_called_once()
+    mock_tag_dev.assert_called_once()
+    # ci_publish=True: git config + push
+    git_calls = [c[0] for c in mock_git.call_args_list]
+    assert ("config", "user.name", "github-actions[bot]") in git_calls
+    assert ("push",) in git_calls
+    assert ("push", "--tags") in git_calls
+
+
+@patch("uv_release_monorepo.workflow_steps.git")
 @patch("uv_release_monorepo.workflow_steps.tag_dev_baselines")
 @patch("uv_release_monorepo.workflow_steps.commit_bumps")
 @patch("uv_release_monorepo.workflow_steps.apply_bumps")
@@ -101,6 +148,7 @@ def test_execute_release_calls_full_sequence(
     mock_apply: MagicMock,
     mock_commit: MagicMock,
     mock_tag_dev: MagicMock,
+    mock_git: MagicMock,
 ) -> None:
     """execute_release runs the full post-build release sequence."""
     mock_apply.return_value = {}

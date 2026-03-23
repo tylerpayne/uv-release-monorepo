@@ -57,9 +57,9 @@ class TestReleasePlan:
             matrix=[MatrixEntry(package="pkg-alpha", runner="ubuntu-latest")],
         )
 
-    def test_schema_version_defaults_to_2(self) -> None:
+    def test_schema_version_defaults_to_3(self) -> None:
         plan = self._make_plan()
-        assert plan.schema_version == 2
+        assert plan.schema_version == 3
 
     def test_round_trip_json(self) -> None:
         plan = self._make_plan()
@@ -71,7 +71,14 @@ class TestReleasePlan:
         assert restored.matrix[0].runner == "ubuntu-latest"
 
     def test_matrix_shape_matches_gha_include(self) -> None:
-        """matrix entries serialize as {package, runner} dicts for GHA fromJSON."""
+        """matrix entries serialize as dicts for GHA fromJSON."""
         plan = self._make_plan()
         data = plan.model_dump()
-        assert data["matrix"] == [{"package": "pkg-alpha", "runner": "ubuntu-latest"}]
+        assert data["matrix"] == [
+            {
+                "package": "pkg-alpha",
+                "runner": "ubuntu-latest",
+                "path": "",
+                "version": "",
+            }
+        ]
