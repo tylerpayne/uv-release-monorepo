@@ -83,15 +83,18 @@ def cmd_release(args: argparse.Namespace) -> None:
         print("Nothing changed since last release. Use --rebuild-all to rebuild all.")
         return
 
-    # Print the plan
-    plan_dict = plan.model_dump()
+    # Set skip/reuse fields on the plan
     if skipped:
-        plan_dict["skip"] = sorted(skipped)
+        plan.skip = sorted(skipped)
     if reuse_run:
-        plan_dict["reuse_run_id"] = reuse_run
-    if reuse_release:
-        plan_dict["reuse_release"] = True
-    print(json.dumps(plan_dict, indent=2))
+        plan.reuse_run_id = reuse_run
+
+    # Don't pin to a .dev version -- it won't exist on PyPI.
+    if ".dev" in plan.uvr_version:
+        plan.uvr_version = ""
+
+    # Print the plan
+    print(json.dumps(plan.model_dump(), indent=2))
 
     # Prompt for confirmation before dispatching (skip with --yes)
     if not args.yes:
@@ -108,9 +111,6 @@ def cmd_release(args: argparse.Namespace) -> None:
     import time
 
     plan_json = plan.model_dump_json()
-    # Don't pin to a .dev version -- it won't exist on PyPI.
-    # The workflow falls back to installing the latest release.
-    uvr_ver = __version__ if ".dev" not in __version__ else ""
     cmd = [
         "gh",
         "workflow",
@@ -118,13 +118,7 @@ def cmd_release(args: argparse.Namespace) -> None:
         "release.yml",
         "-f",
         f"plan={plan_json}",
-        "-f",
-        f"uvr_version={uvr_ver}",
-        "-f",
-        f"skip={','.join(sorted(skipped))}",
     ]
-    if reuse_run:
-        cmd += ["-f", f"reuse_run_id={reuse_run}"]
     print(f"Triggering release for: {', '.join(sorted(plan.changed))}")
     if skipped:
         print(f"Skipping: {', '.join(sorted(skipped))}")

@@ -50,36 +50,36 @@ uvr init -m my-native-pkg ubuntu-latest macos-14
 
 Each `-m` assigns one or more GitHub Actions runners to a package. Re-run `uvr init` to update runners; existing entries are preserved.
 
-### Run tests or lints in CI
+### Edit the workflow
 
-Hooks let you inject steps at four points in the release pipeline: `pre-build`, `post-build`, `pre-release`, and `post-release`.
-
-```bash
-uvr hooks pre-build add --name "Run tests" --run "uv run pytest"
-```
-
-Every hook job has access to `$UVR_PLAN` (the full release plan JSON) and `$UVR_CHANGED` (space-separated list of changed packages). See the [full guide](../../docs/guide.md) for all hook operations.
-
-### Edit workflow settings
-
-`uvr workflow` reads, writes, and deletes any key in `release.yml`:
+`uvr workflow` and `uvr hooks` use jq-style dot paths to read and write any key in `release.yml`:
 
 ```bash
-uvr workflow permissions                          # read
-uvr workflow permissions id-token --set write     # write
-uvr workflow permissions id-token --clear         # delete
-uvr workflow jobs post-release environment --set pypi  # nested write
+# Read
+uvr workflow .permissions
+uvr workflow .jobs.post-release.environment
+
+# Set scalar
+uvr workflow .permissions.id-token --set write
+
+# Set complex (heredoc)
+uvr workflow .permissions --set <<EOF
+contents: write
+id-token: write
+EOF
+
+# Remove key / clear collection
+uvr workflow .permissions --remove id-token
+uvr workflow .jobs.build.tags --clear
 ```
 
-List operations:
+`uvr hooks PHASE` is shorthand for `uvr workflow .jobs.PHASE`:
 
 ```bash
-uvr workflow jobs build tags --add release         # append
-uvr workflow jobs build tags --insert v2 --at 0    # insert at position
-uvr workflow jobs build tags --remove release      # remove by value
+uvr hooks pre-build .steps                    # list steps
+uvr hooks post-release .environment --set pypi
+uvr hooks pre-build .steps --append '{name: Test, run: pytest}'
 ```
-
-Edits are validated against the workflow schema before writing — unknown job names or invalid structures are rejected.
 
 ### Example: full CI pipeline setup
 
@@ -87,34 +87,45 @@ Starting from a fresh `uvr init`, add pre-build checks and a post-release PyPI p
 
 ```bash
 # Gate releases on lint + tests
-uvr hooks pre-build add --id setup-uv \
-  --name "Set up uv and Python" \
-  --uses astral-sh/setup-uv@v5 \
-  --with 'python-version=${{ fromJSON(inputs.plan).python_version }}'
+uvr hooks pre-build .steps --append <<EOF
+id: setup-uv
+name: Set up uv and Python
+uses: astral-sh/setup-uv@v5
+with: {python-version: "\${{ fromJSON(inputs.plan).python_version }}"}
+EOF
 
-uvr hooks pre-build add --id check \
-  --name "Lint, typecheck, and test" \
-  --run 'uv sync --all-packages
-uv run poe check
-uv run poe test'
+uvr hooks pre-build .steps --append <<EOF
+id: check
+name: Lint, typecheck, and test
+run: |
+  uv sync --all-packages
+  uv run poe check
+  uv run poe test
+EOF
 
-# Publish to PyPI after release (only when uv-release-monorepo changed)
-uvr hooks post-release add --id pypi-download \
-  --name "Download wheel for PyPI" \
-  --if "fromJSON(inputs.plan).changed['uv-release-monorepo'] != null" \
-  --run 'VERSION=$(echo "$UVR_PLAN" | python3 -c "import sys,json; p=json.load(sys.stdin); print(p[\"changed\"][\"uv-release-monorepo\"][\"version\"])")
-TAG="uv-release-monorepo/v${VERSION}"
-mkdir -p dist
-gh release download "$TAG" --repo "${{ github.repository }}" --pattern "uv_release_monorepo-*.whl" --dir dist'
+# Publish to PyPI after release
+uvr hooks post-release .steps --append <<EOF
+id: pypi-download
+name: Download wheel for PyPI
+if: fromJSON(inputs.plan).changed['uv-release-monorepo'] != null
+env: {GH_TOKEN: "\${{ github.token }}"}
+run: |
+  VERSION=$(echo "\$UVR_PLAN" | python3 -c "import sys,json; p=json.load(sys.stdin); print(p['changed']['uv-release-monorepo']['version'])")
+  TAG="uv-release-monorepo/v\${VERSION}"
+  mkdir -p dist
+  gh release download "\$TAG" --repo "\${{ github.repository }}" --pattern "uv_release_monorepo-*.whl" --dir dist
+EOF
 
-uvr hooks post-release add --id pypi-publish \
-  --name "Publish to PyPI" \
-  --if "fromJSON(inputs.plan).changed['uv-release-monorepo'] != null" \
-  --uses pypa/gh-action-pypi-publish@release/v1
+uvr hooks post-release .steps --append <<EOF
+id: pypi-publish
+name: Publish to PyPI
+if: fromJSON(inputs.plan).changed['uv-release-monorepo'] != null
+uses: pypa/gh-action-pypi-publish@release/v1
+EOF
 
 # Set workflow permissions and job environment for trusted publishing
-uvr workflow permissions id-token --set write
-uvr workflow jobs post-release environment --set pypi
+uvr workflow .permissions.id-token --set write
+uvr hooks post-release .environment --set pypi
 ```
 
 ### Install packages from GitHub releases

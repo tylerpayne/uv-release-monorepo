@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_serializer, model_validator
 
 
 class PackageInfo(BaseModel):
@@ -129,20 +129,26 @@ class Job(BaseModel):
     model_config = {"extra": "allow", "populate_by_name": True}
 
     runs_on: str = Field(default="ubuntu-latest", alias="runs-on")
+    if_condition: str | None = Field(default=None, alias="if")
     needs: list[str] = Field(default_factory=list)
-    steps: list[dict] = Field(default_factory=list)
     environment: str | None = None
     concurrency: str | dict | None = None
     timeout_minutes: int | None = Field(default=None, alias="timeout-minutes")
     env: dict[str, str] | None = None
-    if_condition: str | None = Field(default=None, alias="if")
+    steps: list[dict] = Field(default_factory=list)
+
+    @model_serializer(mode="wrap")
+    def _drop_empty_needs(self, handler: Any) -> dict:
+        d = handler(self)
+        if "needs" in d and d["needs"] == []:
+            del d["needs"]
+        return d
 
 
 class HookJob(Job):
     """A hook phase job — fully user-configurable."""
 
     pass
-
 
 class BuildJob(Job):
     """The build job. Strategy is template-managed but accepted here."""
@@ -167,13 +173,57 @@ class WorkflowJobs(BaseModel):
 
     model_config = {"extra": "forbid", "populate_by_name": True}
 
-    pre_build: HookJob | None = Field(default=None, alias="pre-build")
+    pre_build: HookJob = Field(default=None, alias="pre-build")
     build: BuildJob = Field(default_factory=BuildJob)
-    post_build: HookJob | None = Field(default=None, alias="post-build")
-    pre_release: HookJob | None = Field(default=None, alias="pre-release")
+    post_build: HookJob = Field(default=None, alias="post-build")
+    pre_release: HookJob = Field(default=None, alias="pre-release")
     publish: PublishJob = Field(default_factory=PublishJob)
     finalize: FinalizeJob = Field(default_factory=FinalizeJob)
-    post_release: HookJob | None = Field(default=None, alias="post-release")
+    post_release: HookJob = Field(default=None, alias="post-release")
+
+    @model_serializer(mode="wrap")
+    def _wire_needs(self, handler: Any) -> dict:
+        """Ensure job dependency chain is correct based on which jobs exist."""
+        d = handler(self)
+
+        def _set_needs(job_name: str, deps: list[str]) -> None:
+            """Set needs on a job, keeping it near the top of the key order."""
+            job = d.get(job_name)
+            if not isinstance(job, dict):
+                return
+            if "needs" not in job or job["needs"] == []:
+                job["needs"] = deps
+            # Reorder: runs-on, needs first, then the rest
+            ordered = {}
+            for key in ("runs-on", "if", "needs"):
+                if key in job:
+                    ordered[key] = job.pop(key)
+            ordered.update(job)
+            d[job_name] = ordered
+
+        # build needs pre-build if it exists
+        if d.get("pre-build"):
+            _set_needs("build", ["pre-build"])
+        # post-build needs build
+        if d.get("post-build"):
+            _set_needs("post-build", ["build"])
+        # pre-release needs post-build or build
+        if d.get("pre-release"):
+            dep = "post-build" if d.get("post-build") else "build"
+            _set_needs("pre-release", [dep])
+        # publish needs pre-release or post-build or build
+        pub_dep = "build"
+        if d.get("pre-release"):
+            pub_dep = "pre-release"
+        elif d.get("post-build"):
+            pub_dep = "post-build"
+        _set_needs("publish", [pub_dep])
+        # finalize needs publish
+        _set_needs("finalize", ["publish"])
+        # post-release needs finalize
+        if d.get("post-release"):
+            _set_needs("post-release", ["finalize"])
+        return d
 
 
 class ReleaseWorkflow(BaseModel):
@@ -234,3 +284,5 @@ class ReleasePlan(BaseModel):
     bumps: dict[str, BumpPlan] = Field(default_factory=dict)
     publish_matrix: list[PublishEntry] = Field(default_factory=list)
     ci_publish: bool = False
+    skip: list[str] = Field(default_factory=list)
+    reuse_run_id: str = ""

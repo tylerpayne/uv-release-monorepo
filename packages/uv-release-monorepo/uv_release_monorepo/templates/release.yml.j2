@@ -16,20 +16,6 @@ on:
         description: "Release plan JSON (generated automatically by `uvr release`)."
         type: string
         required: true
-      uvr_version:
-        description: "uv-release-monorepo version to use (set automatically by `uvr release`)."
-        type: string
-        required: false
-      skip:
-        description: "Comma-separated job names to skip (e.g. 'pre-build,build')."
-        type: string
-        required: false
-        default: ""
-      reuse_run_id:
-        description: "Download build artifacts from this workflow run instead of building."
-        type: string
-        required: false
-        default: ""
 
 permissions:
 [% for scope, level in permissions.items() | sort %]
@@ -43,11 +29,13 @@ permissions:
     [[ key ]]: [[ val ]]
 [% endfor %]
 [%- endmacro -%]
+[# All plan fields are accessed via fromJSON(inputs.plan).field_name #]
+[% set p = "fromJSON(inputs.plan)" %]
 
 jobs:
 [% if hooks.pre_build %]
   pre-build:
-    if: ${{ !contains(inputs.skip, 'pre-build') }}
+    if: ${{ !contains([[ p ]].skip, 'pre-build') }}
     runs-on: [[ hook_jobs.get('pre_build', {}).get('runs-on', 'ubuntu-latest') ]]
 [[ hook_job_attrs('pre_build') ]]
     steps:
@@ -65,14 +53,14 @@ jobs:
 [% endfor %]
 [% endif %]
   build:
-    if: ${{ !contains(inputs.skip, 'build') }}
+    if: ${{ !contains([[ p ]].skip, 'build') }}
 [% if hooks.pre_build %]
     needs: [pre-build]
 [% endif %]
     strategy:
       fail-fast: false
       matrix:
-        runner: ${{ fromJSON(inputs.plan).runners }}
+        runner: ${{ [[ p ]].runners }}
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -81,8 +69,8 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - name: Set up Python
         run: |
-          uv python install ${{ fromJSON(inputs.plan).python_version }}
-          uv tool install ${{ inputs.uvr_version && format('uv-release-monorepo=={0}', inputs.uvr_version) || 'uv-release-monorepo' }}
+          uv python install ${{ [[ p ]].python_version }}
+          uv tool install ${{ [[ p ]].uvr_version != '' && format('uv-release-monorepo=={0}', [[ p ]].uvr_version) || 'uv-release-monorepo' }}
       - name: Build packages
         env:
           GH_TOKEN: ${{ github.token }}
@@ -96,7 +84,7 @@ jobs:
 
 [% if hooks.post_build %]
   post-build:
-    if: ${{ always() && !failure() && !contains(inputs.skip, 'post-build') }}
+    if: ${{ always() && !failure() && !contains([[ p ]].skip, 'post-build') }}
     runs-on: [[ hook_jobs.get('post_build', {}).get('runs-on', 'ubuntu-latest') ]]
     needs: [build]
 [[ hook_job_attrs('post_build') ]]
@@ -116,7 +104,7 @@ jobs:
 [% endif %]
 [% if hooks.pre_release %]
   pre-release:
-    if: ${{ always() && !failure() && !contains(inputs.skip, 'pre-release') }}
+    if: ${{ always() && !failure() && !contains([[ p ]].skip, 'pre-release') }}
     runs-on: [[ hook_jobs.get('pre_release', {}).get('runs-on', 'ubuntu-latest') ]]
     needs: [[ '[' + pre_release_needs | join(', ') + ']' ]]
 [[ hook_job_attrs('pre_release') ]]
@@ -135,20 +123,20 @@ jobs:
 [% endfor %]
 [% endif %]
   publish:
-    if: ${{ always() && !failure() && !contains(inputs.skip, 'publish') }}
+    if: ${{ always() && !failure() && !contains([[ p ]].skip, 'publish') }}
     runs-on: ubuntu-latest
     needs: [[ '[' + publish_needs | join(', ') + ']' ]]
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.plan).publish_matrix }}
+        include: ${{ [[ p ]].publish_matrix }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           pattern: wheels-*
           merge-multiple: true
           path: dist
-          run-id: ${{ inputs.reuse_run_id != '' && inputs.reuse_run_id || github.run_id }}
+          run-id: ${{ [[ p ]].reuse_run_id != '' && [[ p ]].reuse_run_id || github.run_id }}
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ matrix.tag }}
@@ -158,7 +146,7 @@ jobs:
           make_latest: ${{ matrix.make_latest }}
 
   finalize:
-    if: ${{ always() && !failure() && !contains(inputs.skip, 'finalize') }}
+    if: ${{ always() && !failure() && !contains([[ p ]].skip, 'finalize') }}
     runs-on: ubuntu-latest
     needs: [publish]
     steps:
@@ -168,8 +156,8 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - name: Set up
         run: |
-          uv python install ${{ fromJSON(inputs.plan).python_version }}
-          uv tool install ${{ inputs.uvr_version && format('uv-release-monorepo=={0}', inputs.uvr_version) || 'uv-release-monorepo' }}
+          uv python install ${{ [[ p ]].python_version }}
+          uv tool install ${{ [[ p ]].uvr_version != '' && format('uv-release-monorepo=={0}', [[ p ]].uvr_version) || 'uv-release-monorepo' }}
       - name: Finalize release
         env:
           UVR_PLAN: ${{ inputs.plan }}
@@ -177,7 +165,7 @@ jobs:
 
 [% if hooks.post_release %]
   post-release:
-    if: ${{ always() && !failure() && !contains(inputs.skip, 'post-release') }}
+    if: ${{ always() && !failure() && !contains([[ p ]].skip, 'post-release') }}
     runs-on: [[ hook_jobs.get('post_release', {}).get('runs-on', 'ubuntu-latest') ]]
     needs: [finalize]
 [[ hook_job_attrs('post_release') ]]

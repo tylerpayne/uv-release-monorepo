@@ -22,26 +22,20 @@ from ._common import (
 )
 from ._workflow_state import _get_workflow_state, _render_workflow, _step_to_yaml
 from ._yaml import _MISSING, _yaml_delete, _yaml_get, _yaml_set
-from .hooks import (
-    _hooks_apply,
-    _hooks_interactive,
-    _hooks_show,
-    _parse_kv_pairs,
-    _step_kwargs_from_args,
-    cmd_hooks,
-)
+from .hooks import cmd_hooks
 from .init import cmd_init
 from .install import _find_latest_release_tag, _parse_install_spec, cmd_install
 from .release import cmd_release
 from .run import cmd_run
 from .runners import cmd_runners
 from .status import cmd_status
-from .workflow import cmd_workflow
+from .workflow import _STDIN, cmd_workflow
 
 __all__ = [
     "TEMPLATES_DIR",
     "_HOOK_ALIASES",
     "_MISSING",
+    "_STDIN",
     "_VALID_HOOKS",
     "_WorkflowConfig",
     "__version__",
@@ -51,16 +45,11 @@ __all__ = [
     "_fatal",
     "_find_latest_release_tag",
     "_get_workflow_state",
-    "_hooks_apply",
-    "_hooks_interactive",
-    "_hooks_show",
     "_parse_install_spec",
-    "_parse_kv_pairs",
     "_print_dependencies",
     "_print_matrix_status",
     "_read_matrix",
     "_render_workflow",
-    "_step_kwargs_from_args",
     "_step_to_yaml",
     "_yaml_delete",
     "_yaml_get",
@@ -78,6 +67,59 @@ __all__ = [
     "execute_plan",
     "run_pipeline",
 ]
+
+
+def _add_crud_flags(parser: argparse.ArgumentParser) -> None:
+    """Add the shared CRUD flags (--set, --append, --insert, --remove, --clear, --at)."""
+    mut = parser.add_mutually_exclusive_group()
+    mut.add_argument(
+        "--set",
+        dest="set_value",
+        nargs="?",
+        const=_STDIN,
+        default=None,
+        metavar="VALUE",
+        help="Set the value at the given path. Reads stdin if no VALUE.",
+    )
+    mut.add_argument(
+        "--append",
+        dest="append_value",
+        nargs="?",
+        const=_STDIN,
+        default=None,
+        metavar="VALUE",
+        help="Append a value to the list at the given path. Reads stdin if no VALUE.",
+    )
+    mut.add_argument(
+        "--insert",
+        dest="insert_value",
+        nargs="?",
+        const=_STDIN,
+        default=None,
+        metavar="VALUE",
+        help="Insert a value into the list at the given path (requires --at). Reads stdin if no VALUE.",
+    )
+    mut.add_argument(
+        "--remove",
+        dest="remove_value",
+        nargs="?",
+        const=_STDIN,
+        default=None,
+        metavar="VALUE",
+        help="Remove a key from dict or value from list. Use --at INDEX to remove by position.",
+    )
+    mut.add_argument(
+        "--clear",
+        action="store_true",
+        help="Empty the collection at the given path.",
+    )
+    parser.add_argument(
+        "--at",
+        dest="at_index",
+        type=int,
+        metavar="INDEX",
+        help="Position index for --insert, --remove, or --set on lists (0-indexed).",
+    )
 
 
 def cli() -> None:
@@ -240,145 +282,70 @@ def cli() -> None:
     )
     status_parser.set_defaults(func=cmd_status)
 
-    # hooks subcommand — uvr hooks PHASE [--add|--insert|--set|--remove|--clear]
+    # hooks subcommand — uvr hooks PHASE [.path] [--set|--append|--insert|--remove|--clear]
     hooks_parser = subparsers.add_parser(
         "hooks",
-        help="Manage CI hook steps in the release workflow.",
+        help="Manage CI hook jobs in the release workflow.",
+        description=(
+            "Read or write hook job configuration using jq-style dot paths.\n\n"
+            "PHASE is the hook point: pre-build, post-build, pre-release, post-release.\n"
+            "The optional .path is relative to .jobs.PHASE.\n\n"
+            "Examples:\n"
+            "  uvr hooks pre-build                          # dump entire job\n"
+            "  uvr hooks pre-build .steps                   # list steps\n"
+            "  uvr hooks pre-build .environment --set pypi  # set job-level key\n"
+            "  uvr hooks pre-build .steps --append '{name: Test, run: pytest}'\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     hooks_parser.add_argument(
-        "hook_point",
+        "phase",
         choices=["pre-build", "post-build", "pre-release", "post-release"],
         help="Hook phase.",
     )
     hooks_parser.add_argument(
+        "path",
+        nargs="?",
+        default=None,
+        metavar=".PATH",
+        help="Dot path relative to .jobs.PHASE (e.g. .steps, .steps.0.name, .environment).",
+    )
+    hooks_parser.add_argument(
         "--workflow-dir",
         default=".github/workflows",
         help="Directory containing the workflow file. (default: %(default)s)",
     )
-    _hooks_mut = hooks_parser.add_mutually_exclusive_group()
-    _hooks_mut.add_argument(
-        "--add",
-        action="store_true",
-        dest="do_add",
-        help="Append a step (upsert if --id matches).",
-    )
-    _hooks_mut.add_argument(
-        "--insert",
-        action="store_true",
-        dest="do_insert",
-        help="Insert a step at --at position (1-indexed).",
-    )
-    _hooks_mut.add_argument(
-        "--set",
-        action="store_true",
-        dest="do_set",
-        help="Update the step at --at position (1-indexed).",
-    )
-    _hooks_mut.add_argument(
-        "--remove",
-        action="store_true",
-        dest="do_remove",
-        help="Remove the step at --at position (1-indexed).",
-    )
-    _hooks_mut.add_argument(
-        "--clear",
-        action="store_true",
-        dest="do_clear",
-        help="Remove all steps.",
-    )
-    hooks_parser.add_argument(
-        "--at",
-        type=int,
-        dest="position",
-        metavar="INDEX",
-        help="Position (1-indexed) for --insert, --set, --remove.",
-    )
-    # Step fields
-    hooks_parser.add_argument("--name", help="Step display name.")
-    hooks_parser.add_argument("--run", help="Shell command to run.")
-    hooks_parser.add_argument(
-        "--uses", help="Action to use (e.g. actions/checkout@v4)."
-    )
-    hooks_parser.add_argument(
-        "--with",
-        dest="step_with",
-        action="append",
-        metavar="KEY=VALUE",
-        help="Action input (repeatable).",
-    )
-    hooks_parser.add_argument(
-        "--env",
-        dest="step_env",
-        action="append",
-        metavar="KEY=VALUE",
-        help="Environment variable (repeatable).",
-    )
-    hooks_parser.add_argument("--if", dest="step_if", help="Conditional expression.")
-    hooks_parser.add_argument("--id", help="Unique id for upsert semantics.")
+    _add_crud_flags(hooks_parser)
     hooks_parser.set_defaults(func=cmd_hooks)
 
-    # workflow subcommand — uvr workflow PATH [VALUE]
+    # workflow subcommand — uvr workflow [.path] [--set|--append|--insert|--remove|--clear]
     workflow_parser = subparsers.add_parser(
         "workflow",
         help="Get or set workflow-level YAML values.",
         description=(
-            "Read or write any key in the release workflow YAML.\n\n"
+            "Read or write any key in the release workflow YAML using jq-style dot paths.\n\n"
             "Examples:\n"
-            "  uvr workflow permissions                        # show permissions\n"
-            "  uvr workflow permissions id-token write         # set a permission\n"
-            "  uvr workflow permissions --clear                # reset permissions\n"
-            "  uvr workflow jobs post-release environment pypi # set job key\n"
+            "  uvr workflow                                    # entire doc\n"
+            "  uvr workflow .permissions                       # subtree\n"
+            "  uvr workflow .permissions.contents --set write  # set scalar\n"
+            "  uvr workflow .permissions --remove id-token     # remove key\n"
+            "  uvr workflow .jobs.build.tags --append release  # append to list\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    workflow_parser.add_argument(
+        "path",
+        nargs="?",
+        default=None,
+        metavar=".PATH",
+        help="Dot path into the YAML (e.g. .permissions.contents, .jobs.build.steps).",
     )
     workflow_parser.add_argument(
         "--workflow-dir",
         default=".github/workflows",
         help="Directory containing the workflow file. (default: %(default)s)",
     )
-    _wf_mut = workflow_parser.add_mutually_exclusive_group()
-    _wf_mut.add_argument(
-        "--set",
-        dest="set_value",
-        metavar="VALUE",
-        help="Set the value at the given path.",
-    )
-    _wf_mut.add_argument(
-        "--add",
-        dest="add_value",
-        metavar="VALUE",
-        help="Append a value to the list at the given path.",
-    )
-    _wf_mut.add_argument(
-        "--insert",
-        dest="insert_value",
-        metavar="VALUE",
-        help="Insert a value into the list at the given path (requires --at).",
-    )
-    _wf_mut.add_argument(
-        "--remove",
-        dest="remove_value",
-        metavar="VALUE",
-        help="Remove a value from the list at the given path.",
-    )
-    _wf_mut.add_argument(
-        "--clear",
-        action="store_true",
-        help="Delete the key at the given path.",
-    )
-    workflow_parser.add_argument(
-        "--at",
-        dest="insert_index",
-        type=int,
-        metavar="INDEX",
-        help="Position for --insert (0-indexed).",
-    )
-    workflow_parser.add_argument(
-        "path",
-        nargs="*",
-        metavar="KEY",
-        help="Path into the YAML. E.g. 'permissions id-token'.",
-    )
+    _add_crud_flags(workflow_parser)
     workflow_parser.set_defaults(func=cmd_workflow)
 
     # install subcommand
