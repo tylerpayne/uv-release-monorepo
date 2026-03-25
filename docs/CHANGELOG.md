@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [v0.6.0] - 2026-03-25
+
+### Added
+- Add `uvr workflow` command for reading, writing, and deleting any key in `release.yml` with `--set`, `--add`, `--insert --at`, `--remove`, and `--clear` flags
+- Add `uvr runners PKG --add/--remove/--clear RUNNER` command for managing per-package build runners
+- Add `ReleaseWorkflow` Pydantic model validating the full workflow YAML schema before writes
+- Add `ruamel-yaml` dependency for lossless YAML round-tripping (preserves key order, comments, quote style)
+
+### Changed
+- **BREAKING**: Remove `-m`/`--matrix` flag from `uvr init` — use `uvr runners` instead
+- **BREAKING**: Replace `uvr hooks PHASE {add|insert|remove|update|clear}` positional subcommands with flag-based `--add`/`--insert --at`/`--set`/`--remove`/`--clear`
+- Split monolithic `cli.py` (1461 lines) into `cli/` package with one module per command
+
+### Fixed
+- Fix `on:` key being serialized as `true:` after YAML round-trip (PyYAML boolean coercion)
+- Fix PyYAML corrupting GitHub Actions `${{ }}` expressions with double-quoted single quotes
+- Fix PyYAML reordering top-level YAML keys on write
+
 ## [v0.5.0] - 2026-03-25
 
 ### Added
