@@ -25,7 +25,7 @@ def run_pipeline(rebuild_all: bool, push: bool = True, dry_run: bool = False) ->
 
 
 def execute_prepare_release(plan_json: str, package: str) -> None:
-    """CI step: strip .dev0 from a package's version before building."""
+    """CI step: strip .dev from a package's version before building."""
     from pathlib import Path
 
     from .deps import rewrite_pyproject
@@ -36,7 +36,7 @@ def execute_prepare_release(plan_json: str, package: str) -> None:
         return
     info = plan.changed[package]
     # The plan stores the clean release version (already stripped).
-    # Write it to pyproject.toml in case the checked-out file has .dev0.
+    # Write it to pyproject.toml in case the checked-out file has .dev.
     rewrite_pyproject(
         Path(info.path) / "pyproject.toml",
         strip_dev(info.version),
@@ -154,7 +154,7 @@ def execute_build_all(plan_json: str, runner: str) -> None:
 
     for pkg in build_order:
         info = changed_to_build[pkg]
-        # Prepare release version (strip .dev0).
+        # Prepare release version (strip .dev).
         rewrite_pyproject(
             Path(info.path) / "pyproject.toml",
             strip_dev(info.version),

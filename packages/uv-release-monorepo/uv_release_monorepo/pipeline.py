@@ -494,7 +494,7 @@ def bump_versions(
 ) -> dict[str, VersionBump]:
     """Bump patch versions for changed packages, preparing for next release.
 
-    After releasing 1.2.3, bumps to 1.2.4.dev0 so pyproject.toml always
+    After releasing 1.2.3, bumps to 1.2.4.dev so pyproject.toml always
     reflects development state. Pins internal dep constraints to the
     just-published versions (not the bumped dev versions) so that published
     wheels remain installable even when only a subset of packages change.
@@ -672,7 +672,7 @@ def run_release(
         return
 
     # Check for duplicate versions before any build work
-    # Strip .dev0 for version comparison since that's the release version
+    # Strip .dev for version comparison since that's the release version
     release_changed = {
         name: PackageInfo(
             path=info.path, version=strip_dev(info.version), deps=info.deps
@@ -681,7 +681,7 @@ def run_release(
     }
     check_for_existing_wheels(release_changed)
 
-    # Strip .dev0 from pyproject.toml before building so wheels get clean versions
+    # Strip .dev from pyproject.toml before building so wheels get clean versions
     for name, info in changed.items():
         release_ver = strip_dev(info.version)
         if release_ver != info.version:
@@ -742,7 +742,7 @@ def build_plan(
         name: info for name, info in packages.items() if name not in changed_names
     }
 
-    # Strip .dev0 suffixes — the plan stores clean release versions.
+    # Strip .dev suffixes — the plan stores clean release versions.
     for name, info in changed.items():
         changed[name] = PackageInfo(
             path=info.path, version=strip_dev(info.version), deps=info.deps
@@ -842,7 +842,7 @@ def build_plan(
 def apply_bumps(plan: ReleasePlan) -> dict[str, VersionBump]:
     """Apply pre-computed version bumps from the plan to pyproject.toml files.
 
-    Writes ``.dev0`` suffixed versions so pyproject.toml always reflects
+    Writes ``.dev`` suffixed versions so pyproject.toml always reflects
     development state between releases. The plan stores clean release
     versions; CI never needs to derive them.
     """
