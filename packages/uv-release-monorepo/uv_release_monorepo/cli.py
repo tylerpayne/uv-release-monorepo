@@ -411,6 +411,9 @@ def cmd_release(args: argparse.Namespace) -> None:
     import time
 
     plan_json = plan.model_dump_json()
+    # Don't pin to a .dev version — it won't exist on PyPI.
+    # The workflow falls back to installing the latest release.
+    uvr_ver = __version__ if ".dev" not in __version__ else ""
     cmd = [
         "gh",
         "workflow",
@@ -419,7 +422,7 @@ def cmd_release(args: argparse.Namespace) -> None:
         "-f",
         f"plan={plan_json}",
         "-f",
-        f"uvr_version={__version__}",
+        f"uvr_version={uvr_ver}",
     ]
     print(f"Triggering release for: {', '.join(sorted(plan.changed))}")
     result = subprocess.run(cmd)
