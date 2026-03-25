@@ -44,6 +44,10 @@ class TestCmdRelease:
             yes=False,
             workflow_dir=".github/workflows",
             python_version="3.12",
+            skip=None,
+            skip_to=None,
+            reuse_run=None,
+            reuse_release=False,
         )
         cmd_release(args)
 
@@ -77,6 +81,10 @@ class TestCmdRelease:
             yes=False,
             workflow_dir=".github/workflows",
             python_version="3.12",
+            skip=None,
+            skip_to=None,
+            reuse_run=None,
+            reuse_release=False,
         )
         cmd_release(args)
 
@@ -114,6 +122,10 @@ class TestCmdRelease:
             yes=True,
             workflow_dir=".github/workflows",
             python_version="3.12",
+            skip=None,
+            skip_to=None,
+            reuse_run=None,
+            reuse_release=False,
         )
         cmd_release(args)
 

@@ -189,6 +189,44 @@ def cli() -> None:
         default=".github/workflows",
         help="Directory containing the workflow file. (default: %(default)s)",
     )
+    release_parser.add_argument(
+        "--skip",
+        action="append",
+        choices=[
+            "pre-build",
+            "build",
+            "post-build",
+            "pre-release",
+            "publish",
+            "finalize",
+            "post-release",
+        ],
+        metavar="JOB",
+        help="Skip a job (repeatable). Valid: pre-build, build, post-build, pre-release, publish, finalize, post-release.",
+    )
+    release_parser.add_argument(
+        "--skip-to",
+        choices=[
+            "build",
+            "post-build",
+            "pre-release",
+            "publish",
+            "finalize",
+            "post-release",
+        ],
+        metavar="JOB",
+        help="Skip all jobs before JOB.",
+    )
+    release_parser.add_argument(
+        "--reuse-run",
+        metavar="RUN_ID",
+        help="Download build artifacts from a previous workflow run (requires build to be skipped).",
+    )
+    release_parser.add_argument(
+        "--reuse-release",
+        action="store_true",
+        help="Assume GitHub releases already exist (requires build and publish to be skipped).",
+    )
     release_parser.set_defaults(func=cmd_release)
 
     # status subcommand

@@ -6,7 +6,40 @@ import argparse
 import json
 from pathlib import Path
 
+from ..models import JOB_ORDER
 from ._common import __version__, _fatal, _read_matrix
+
+
+def _compute_skipped(args: argparse.Namespace) -> set[str]:
+    """Merge --skip and --skip-to into a single set of job names to skip."""
+    skipped: set[str] = set(args.skip or [])
+    if args.skip_to:
+        idx = JOB_ORDER.index(args.skip_to)
+        skipped |= set(JOB_ORDER[:idx])
+    return skipped
+
+
+def _validate_skip_reuse(
+    skipped: set[str],
+    reuse_run: str | None,
+    reuse_release: bool,
+) -> None:
+    """Validate skip/reuse flag combinations."""
+    build_skipped = "build" in skipped
+    has_reuse = reuse_run is not None or reuse_release
+
+    if build_skipped and not has_reuse:
+        _fatal(
+            "Build is being skipped but no artifact source specified.\n"
+            "  Add --reuse-run RUN_ID or --reuse-release."
+        )
+    if has_reuse and not build_skipped:
+        _fatal(
+            "--reuse-run / --reuse-release requires build to be skipped.\n"
+            "  Add --skip build or --skip-to <job-after-build>."
+        )
+    if reuse_run and reuse_release:
+        _fatal("--reuse-run and --reuse-release are mutually exclusive.")
 
 
 def cmd_release(args: argparse.Namespace) -> None:
@@ -18,6 +51,12 @@ def cmd_release(args: argparse.Namespace) -> None:
     workflow_path = root / args.workflow_dir / "release.yml"
     if not workflow_path.exists():
         _fatal("No release workflow found. Run `uvr init` first.")
+
+    # Compute and validate skip/reuse
+    skipped = _compute_skipped(args)
+    reuse_run: str | None = getattr(args, "reuse_run", None)
+    reuse_release: bool = getattr(args, "reuse_release", False)
+    _validate_skip_reuse(skipped, reuse_run, reuse_release)
 
     # Read stored matrix from pyproject.toml
     package_runners = _read_matrix(root)
@@ -32,7 +71,7 @@ def cmd_release(args: argparse.Namespace) -> None:
 
     if pin_updates:
         print()
-        print("Dep pins updated — commit these changes before releasing:")
+        print("Dep pins updated -- commit these changes before releasing:")
         for name in pin_updates:
             print(f"  git add {plan.changed[name].path}/pyproject.toml")
         print("  git commit -m 'chore: update dep pins'")
@@ -45,7 +84,14 @@ def cmd_release(args: argparse.Namespace) -> None:
         return
 
     # Print the plan
-    print(json.dumps(plan.model_dump(), indent=2))
+    plan_dict = plan.model_dump()
+    if skipped:
+        plan_dict["skip"] = sorted(skipped)
+    if reuse_run:
+        plan_dict["reuse_run_id"] = reuse_run
+    if reuse_release:
+        plan_dict["reuse_release"] = True
+    print(json.dumps(plan_dict, indent=2))
 
     # Prompt for confirmation before dispatching (skip with --yes)
     if not args.yes:
@@ -62,7 +108,7 @@ def cmd_release(args: argparse.Namespace) -> None:
     import time
 
     plan_json = plan.model_dump_json()
-    # Don't pin to a .dev version — it won't exist on PyPI.
+    # Don't pin to a .dev version -- it won't exist on PyPI.
     # The workflow falls back to installing the latest release.
     uvr_ver = __version__ if ".dev" not in __version__ else ""
     cmd = [
@@ -74,8 +120,14 @@ def cmd_release(args: argparse.Namespace) -> None:
         f"plan={plan_json}",
         "-f",
         f"uvr_version={uvr_ver}",
+        "-f",
+        f"skip={','.join(sorted(skipped))}",
     ]
+    if reuse_run:
+        cmd += ["-f", f"reuse_run_id={reuse_run}"]
     print(f"Triggering release for: {', '.join(sorted(plan.changed))}")
+    if skipped:
+        print(f"Skipping: {', '.join(sorted(skipped))}")
     result = subprocess.run(cmd)
     if result.returncode != 0:
         _fatal("Failed to trigger workflow")

@@ -201,6 +201,18 @@ class ReleaseWorkflow(BaseModel):
         return data
 
 
+JOB_ORDER: list[str] = [
+    "pre-build",
+    "build",
+    "post-build",
+    "pre-release",
+    "publish",
+    "finalize",
+    "post-release",
+]
+"""Canonical ordering of jobs in the release workflow pipeline."""
+
+
 class ReleasePlan(BaseModel):
     """Self-contained release plan generated locally and executed by CI.
 
