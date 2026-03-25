@@ -1,6 +1,6 @@
 [project]
 name = "pkg-delta"
-version = "0.2.3.dev"
+version = "0.2.4.dev"
 description = "Dummy package delta - depends on alpha (sibling of beta)"
 requires-python = ">=3.11"
 license = "MIT"

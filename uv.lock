@@ -272,12 +272,12 @@ wheels = [
 
 [[package]]
 name = "pkg-alpha"
-version = "0.1.10.dev0"
+version = "0.1.11.dev0"
 source = { editable = "packages/pkg-alpha" }
 
 [[package]]
 name = "pkg-beta"
-version = "0.1.14.dev0"
+version = "0.1.15.dev0"
 source = { editable = "packages/pkg-beta" }
 dependencies = [
     { name = "pkg-alpha" },
@@ -288,7 +288,7 @@ requires-dist = [{ name = "pkg-alpha", editable = "packages/pkg-alpha" }]
 
 [[package]]
 name = "pkg-delta"
-version = "0.2.3.dev0"
+version = "0.2.4.dev0"
 source = { editable = "packages/pkg-delta" }
 dependencies = [
     { name = "pkg-alpha" },
@@ -299,7 +299,7 @@ requires-dist = [{ name = "pkg-alpha", editable = "packages/pkg-alpha" }]
 
 [[package]]
 name = "pkg-gamma"
-version = "0.1.16.dev0"
+version = "0.1.17.dev0"
 source = { editable = "packages/pkg-gamma" }
 dependencies = [
     { name = "pkg-beta" },
@@ -700,7 +700,7 @@ wheels = [
 
 [[package]]
 name = "uv-release-monorepo"
-version = "0.6.1.dev0"
+version = "0.6.2.dev0"
 source = { editable = "packages/uv-release-monorepo" }
 dependencies = [
     { name = "jinja2" },
