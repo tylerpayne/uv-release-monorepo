@@ -43,57 +43,67 @@ def _validate_skip_reuse(
         _fatal("--reuse-run and --reuse-release are mutually exclusive.")
 
 
-def _print_plan(plan: ReleasePlan, skipped: set[str]) -> None:
+def _section(title: str) -> None:
+    print()
+    print(title)
+    print("-" * len(title))
+
+
+def _print_plan(plan: ReleasePlan, skipped: set[str], pin_updates: list[str]) -> None:
     """Print a human-readable summary of the release plan."""
-    # -- Packages --
-    print()
-    print("Packages")
-    print("--------")
-    if plan.changed:
-        w = max(len(n) for n in plan.changed)
-        for name, info in sorted(plan.changed.items()):
-            tag = plan.release_tags.get(name)
-            from_ver = tag.split("/v")[-1] if tag else "(first release)"
-            print(f"  changed    {name.ljust(w)}  {from_ver} -> {info.version}")
-    if plan.unchanged:
-        w = max(len(n) for n in (*plan.changed, *plan.unchanged))
-        for name, info in sorted(plan.unchanged.items()):
-            tag = plan.release_tags.get(name)
-            source = tag or "(no prior release)"
-            print(f"  unchanged  {name.ljust(w)}  reuse from {source}")
-
-    # -- Build matrix --
-    print()
-    print("Build matrix")
-    print("------------")
-    if plan.matrix:
-        for entry in plan.matrix:
-            print(f"  {entry.package}  on  {entry.runner}  ({entry.version})")
-    else:
-        print("  (empty)")
-
-    if plan.reuse_run_id:
-        print(f"\n  Artifacts reused from run: {plan.reuse_run_id}")
-
-    # -- Pipeline --
-    print()
-    print("Pipeline")
-    print("--------")
     _HOOK_PHASES = {"pre-build", "post-build", "pre-release", "post-release"}
+
+    # -- Packages --
+    _section("Packages")
+    all_names = sorted({*plan.changed, *plan.unchanged})
+    if all_names:
+        w = max(len(n) for n in all_names)
+        for name in all_names:
+            if name in plan.changed:
+                info = plan.changed[name]
+                tag = plan.release_tags.get(name)
+                from_ver = tag.split("/v")[-1] if tag else "(first release)"
+                print(f"  changed    {name.ljust(w)}  {from_ver} -> {info.version}")
+            else:
+                tag = plan.release_tags.get(name)
+                source = tag or "(no prior release)"
+                print(f"  unchanged  {name.ljust(w)}  reuse from {source}")
+
+    # -- Dep pins --
+    if pin_updates:
+        _section("Dep pins updated")
+        for name in pin_updates:
+            print(f"  {plan.changed[name].path}/pyproject.toml")
+
+    # -- Pipeline (job-by-job with details inline) --
+    _section("Pipeline")
     for job in JOB_ORDER:
         if job in skipped:
             reason = "no-op" if job in _HOOK_PHASES else "user --skip"
             print(f"  skip  {job}  ({reason})")
-        else:
-            print(f"  run   {job}")
+            continue
 
-    # -- Version bumps (post-release) --
-    if plan.bumps:
-        print()
-        print("Post-release version bumps")
-        print("--------------------------")
-        for name, bump in sorted(plan.bumps.items()):
-            print(f"  {name}  -> {bump.new_version}.dev0")
+        print(f"  run   {job}")
+
+        # Show build matrix inline under the build job
+        if job == "build":
+            if plan.reuse_run_id:
+                print(f"        artifacts from run {plan.reuse_run_id}")
+            elif plan.matrix:
+                for entry in plan.matrix:
+                    print(
+                        f"        {entry.package}  on  {entry.runner}  ({entry.version})"
+                    )
+
+        # Show publish entries inline under publish
+        if job == "publish" and plan.publish_matrix:
+            for entry in plan.publish_matrix:
+                print(f"        {entry.package}  {entry.version}  -> {entry.tag}")
+
+        # Show version bumps inline under finalize
+        if job == "finalize" and plan.bumps:
+            for name, bump in sorted(plan.bumps.items()):
+                print(f"        {name}  -> {bump.new_version}.dev0")
 
     print()
 
@@ -117,23 +127,21 @@ def cmd_release(args: argparse.Namespace) -> None:
     # Read stored matrix from pyproject.toml
     package_runners = _read_matrix(root)
 
-    # Build the plan locally (runs discovery + change detection + pin updates)
-    plan, pin_updates = _cli.build_plan(
-        rebuild_all=args.rebuild_all,
-        matrix=package_runners,
-        uvr_version=__version__,
-        python_version=args.python_version,
-    )
+    # Build the plan locally (suppress pipeline output — we print our own summary)
+    import io
+    import sys
 
-    if pin_updates:
-        print()
-        print("Dep pins updated -- commit these changes before releasing:")
-        for name in pin_updates:
-            print(f"  git add {plan.changed[name].path}/pyproject.toml")
-        print("  git commit -m 'chore: update dep pins'")
-        print("  git push")
-        print("  uvr release")
-        return
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        plan, pin_updates = _cli.build_plan(
+            rebuild_all=args.rebuild_all,
+            matrix=package_runners,
+            uvr_version=__version__,
+            python_version=args.python_version,
+        )
+    finally:
+        sys.stdout = old_stdout
 
     if not plan.changed:
         print("Nothing changed since last release. Use --rebuild-all to rebuild all.")
@@ -160,7 +168,14 @@ def cmd_release(args: argparse.Namespace) -> None:
         plan.uvr_version = ""
 
     # Print human-readable summary
-    _print_plan(plan, skipped)
+    _print_plan(plan, skipped, pin_updates)
+
+    # Block dispatch if pins were updated
+    if pin_updates:
+        print("Commit pin updates before releasing:")
+        print("  git add -A && git commit -m 'chore: update dep pins' && git push")
+        print("  uvr release")
+        return
 
     # Optionally dump raw JSON
     if getattr(args, "json", False):
