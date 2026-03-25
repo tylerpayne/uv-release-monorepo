@@ -8,6 +8,7 @@ import pytest
 import tomlkit
 
 from tests._helpers import (  # noqa: F401 — re-export for convenience
+    _hooks_args,
     _init_workflow,
     _make_plan,
     _runners_args,

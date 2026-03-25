@@ -62,15 +62,32 @@ def _init_workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _wf_args(**kwargs: object) -> argparse.Namespace:
-    """Build a cmd_workflow Namespace with sensible defaults."""
+    """Build a cmd_workflow Namespace with sensible defaults (new CRUD style)."""
     defaults: dict[str, object] = dict(
         workflow_dir=".github/workflows",
-        path=[],
+        path=None,
         set_value=None,
-        add_value=None,
+        append_value=None,
         insert_value=None,
         remove_value=None,
-        insert_index=None,
+        at_index=None,
+        clear=False,
+    )
+    defaults.update(kwargs)
+    return argparse.Namespace(**defaults)
+
+
+def _hooks_args(phase: str, **kwargs: object) -> argparse.Namespace:
+    """Build a cmd_hooks Namespace with sensible defaults (new CRUD style)."""
+    defaults: dict[str, object] = dict(
+        workflow_dir=".github/workflows",
+        phase=phase,
+        path=None,
+        set_value=None,
+        append_value=None,
+        insert_value=None,
+        remove_value=None,
+        at_index=None,
         clear=False,
     )
     defaults.update(kwargs)

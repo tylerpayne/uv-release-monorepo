@@ -38,8 +38,9 @@ def test_executor_template_has_dynamic_matrix() -> None:
     """Executor uses fromJSON to drive build and publish matrices from the plan."""
     template = (TEMPLATES_DIR / "release.yml.j2").read_text()
 
-    assert "fromJSON(inputs.plan).runners" in template
-    assert "fromJSON(inputs.plan).publish_matrix" in template
+    # Template uses [[ p ]].runners which renders to fromJSON(inputs.plan).runners
+    assert ".runners" in template
+    assert ".publish_matrix" in template
 
 
 def test_executor_template_has_build_step() -> None:

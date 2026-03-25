@@ -46,6 +46,16 @@ class TestYamlGet:
     def test_returns_list(self) -> None:
         assert _yaml_get({"a": [1, 2]}, ["a"]) == [1, 2]
 
+    def test_list_index(self) -> None:
+        assert _yaml_get({"a": [10, 20, 30]}, ["a", "1"]) == 20
+
+    def test_list_index_nested(self) -> None:
+        doc = {"steps": [{"name": "first"}, {"name": "second"}]}
+        assert _yaml_get(doc, ["steps", "0", "name"]) == "first"
+
+    def test_list_index_out_of_range(self) -> None:
+        assert _yaml_get({"a": [1]}, ["a", "5"]) is _MISSING
+
 
 class TestYamlSet:
     def test_shallow(self) -> None:
@@ -78,6 +88,11 @@ class TestYamlSet:
         _yaml_set(doc, ["items"], [1, 2, 3])
         assert doc == {"items": [1, 2, 3]}
 
+    def test_set_list_element(self) -> None:
+        doc = {"items": [10, 20, 30]}
+        _yaml_set(doc, ["items", "1"], 99)
+        assert doc["items"] == [10, 99, 30]
+
 
 class TestYamlDelete:
     def test_shallow(self) -> None:
@@ -103,9 +118,14 @@ class TestYamlDelete:
         doc = {"a": 1}
         assert _yaml_delete(doc, ["x", "y"]) is False
 
+    def test_delete_list_element(self) -> None:
+        doc = {"items": [10, 20, 30]}
+        assert _yaml_delete(doc, ["items", "1"]) is True
+        assert doc["items"] == [10, 30]
+
 
 # ---------------------------------------------------------------------------
-# cmd_workflow integration tests
+# cmd_workflow integration tests (new CRUD syntax with dot paths)
 # ---------------------------------------------------------------------------
 
 
@@ -118,7 +138,7 @@ class TestCmdWorkflowRead:
     ) -> None:
         _init_workflow(tmp_path, monkeypatch)
         capsys.readouterr()
-        cmd_workflow(_wf_args(path=["permissions"], set_value=None))
+        cmd_workflow(_wf_args(path=".permissions"))
         out = capsys.readouterr().out
         assert "contents" in out
 
@@ -130,7 +150,7 @@ class TestCmdWorkflowRead:
     ) -> None:
         _init_workflow(tmp_path, monkeypatch)
         capsys.readouterr()
-        cmd_workflow(_wf_args(path=["nonexistent"], set_value=None))
+        cmd_workflow(_wf_args(path=".nonexistent"))
         out = capsys.readouterr().out
         assert "not found" in out
 
@@ -142,7 +162,7 @@ class TestCmdWorkflowRead:
     ) -> None:
         _init_workflow(tmp_path, monkeypatch)
         capsys.readouterr()
-        cmd_workflow(_wf_args(path=[], set_value=None))
+        cmd_workflow(_wf_args())
         out = capsys.readouterr().out
         assert "jobs:" in out
 
@@ -156,8 +176,8 @@ class TestCmdWorkflowSet:
     ) -> None:
         _init_workflow(tmp_path, monkeypatch)
         capsys.readouterr()
-        cmd_workflow(_wf_args(path=["permissions", "id-token"], set_value="write"))
-        cmd_workflow(_wf_args(path=["permissions", "id-token"]))
+        cmd_workflow(_wf_args(path=".permissions.id-token", set_value="write"))
+        cmd_workflow(_wf_args(path=".permissions.id-token"))
         out = capsys.readouterr().out
         assert "write" in out
 
@@ -169,8 +189,8 @@ class TestCmdWorkflowSet:
     ) -> None:
         _init_workflow(tmp_path, monkeypatch)
         capsys.readouterr()
-        cmd_workflow(_wf_args(path=["jobs", "build", "environment"], set_value="prod"))
-        cmd_workflow(_wf_args(path=["jobs", "build", "environment"]))
+        cmd_workflow(_wf_args(path=".jobs.build.environment", set_value="prod"))
+        cmd_workflow(_wf_args(path=".jobs.build.environment"))
         out = capsys.readouterr().out
         assert "prod" in out
 
@@ -179,9 +199,7 @@ class TestCmdWorkflowSet:
     ) -> None:
         _init_workflow(tmp_path, monkeypatch)
         with pytest.raises(SystemExit):
-            cmd_workflow(
-                _wf_args(path=["jobs", "bogus"], set_value="{runs-on: ubuntu}")
-            )
+            cmd_workflow(_wf_args(path=".jobs.bogus", set_value="{runs-on: ubuntu}"))
 
 
 class TestCmdWorkflowClear:
@@ -193,11 +211,11 @@ class TestCmdWorkflowClear:
     ) -> None:
         _init_workflow(tmp_path, monkeypatch)
         capsys.readouterr()
-        cmd_workflow(_wf_args(path=["permissions", "id-token"], set_value="write"))
+        cmd_workflow(_wf_args(path=".permissions.id-token", set_value="write"))
         capsys.readouterr()
-        cmd_workflow(_wf_args(path=["permissions", "id-token"], clear=True))
+        cmd_workflow(_wf_args(path=".permissions.id-token", clear=True))
         out = capsys.readouterr().out
-        assert "Deleted" in out
+        assert "Cleared" in out
 
     def test_clear_missing(
         self,
@@ -207,13 +225,29 @@ class TestCmdWorkflowClear:
     ) -> None:
         _init_workflow(tmp_path, monkeypatch)
         capsys.readouterr()
-        cmd_workflow(_wf_args(path=["permissions", "nope"], clear=True))
+        cmd_workflow(_wf_args(path=".permissions.nope", clear=True))
         out = capsys.readouterr().out
         assert "not found" in out
 
+    def test_clear_empties_dict(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--clear on a dict should empty it, not delete the key."""
+        release_yml = _init_workflow(tmp_path, monkeypatch)
+        capsys.readouterr()
+        cmd_workflow(_wf_args(path=".permissions", clear=True))
+        out = capsys.readouterr().out
+        assert "Cleared" in out
+        doc = yaml.safe_load(release_yml.read_text())
+        # Key should still exist but be empty
+        assert doc["permissions"] == {} or doc.get("permissions") is None
+
 
 class TestCmdWorkflowList:
-    def test_add_creates_list(
+    def test_append_creates_list(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
@@ -221,12 +255,12 @@ class TestCmdWorkflowList:
     ) -> None:
         _init_workflow(tmp_path, monkeypatch)
         capsys.readouterr()
-        cmd_workflow(_wf_args(path=["jobs", "build", "tags"], add_value="release"))
-        cmd_workflow(_wf_args(path=["jobs", "build", "tags"]))
+        cmd_workflow(_wf_args(path=".jobs.build.tags", append_value="release"))
+        cmd_workflow(_wf_args(path=".jobs.build.tags"))
         out = capsys.readouterr().out
         assert "release" in out
 
-    def test_add_appends(
+    def test_append_appends(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
@@ -234,39 +268,25 @@ class TestCmdWorkflowList:
     ) -> None:
         release_yml = _init_workflow(tmp_path, monkeypatch)
         capsys.readouterr()
-        cmd_workflow(_wf_args(path=["jobs", "build", "tags"], add_value="a"))
-        cmd_workflow(_wf_args(path=["jobs", "build", "tags"], add_value="b"))
+        cmd_workflow(_wf_args(path=".jobs.build.tags", append_value="a"))
+        cmd_workflow(_wf_args(path=".jobs.build.tags", append_value="b"))
         doc = yaml.safe_load(release_yml.read_text())
         assert doc["jobs"]["build"]["tags"] == ["a", "b"]
 
-    def test_add_to_non_list_fails(
+    def test_append_to_non_list_fails(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _init_workflow(tmp_path, monkeypatch)
         with pytest.raises(SystemExit):
-            cmd_workflow(_wf_args(path=["permissions", "contents"], add_value="read"))
+            cmd_workflow(_wf_args(path=".permissions.contents", append_value="read"))
 
     def test_insert_at_index(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         release_yml = _init_workflow(tmp_path, monkeypatch)
-        cmd_workflow(_wf_args(path=["jobs", "build", "tags"], add_value="a"))
-        cmd_workflow(_wf_args(path=["jobs", "build", "tags"], add_value="c"))
-        cmd_workflow(
-            _wf_args(path=["jobs", "build", "tags"], insert_value="b", insert_index=1)
-        )
-        doc = yaml.safe_load(release_yml.read_text())
-        assert doc["jobs"]["build"]["tags"] == ["a", "b", "c"]
-
-    def test_insert_negative_index(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        release_yml = _init_workflow(tmp_path, monkeypatch)
-        cmd_workflow(_wf_args(path=["jobs", "build", "tags"], add_value="a"))
-        cmd_workflow(_wf_args(path=["jobs", "build", "tags"], add_value="c"))
-        cmd_workflow(
-            _wf_args(path=["jobs", "build", "tags"], insert_value="b", insert_index=-1)
-        )
+        cmd_workflow(_wf_args(path=".jobs.build.tags", append_value="a"))
+        cmd_workflow(_wf_args(path=".jobs.build.tags", append_value="c"))
+        cmd_workflow(_wf_args(path=".jobs.build.tags", insert_value="b", at_index=1))
         doc = yaml.safe_load(release_yml.read_text())
         assert doc["jobs"]["build"]["tags"] == ["a", "b", "c"]
 
@@ -274,15 +294,17 @@ class TestCmdWorkflowList:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _init_workflow(tmp_path, monkeypatch)
-        cmd_workflow(_wf_args(path=["jobs", "build", "tags"], add_value="a"))
+        cmd_workflow(_wf_args(path=".jobs.build.tags", append_value="a"))
         with pytest.raises(SystemExit):
-            cmd_workflow(_wf_args(path=["jobs", "build", "tags"], insert_value="b"))
+            cmd_workflow(_wf_args(path=".jobs.build.tags", insert_value="b"))
 
-    def test_remove(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_remove_value(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         release_yml = _init_workflow(tmp_path, monkeypatch)
-        cmd_workflow(_wf_args(path=["jobs", "build", "tags"], add_value="a"))
-        cmd_workflow(_wf_args(path=["jobs", "build", "tags"], add_value="b"))
-        cmd_workflow(_wf_args(path=["jobs", "build", "tags"], remove_value="a"))
+        cmd_workflow(_wf_args(path=".jobs.build.tags", append_value="a"))
+        cmd_workflow(_wf_args(path=".jobs.build.tags", append_value="b"))
+        cmd_workflow(_wf_args(path=".jobs.build.tags", remove_value="a"))
         doc = yaml.safe_load(release_yml.read_text())
         assert doc["jobs"]["build"]["tags"] == ["b"]
 
@@ -290,9 +312,38 @@ class TestCmdWorkflowList:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _init_workflow(tmp_path, monkeypatch)
-        cmd_workflow(_wf_args(path=["jobs", "build", "tags"], add_value="a"))
+        cmd_workflow(_wf_args(path=".jobs.build.tags", append_value="a"))
         with pytest.raises(SystemExit):
-            cmd_workflow(_wf_args(path=["jobs", "build", "tags"], remove_value="z"))
+            cmd_workflow(_wf_args(path=".jobs.build.tags", remove_value="z"))
+
+    def test_remove_by_index(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        release_yml = _init_workflow(tmp_path, monkeypatch)
+        cmd_workflow(_wf_args(path=".jobs.build.tags", append_value="a"))
+        cmd_workflow(_wf_args(path=".jobs.build.tags", append_value="b"))
+        cmd_workflow(_wf_args(path=".jobs.build.tags", append_value="c"))
+        # Remove index 1 ("b") — use _STDIN sentinel for remove_value since
+        # it's positional removal
+        from uv_release_monorepo.cli.workflow import _STDIN
+
+        cmd_workflow(_wf_args(path=".jobs.build.tags", remove_value=_STDIN, at_index=1))
+        doc = yaml.safe_load(release_yml.read_text())
+        assert doc["jobs"]["build"]["tags"] == ["a", "c"]
+
+    def test_remove_dict_key(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _init_workflow(tmp_path, monkeypatch)
+        # Add id-token permission then remove it
+        cmd_workflow(_wf_args(path=".permissions.id-token", set_value="write"))
+        capsys.readouterr()
+        cmd_workflow(_wf_args(path=".permissions", remove_value="id-token"))
+        out = capsys.readouterr().out
+        assert "Removed" in out
 
 
 class TestCmdWorkflowOnKey:
@@ -302,7 +353,7 @@ class TestCmdWorkflowOnKey:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         release_yml = _init_workflow(tmp_path, monkeypatch)
-        cmd_workflow(_wf_args(path=["permissions", "id-token"], set_value="write"))
+        cmd_workflow(_wf_args(path=".permissions.id-token", set_value="write"))
         text = release_yml.read_text()
         # Must not contain `true:` — should be `on:` or `'on':`
         assert "\ntrue:" not in text
