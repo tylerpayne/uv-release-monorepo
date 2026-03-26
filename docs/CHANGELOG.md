@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [v0.7.0] - 2026-03-25
+
+### Added
+- Add `ReleaseWorkflow` Pydantic model representing the full workflow YAML schema
+- Add per-field immutability via `Annotated[type, _frozen(default)]` on core job fields (build, publish, finalize)
+- Add `HookJob` base class that ensures steps is never empty (inserts no-op default)
+- Add static `needs` chain enforced per job class via `_needs_validator`
+- Add `--skip JOB`, `--skip-to JOB`, `--reuse-run RUN_ID`, `--reuse-release` flags to `uvr release`
+- Add `--json` flag for opt-in raw plan JSON output
+- Add human-readable release plan with job-by-job pipeline view showing topo build layers per runner
+- Add `ruamel-yaml` dependency for lossless YAML round-tripping
+- Add `uvr runners PKG --add/--remove/--clear RUNNER` command
+- Add dependency pin prompt before writing (user must confirm)
+
+### Changed
+- **BREAKING**: Remove Jinja2 template -- workflow is now generated entirely from `ReleaseWorkflow().model_dump()`
+- **BREAKING**: Remove `uvr hooks` and `uvr workflow` CLI commands -- edit `release.yml` directly, validate with `uvr init`
+- **BREAKING**: Remove `-m`/`--matrix` flag from `uvr init` -- use `uvr runners` instead
+- **BREAKING**: Consolidate `uvr_version`, `skip`, `reuse_run_id` into the `ReleasePlan` JSON -- workflow has single `plan` input
+- **BREAKING**: Replace positional hook subcommands with flag-based `--add`/`--insert`/`--set`/`--remove`/`--clear` (then removed entirely)
+- Split monolithic `cli.py` into `cli/` package and `test_cli.py` into per-command test files
+- Suppress verbose pipeline output during `uvr release` (redirected stdout)
+- Move dependency pin writing out of `build_plan()` into `cmd_release` with user prompt
+
+### Removed
+- Remove `jinja2` dependency
+- Remove `release.yml.j2` template file
+- Remove `cli/hooks.py`, `cli/workflow.py`, `cli/_workflow_state.py`
+
+### Fixed
+- Fix `on:` key surviving YAML round-trip (model_validator normalizes PyYAML's boolean `True`)
+- Fix ruamel-yaml line wrapping (set width to max int)
+
 ## [v0.6.1] - 2026-03-25
 
 ### Added

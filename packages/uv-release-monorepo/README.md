@@ -50,83 +50,51 @@ uvr init -m my-native-pkg ubuntu-latest macos-14
 
 Each `-m` assigns one or more GitHub Actions runners to a package. Re-run `uvr init` to update runners; existing entries are preserved.
 
-### Edit the workflow
+### Customize the workflow
 
-`uvr workflow` and `uvr hooks` use jq-style dot paths to read and write any key in `release.yml`:
+`uvr init` generates `release.yml` from the `ReleaseWorkflow` model with all 7 pipeline jobs (pre-build, build, post-build, pre-release, publish, finalize, post-release). Edit the file directly to customize hook jobs — add steps, set environment, change runners. Core jobs (build, publish, finalize) are validated and cannot be modified.
 
-```bash
-# Read
-uvr workflow .permissions
-uvr workflow .jobs.post-release.environment
+Run `uvr init` after editing to validate your changes.
 
-# Set scalar
-uvr workflow .permissions.id-token --set write
+### Example: adding a pre-build check and post-release PyPI publish
 
-# Set complex (heredoc)
-uvr workflow .permissions --set <<EOF
-contents: write
-id-token: write
-EOF
+Edit `.github/workflows/release.yml` directly. The pre-build job runs before the build matrix:
 
-# Remove key / clear collection
-uvr workflow .permissions --remove id-token
-uvr workflow .jobs.build.tags --clear
+```yaml
+  pre-build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: astral-sh/setup-uv@v5
+      with:
+        python-version: ${{ fromJSON(inputs.plan).python_version }}
+    - name: Lint, typecheck, and test
+      run: |
+        uv sync --all-packages
+        uv run poe check
+        uv run poe test
 ```
 
-`uvr hooks PHASE` is shorthand for `uvr workflow .jobs.PHASE`:
+The post-release job runs after finalize — use it for PyPI publishing:
 
-```bash
-uvr hooks pre-build .steps                    # list steps
-uvr hooks post-release .environment --set pypi
-uvr hooks pre-build .steps --append '{name: Test, run: pytest}'
+```yaml
+  post-release:
+    runs-on: ubuntu-latest
+    needs: [finalize]
+    environment: pypi
+    steps:
+    - name: Download wheel
+      if: fromJSON(inputs.plan).changed['uv-release-monorepo'] != null
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        VERSION=$(echo "$UVR_PLAN" | python3 -c "import sys,json; print(json.load(sys.stdin)['changed']['uv-release-monorepo']['version'])")
+        mkdir -p dist
+        gh release download "uv-release-monorepo/v${VERSION}" --pattern "uv_release_monorepo-*.whl" --dir dist
+    - uses: pypa/gh-action-pypi-publish@release/v1
+      if: fromJSON(inputs.plan).changed['uv-release-monorepo'] != null
 ```
 
-### Example: full CI pipeline setup
-
-Starting from a fresh `uvr init`, add pre-build checks and a post-release PyPI publish:
-
-```bash
-# Gate releases on lint + tests
-uvr hooks pre-build .steps --append <<EOF
-id: setup-uv
-name: Set up uv and Python
-uses: astral-sh/setup-uv@v5
-with: {python-version: "\${{ fromJSON(inputs.plan).python_version }}"}
-EOF
-
-uvr hooks pre-build .steps --append <<EOF
-id: check
-name: Lint, typecheck, and test
-run: |
-  uv sync --all-packages
-  uv run poe check
-  uv run poe test
-EOF
-
-# Publish to PyPI after release
-uvr hooks post-release .steps --append <<EOF
-id: pypi-download
-name: Download wheel for PyPI
-if: fromJSON(inputs.plan).changed['uv-release-monorepo'] != null
-env: {GH_TOKEN: "\${{ github.token }}"}
-run: |
-  VERSION=$(echo "\$UVR_PLAN" | python3 -c "import sys,json; p=json.load(sys.stdin); print(p['changed']['uv-release-monorepo']['version'])")
-  TAG="uv-release-monorepo/v\${VERSION}"
-  mkdir -p dist
-  gh release download "\$TAG" --repo "\${{ github.repository }}" --pattern "uv_release_monorepo-*.whl" --dir dist
-EOF
-
-uvr hooks post-release .steps --append <<EOF
-id: pypi-publish
-name: Publish to PyPI
-if: fromJSON(inputs.plan).changed['uv-release-monorepo'] != null
-uses: pypa/gh-action-pypi-publish@release/v1
-EOF
-
-# Set workflow permissions and job environment for trusted publishing
-uvr workflow .permissions.id-token --set write
-uvr hooks post-release .environment --set pypi
-```
+Add `id-token: write` to the top-level permissions for trusted publishing.
 
 ### Install packages from GitHub releases
 
