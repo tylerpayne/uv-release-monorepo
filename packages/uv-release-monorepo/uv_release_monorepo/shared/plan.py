@@ -21,10 +21,22 @@ from .models import (
     ReleasePlan,
 )
 from .toml import get_uvr_config, load_pyproject
-from .versions import bump_patch, make_dev, strip_dev, version_from_tag
+from .versions import (
+    base_version,
+    bump_dev,
+    bump_patch,
+    make_dev,
+    make_post,
+    make_pre,
+    next_post_number,
+    next_pre_number,
+    strip_dev,
+    version_from_tag,
+)
 from .changes import detect_changes
 from .discovery import discover_packages, find_release_tags, get_baseline_tags
 from .publish import generate_release_notes
+from .shell import git
 
 
 class ReleasePlanner:
@@ -49,11 +61,8 @@ class ReleasePlanner:
             name: info for name, info in packages.items() if name not in changed_names
         }
 
-        # Strip .dev suffixes — the plan stores clean release versions.
-        for name, info in changed.items():
-            changed[name] = PackageInfo(
-                path=info.path, version=strip_dev(info.version), deps=info.deps
-            )
+        # Compute release versions based on release_type
+        changed = self._compute_release_versions(changed, release_tags)
 
         # Compute published versions for internal dep pinning
         published_versions = self._published_versions(
@@ -65,10 +74,8 @@ class ReleasePlanner:
             changed_names, packages, published_versions
         )
 
-        # Pre-compute version bumps
-        bumps: dict[str, BumpPlan] = {}
-        for name in changed_names:
-            bumps[name] = BumpPlan(new_version=bump_patch(changed[name].version))
+        # Pre-compute version bumps (always bump to next .devN)
+        bumps = self._compute_bumps(changed)
 
         # Expand matrix
         matrix_entries = self._expand_matrix(changed_names, changed)
@@ -92,6 +99,7 @@ class ReleasePlanner:
             uvr_version=self.config.uvr_version,
             python_version=self.config.python_version,
             rebuild_all=self.config.rebuild_all,
+            release_type=self.config.release_type,
             changed=changed,
             unchanged=unchanged,
             release_tags=release_tags,
@@ -105,6 +113,77 @@ class ReleasePlanner:
             finalize_commands=finalize_commands,
         )
         return result_plan, pin_changes
+
+    def _compute_release_versions(
+        self,
+        changed: dict[str, PackageInfo],
+        release_tags: dict[str, str | None],
+    ) -> dict[str, PackageInfo]:
+        """Compute the release version for each changed package.
+
+        - final: strip .dev suffix → clean X.Y.Z
+        - dev: keep as-is (publish the .devN version)
+        - pre: rewrite to X.Y.Z{a,b,rc}N (auto-increment N from existing tags)
+        - post: rewrite to X.Y.Z.postN (auto-increment N from existing tags)
+        """
+        rt = self.config.release_type
+        result: dict[str, PackageInfo] = {}
+
+        if rt == "dev":
+            # Publish as-is — the .devN version in pyproject.toml is the release
+            for name, info in changed.items():
+                result[name] = info
+        elif rt == "pre":
+            all_tags = git("tag", "--list", check=False).splitlines()
+            for name, info in changed.items():
+                bv = base_version(info.version)
+                n = next_pre_number(all_tags, name, self.config.pre_kind)
+                version = make_pre(bv, self.config.pre_kind, n)
+                result[name] = PackageInfo(
+                    path=info.path, version=version, deps=info.deps
+                )
+        elif rt == "post":
+            all_tags = git("tag", "--list", check=False).splitlines()
+            for name, info in changed.items():
+                bv = base_version(info.version)
+                n = next_post_number(all_tags, name)
+                version = make_post(bv, n)
+                result[name] = PackageInfo(
+                    path=info.path, version=version, deps=info.deps
+                )
+        else:
+            # final: strip .dev suffix
+            for name, info in changed.items():
+                result[name] = PackageInfo(
+                    path=info.path, version=strip_dev(info.version), deps=info.deps
+                )
+
+        return result
+
+    def _compute_bumps(self, changed: dict[str, PackageInfo]) -> dict[str, BumpPlan]:
+        """Compute the next dev version after release.
+
+        - After final 1.0.1: bump to 1.0.2 (make_dev applied by finalize)
+        - After dev 1.0.1.dev2: bump_dev → 1.0.1.dev3 (already has .dev)
+        - After pre 1.0.1a0: next devN in sequence
+        - After post 1.0.0.post0: bump to 1.0.0.post0.dev0 → new_version is X.Y.Z.postN
+        """
+        rt = self.config.release_type
+        bumps: dict[str, BumpPlan] = {}
+
+        for name, info in changed.items():
+            if rt == "dev":
+                # bump_dev: 1.0.1.dev2 → 1.0.1.dev3
+                bumps[name] = BumpPlan(new_version=bump_dev(info.version))
+            elif rt == "post":
+                # After post release, dev off the post version
+                # 1.0.0.post0 → new_version=1.0.0.post0 (make_dev applied by finalize → 1.0.0.post0.dev0)
+                bumps[name] = BumpPlan(new_version=info.version)
+            else:
+                # final and pre: bump patch from base
+                bumps[name] = BumpPlan(new_version=bump_patch(info.version))
+
+        return bumps
 
     # ------------------------------------------------------------------
     # Command generation
@@ -286,7 +365,13 @@ class ReleasePlanner:
         pyproject_paths: list[str] = []
         for name, bump in sorted(bumps.items()):
             info = changed[name]
-            dev_version = make_dev(bump.new_version)
+            # For dev releases, new_version is already the next devN (e.g. 1.0.1.dev3)
+            # For post releases, new_version is the post version — make_dev adds .dev0
+            # For final/pre, new_version is the bumped patch — make_dev adds .dev0
+            if self.config.release_type == "dev":
+                next_version = bump.new_version
+            else:
+                next_version = make_dev(bump.new_version)
             pyproject = f"{info.path}/pyproject.toml"
             pyproject_paths.append(pyproject)
 
@@ -298,9 +383,9 @@ class ReleasePlanner:
                         "--path",
                         pyproject,
                         "--version",
-                        dev_version,
+                        next_version,
                     ],
-                    label=f"Bump {name} to {dev_version}",
+                    label=f"Bump {name} to {next_version}",
                 )
             )
 

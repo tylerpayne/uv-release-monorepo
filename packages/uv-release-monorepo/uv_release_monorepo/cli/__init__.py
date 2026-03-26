@@ -152,6 +152,29 @@ Run 'uvr <command> --help' for details on a specific command.
         dest="python_version",
         help="Python version for CI builds (default: %(default)s).",
     )
+    _rtype = release_parser.add_argument_group("release type (default: final)")
+    _rtype_mut = _rtype.add_mutually_exclusive_group()
+    _rtype_mut.add_argument(
+        "--dev",
+        action="store_const",
+        const="dev",
+        dest="release_type",
+        help="Publish a dev release (as-is .devN version).",
+    )
+    _rtype_mut.add_argument(
+        "--pre",
+        choices=["a", "b", "rc"],
+        dest="pre_kind",
+        metavar="{a,b,rc}",
+        help="Publish a pre-release (alpha, beta, or rc).",
+    )
+    _rtype_mut.add_argument(
+        "--post",
+        action="store_const",
+        const="post",
+        dest="release_type",
+        help="Publish a post-release.",
+    )
     _dispatch = release_parser.add_argument_group("dispatch (CI mode)")
     _dispatch.add_argument(
         "-y", "--yes", action="store_true", help="Skip confirmation prompt."

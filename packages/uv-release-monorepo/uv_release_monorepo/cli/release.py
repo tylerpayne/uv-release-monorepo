@@ -164,6 +164,12 @@ def cmd_release(args: argparse.Namespace) -> None:
     import io
     import sys
 
+    # Determine release type from flags
+    pre_kind = getattr(args, "pre_kind", None) or ""
+    release_type = getattr(args, "release_type", None) or (
+        "pre" if pre_kind else "final"
+    )
+
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()
     try:
@@ -174,6 +180,8 @@ def cmd_release(args: argparse.Namespace) -> None:
                 uvr_version=__version__,
                 python_version=getattr(args, "python_version", "3.12"),
                 ci_publish=(where == "ci"),
+                release_type=release_type,
+                pre_kind=pre_kind,
             )
         ).plan()
     finally:

@@ -33,7 +33,8 @@ class PlanConfig:
         uvr_version: The uvr version to embed in the plan.
         python_version: Python version for CI builds.
         ci_publish: If True (default), plan targets CI execution.
-            If False, plan targets local execution.
+        release_type: One of "final", "dev", "pre", "post".
+        pre_kind: Pre-release kind ("a", "b", "rc"). Only used when release_type="pre".
     """
 
     rebuild_all: bool
@@ -41,6 +42,8 @@ class PlanConfig:
     uvr_version: str
     python_version: str = "3.12"
     ci_publish: bool = True
+    release_type: str = "final"
+    pre_kind: str = ""
 
 
 class PackageInfo(BaseModel):
