@@ -96,16 +96,16 @@ class TestFindReleaseTags:
 
     @patch("uv_release_monorepo.pipeline.discovery.git")
     @patch("uv_release_monorepo.pipeline.discovery.step")
-    def test_skips_dev_and_base_tags(
+    def test_skips_base_tags(
         self,
         mock_step: MagicMock,
         mock_git: MagicMock,
         sample_packages: dict[str, PackageInfo],
     ) -> None:
-        """Dev and base baseline tags are excluded from release tags."""
+        """Baseline (-base) tags are excluded from release tags."""
         mock_git.side_effect = [
-            "pkg-a/v1.0.1-base\npkg-a/v1.0.1-dev\npkg-a/v1.0.0",  # -base and -dev tags
-            "pkg-b/v2.0.1-dev",  # Only a -dev tag
+            "pkg-a/v1.0.1-base\npkg-a/v1.0.0",  # -base tag skipped, release tag found
+            "pkg-b/v2.0.1-base",  # Only a -base tag
         ]
 
         result = find_release_tags(sample_packages)
@@ -147,46 +147,22 @@ class TestGetBaselineTags:
 
     @patch("uv_release_monorepo.pipeline.discovery.git")
     @patch("uv_release_monorepo.pipeline.discovery.step")
-    def test_falls_back_to_dev_tag(
+    def test_returns_none_when_no_base_tag(
         self,
         mock_step: MagicMock,
         mock_git: MagicMock,
         sample_packages: dict[str, PackageInfo],
     ) -> None:
-        """Falls back to -dev tag when no -base tag exists (backward compat)."""
+        """Returns None when no -base tag exists for a package."""
         mock_git.side_effect = [
             "",  # pkg-a: no -base tag
-            "pkg-a/v1.0.1-dev",  # pkg-a: fall back to -dev tag
             "pkg-b/v1.0.1-base",  # pkg-b: has -base tag
         ]
 
         result = get_baseline_tags(sample_packages)
 
         assert result == {
-            "pkg-a": "pkg-a/v1.0.1-dev",
-            "pkg-b": "pkg-b/v1.0.1-base",
-        }
-
-    @patch("uv_release_monorepo.pipeline.discovery.git")
-    @patch("uv_release_monorepo.pipeline.discovery.step")
-    def test_falls_back_to_release_tag(
-        self,
-        mock_step: MagicMock,
-        mock_git: MagicMock,
-        sample_packages: dict[str, PackageInfo],
-    ) -> None:
-        """Falls back to release tag when no -base or -dev tag exists."""
-        mock_git.side_effect = [
-            "",  # pkg-a: no -base tag
-            "",  # pkg-a: no -dev tag
-            "pkg-a/v1.0.0",  # pkg-a: fall back to release tag search
-            "pkg-b/v1.0.1-base",  # pkg-b: has -base tag
-        ]
-
-        result = get_baseline_tags(sample_packages)
-
-        assert result == {
-            "pkg-a": "pkg-a/v1.0.0",
+            "pkg-a": None,
             "pkg-b": "pkg-b/v1.0.1-base",
         }
 

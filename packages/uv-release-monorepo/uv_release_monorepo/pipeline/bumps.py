@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 from ..models import PackageInfo, PublishedPackage, VersionBump
-from ..versions import bump_patch, make_dev, strip_dev
+from ..versions import bump_patch, make_dev, strip_dev, version_from_tag
 from ..deps import rewrite_pyproject
 from ..shell import fatal, git, run, step
 
@@ -36,8 +36,7 @@ def collect_published_state(
         )
     for name, info in unchanged.items():
         tag = release_tags.get(name)
-        # TODO: We should centralize this tag parsing logic
-        published = tag.split("/v")[-1] if tag and "/v" in tag else info.version
+        published = version_from_tag(tag) if tag and "/v" in tag else info.version
         state[name] = PublishedPackage(
             info=info, published_version=published, changed=False
         )

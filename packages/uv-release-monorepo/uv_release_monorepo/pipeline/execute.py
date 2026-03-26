@@ -18,14 +18,18 @@ from .tags import tag_baselines, tag_changed_packages
 from ..shell import fatal, git, step
 
 
-# TODO: What is this method? It runs in CI, right? Is it the build step? The publish step? Feels like maybe we can remove this method?
 def run_release(
     *,
     rebuild_all: bool = False,
     push: bool = True,
     dry_run: bool = False,
 ) -> None:
-    """Execute the full release pipeline.
+    """Execute the full release pipeline locally (``uvr run``).
+
+    This is the old local execution path that performs discovery, build,
+    publish, tag, and bump in a single process. It predates the CI-based
+    workflow (``uvr release`` + GitHub Actions) but is still used by
+    ``uvr run`` for local/offline releases.
 
     Args:
         rebuild_all: If True, rebuild all packages regardless of changes.
@@ -55,6 +59,7 @@ def run_release(
         print(f"  Would build: {', '.join(sorted(changed)) or 'none'}")
         print(f"  Would reuse: {', '.join(sorted(unchanged)) or 'none'}")
         for name, info in changed.items():
+            # TODO(ADR-0008): release-type-aware version
             release_ver = strip_dev(info.version)
             new_ver = bump_patch(info.version)
             print(
@@ -62,11 +67,11 @@ def run_release(
             )
         return
 
-    # Check for duplicate versions before any build work
-    # Strip .dev for version comparison since that's the release version
+    # Check for duplicate versions before any build work.
+    # Strip .dev for version comparison since that's the release version.
+    # TODO(ADR-0008): release-type-aware version
     release_changed = {
         name: PackageInfo(
-            # Why strip dev?
             path=info.path,
             version=strip_dev(info.version),
             deps=info.deps,
@@ -75,7 +80,8 @@ def run_release(
     }
     check_for_existing_wheels(release_changed)
 
-    # Strip .dev from pyproject.toml before building so wheels get clean versions
+    # Strip .dev from pyproject.toml before building so wheels get clean versions.
+    # TODO(ADR-0008): release-type-aware version
     for name, info in changed.items():
         release_ver = strip_dev(info.version)
         if release_ver != info.version:

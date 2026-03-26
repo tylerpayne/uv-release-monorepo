@@ -37,6 +37,7 @@ def execute_prepare_release(plan_json: str, package: str) -> None:
     info = plan.changed[package]
     # The plan stores the clean release version (already stripped).
     # Write it to pyproject.toml in case the checked-out file has .dev.
+    # TODO(ADR-0008): version already correct after local rewrite
     rewrite_pyproject(
         Path(info.path) / "pyproject.toml",
         strip_dev(info.version),
@@ -151,6 +152,7 @@ def execute_build_all(plan_json: str, runner: str) -> None:
     for pkg in build_order:
         info = changed_to_build[pkg]
         # Prepare release version (strip .dev).
+        # TODO(ADR-0008): version already correct after local rewrite
         rewrite_pyproject(
             Path(info.path) / "pyproject.toml",
             strip_dev(info.version),

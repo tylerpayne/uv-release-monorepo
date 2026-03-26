@@ -18,6 +18,8 @@ from uv_release_monorepo.versions import (
     next_pre_number,
     parse_version,
     strip_dev,
+    tag_for_package,
+    version_from_tag,
 )
 
 
@@ -223,3 +225,22 @@ class TestNextPostNumber:
     def test_different_pkg_ignored(self) -> None:
         tags = ["other/v1.0.0.post0"]
         assert next_post_number(tags, "pkg") == 0
+
+
+class TestVersionFromTag:
+    def test_simple_tag(self) -> None:
+        assert version_from_tag("pkg/v1.0.0") == "1.0.0"
+
+    def test_dev_tag(self) -> None:
+        assert version_from_tag("my-pkg/v2.3.4.dev0") == "2.3.4.dev0"
+
+    def test_hyphenated_name(self) -> None:
+        assert version_from_tag("my-long-pkg/v0.1.0") == "0.1.0"
+
+
+class TestTagForPackage:
+    def test_simple(self) -> None:
+        assert tag_for_package("pkg", "1.0.0") == "pkg/v1.0.0"
+
+    def test_hyphenated(self) -> None:
+        assert tag_for_package("my-pkg", "2.3.4") == "my-pkg/v2.3.4"

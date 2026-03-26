@@ -11,14 +11,16 @@ from packaging.utils import canonicalize_name
 from ..deps import rewrite_pyproject, update_dep_pins
 from ..models import (
     BumpPlan,
+    DepPinChange,
     MatrixEntry,
     PackageInfo,
+    PinChange,
     PublishEntry,
     ReleasePlan,
     VersionBump,
 )
 from ..toml import get_uvr_config, load_pyproject
-from ..versions import bump_patch, make_dev, strip_dev
+from ..versions import bump_patch, make_dev, strip_dev, version_from_tag
 from .changes import detect_changes
 from .discovery import discover_packages, find_release_tags, get_baseline_tags
 from .publish import generate_release_notes
@@ -31,9 +33,8 @@ def build_plan(
     matrix: dict[str, list[str]],
     uvr_version: str,
     python_version: str = "3.12",
-    # It's just a plan, what is a dry_run?
     dry_run: bool = False,
-) -> tuple[ReleasePlan, list[tuple[str, list[tuple[str, str]]]]]:
+) -> tuple[ReleasePlan, list[PinChange]]:
     """Run discovery locally and return a ReleasePlan and pin change details.
 
     Applies internal dep pin updates to local pyproject.toml files so the
@@ -47,9 +48,9 @@ def build_plan(
         dry_run: If True, detect pin updates but do not write them to disk.
 
     Returns:
-        (plan, pin_updates) where pin_updates is a list of package names whose
-        pyproject.toml was modified (or would be modified in dry_run mode).
-        Empty list means no pin changes were needed.
+        (plan, pin_updates) where pin_updates is a list of PinChange models
+        for each package whose pyproject.toml was modified (or would be
+        modified in dry_run mode). Empty list means no pin changes were needed.
     """
     packages = discover_packages()
     release_tags = find_release_tags(packages)
@@ -62,6 +63,9 @@ def build_plan(
     }
 
     # Strip .dev suffixes -- the plan stores clean release versions.
+    # TODO(ADR-0008): release-type-aware version — strip_dev is only correct
+    # for final releases. For --dev/--pre/--post the version needs different
+    # treatment once those flags are implemented.
     for name, info in changed.items():
         changed[name] = PackageInfo(
             path=info.path, version=strip_dev(info.version), deps=info.deps
@@ -76,11 +80,11 @@ def build_plan(
         if name not in changed_names:
             tag = release_tags.get(name)
             published_versions[name] = (
-                tag.split("/v")[-1] if tag and "/v" in tag else info.version
+                version_from_tag(tag) if tag and "/v" in tag else info.version
             )
 
     # Check dep pins without writing -- caller is responsible for writing.
-    pin_changes: list[tuple[str, list[tuple[str, str]]]] = []
+    pin_changes: list[PinChange] = []
     for name in changed_names:
         info = packages[name]
         dep_versions = {
@@ -92,7 +96,14 @@ def build_plan(
             Path(info.path) / "pyproject.toml", dep_versions, write=False
         )
         if changes:
-            pin_changes.append((name, changes))
+            pin_changes.append(
+                PinChange(
+                    package=name,
+                    changes=[
+                        DepPinChange(old_spec=old, new_spec=new) for old, new in changes
+                    ],
+                )
+            )
 
     # Pre-compute version bumps. Dep pins are already applied locally above.
     bumps: dict[str, BumpPlan] = {}
@@ -151,12 +162,11 @@ def build_plan(
     return plan, pin_changes
 
 
-# TODO: Use a structured response, not nested tuples
-def write_dep_pins(plan: ReleasePlan) -> list[tuple[str, list[tuple[str, str]]]]:
+def write_dep_pins(plan: ReleasePlan) -> list[PinChange]:
     """Write pending dep pin updates via ``uv add --package PKG --frozen DEP>=VER``.
 
-    Returns list of (package_name, [(old_spec, new_spec), ...]) for each
-    package whose dependencies were updated.
+    Returns list of PinChange models for each package whose dependencies
+    were updated.
     """
     # Compute published versions from the plan
     published_versions: dict[str, str] = {}
@@ -165,11 +175,13 @@ def write_dep_pins(plan: ReleasePlan) -> list[tuple[str, list[tuple[str, str]]]]
     for name in plan.unchanged:
         tag = plan.release_tags.get(name)
         published_versions[name] = (
-            tag.split("/v")[-1] if tag and "/v" in tag else plan.unchanged[name].version
+            version_from_tag(tag)
+            if tag and "/v" in tag
+            else plan.unchanged[name].version
         )
 
     # Detect what needs updating (dry run)
-    result: list[tuple[str, list[tuple[str, str]]]] = []
+    result: list[PinChange] = []
     for name, info in plan.changed.items():
         dep_versions = {
             dep: published_versions[dep]
@@ -180,18 +192,25 @@ def write_dep_pins(plan: ReleasePlan) -> list[tuple[str, list[tuple[str, str]]]]
             Path(info.path) / "pyproject.toml", dep_versions, write=False
         )
         if changes:
-            result.append((name, changes))
+            result.append(
+                PinChange(
+                    package=name,
+                    changes=[
+                        DepPinChange(old_spec=old, new_spec=new) for old, new in changes
+                    ],
+                )
+            )
 
     # Apply via uv add
-    for name, changes in result:
-        for _old_spec, new_spec in changes:
+    for pin_change in result:
+        for dep_change in pin_change.changes:
             cmd = [
                 "uv",
                 "add",
                 "--package",
-                name,
+                pin_change.package,
                 "--frozen",
-                new_spec,
+                dep_change.new_spec,
             ]
             subprocess.run(cmd, check=True)
 

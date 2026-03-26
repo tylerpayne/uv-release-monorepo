@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ..graph import topo_layers
 from ..models import JOB_ORDER, ReleasePlan, ReleaseWorkflow, _NOOP_STEPS
+from ..versions import version_from_tag
 from ._common import __version__, _fatal, _read_matrix
 from ._yaml import _load_yaml
 
@@ -66,7 +67,7 @@ def _print_plan(
             if name in plan.changed:
                 info = plan.changed[name]
                 tag = plan.release_tags.get(name)
-                from_ver = tag.split("/v")[-1] if tag else "(first release)"
+                from_ver = version_from_tag(tag) if tag else "(first release)"
                 print(f"  changed    {name.ljust(w)}  {from_ver} -> {info.version}")
             else:
                 tag = plan.release_tags.get(name)
@@ -207,11 +208,11 @@ def cmd_release(args: argparse.Namespace) -> None:
         print()
         print("Packages need to pin new dependencies")
         print("--------------------------------------")
-        for name, changes in pin_changes:
-            for _old_pin, new_pin in changes:
-                print(f"  uv add --package {name} '{new_pin}'")
+        for pc in pin_changes:
+            for dc in pc.changes:
+                print(f"  uv add --package {pc.package} '{dc.new_spec}'")
         files = " ".join(
-            f"{plan.changed[n].path}/pyproject.toml" for n, _ in pin_changes
+            f"{plan.changed[pc.package].path}/pyproject.toml" for pc in pin_changes
         )
         print(f"  git add {files} uv.lock")
         print("  git commit -m 'chore: update dependency pins'")
@@ -228,9 +229,9 @@ def cmd_release(args: argparse.Namespace) -> None:
         from ..pipeline import write_dep_pins
 
         written = write_dep_pins(plan)
-        for name, changes in written:
-            for _old, new in changes:
-                print(f"  {name}: {_old} -> {new}")
+        for pc in written:
+            for dc in pc.changes:
+                print(f"  {pc.package}: {dc.old_spec} -> {dc.new_spec}")
         print()
         print("Pin updates written. Commit and re-run:")
         print(

@@ -150,6 +150,28 @@ def next_post_number(existing_tags: list[str], name: str) -> int:
     return max(numbers) + 1 if numbers else 0
 
 
+def version_from_tag(tag: str) -> str:
+    """Extract the version string from a release tag.
+
+    Tags follow the pattern ``{package-name}/v{version}``.
+
+    Examples:
+        "pkg/v1.0.0" -> "1.0.0"
+        "my-pkg/v2.3.4.dev0" -> "2.3.4.dev0"
+    """
+    return tag.split("/v")[-1]
+
+
+def tag_for_package(name: str, version: str) -> str:
+    """Build a release tag from a package name and version.
+
+    Examples:
+        ("pkg", "1.0.0") -> "pkg/v1.0.0"
+        ("my-pkg", "2.3.4") -> "my-pkg/v2.3.4"
+    """
+    return f"{name}/v{version}"
+
+
 def parse_version(version_str: str) -> semver.Version:
     """Parse a version string into a semver.Version object.
 

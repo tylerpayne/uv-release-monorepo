@@ -91,6 +91,20 @@ class MatrixEntry(BaseModel):
     version: str = ""
 
 
+class DepPinChange(BaseModel):
+    """A single dependency pin change (old spec -> new spec)."""
+
+    old_spec: str
+    new_spec: str
+
+
+class PinChange(BaseModel):
+    """Dependency pin changes for a single package."""
+
+    package: str
+    changes: list[DepPinChange]
+
+
 class PublishEntry(BaseModel):
     """A single entry in the publish matrix — one GitHub release per package."""
 
@@ -450,6 +464,7 @@ class ReleasePlan(BaseModel):
     uvr_version: str
     uvr_install: str = "uv-release-monorepo"
     python_version: str = "3.12"
+    release_type: str = "final"
     rebuild_all: bool
     changed: dict[str, PackageInfo]
     unchanged: dict[str, PackageInfo]

@@ -96,12 +96,12 @@ def discover_packages(root: Path | None = None) -> dict[str, PackageInfo]:
     return packages
 
 
-# TODO: Why are we finding _latest_ release tags? We need to find tags relative to the packageinfo
 def find_release_tags(packages: dict[str, PackageInfo]) -> dict[str, str | None]:
     """Find the most recent release tag for each package.
 
-    Tags follow the pattern {package-name}/v{version}. Dev baseline tags
-    ({package-name}/v{version}-dev) are excluded.
+    Tags follow the pattern {package-name}/v{version}. Baseline tags
+    ({package-name}/v{version}-base) are excluded. Release tags are used
+    to fetch unchanged wheels from prior GitHub releases.
 
     Args:
         packages: Map of package name -> PackageInfo.
@@ -115,11 +115,10 @@ def find_release_tags(packages: dict[str, PackageInfo]) -> dict[str, str | None]
     for name in packages:
         # Get tags matching this package's pattern, sorted by version
         tags = git("tag", "--list", f"{name}/v*", "--sort=-v:refname", check=False)
-        # Find the first tag that is NOT a -dev baseline
+        # Find the first tag that is NOT a -base baseline
         found = None
         for tag in tags.splitlines():
-            # TODO: what is not tag.endswith("-dev"), that's an error. We onlu use -base now
-            if not tag.endswith("-dev") and not tag.endswith("-base"):
+            if not tag.endswith("-base"):
                 found = tag
                 break
         release_tags[name] = found
@@ -132,8 +131,7 @@ def get_baseline_tags(packages: dict[str, PackageInfo]) -> dict[str, str | None]
     """Derive baseline tags from each package's pyproject.toml version.
 
     The baseline tag is ``{name}/v{version}-base`` where *version* comes from
-    pyproject.toml.  Falls back to ``-dev`` tags (backward compat with older
-    repos), then to a git-search fallback for very old repos.
+    pyproject.toml. If the tag does not exist, returns None for that package.
 
     Args:
         packages: Map of package name -> PackageInfo.
@@ -145,37 +143,12 @@ def get_baseline_tags(packages: dict[str, PackageInfo]) -> dict[str, str | None]
 
     baselines: dict[str, str | None] = {}
     for name, info in packages.items():
-        # 1. Derive from version: {name}/v{version}-base
         base_tag = f"{name}/v{info.version}-base"
         result = git("tag", "--list", base_tag, check=False)
         if result.strip():
             baselines[name] = base_tag
         else:
-            # TODO: NO BACKWARDS COMPAT, KILL IT
-            # 2. Backward compat: try -dev tag for the same version
-            dev_tag = f"{name}/v{info.version}-dev"
-            result = git("tag", "--list", dev_tag, check=False)
-            if result.strip():
-                baselines[name] = dev_tag
-            else:
-                # 3. Very old repos: search for any release tag
-                release_tags = git(
-                    "tag",
-                    "--list",
-                    f"{name}/v*",
-                    "--sort=-v:refname",
-                    check=False,
-                )
-                if release_tags:
-                    # Filter out -dev and -base tags
-                    found = None
-                    for tag in release_tags.splitlines():
-                        if not tag.endswith("-dev") and not tag.endswith("-base"):
-                            found = tag
-                            break
-                    baselines[name] = found
-                else:
-                    baselines[name] = None
+            baselines[name] = None
         print(f"  {name}: {baselines[name] or '<none>'}")
 
     return baselines
