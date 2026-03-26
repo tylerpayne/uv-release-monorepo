@@ -187,9 +187,13 @@ def cmd_release(args: argparse.Namespace) -> None:
     if reuse_run:
         plan.reuse_run_id = reuse_run
 
+    # Precompute the install spec for CI.
     # Don't pin to a .dev version -- it won't exist on PyPI.
     if ".dev" in plan.uvr_version:
         plan.uvr_version = ""
+        plan.uvr_install = "uv-release-monorepo"
+    else:
+        plan.uvr_install = f"uv-release-monorepo=={plan.uvr_version}"
 
     # Print human-readable summary
     _print_plan(plan, skipped, pin_changes)

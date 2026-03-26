@@ -23,13 +23,15 @@ Then scaffold the release workflow:
 uvr init
 ```
 
-This generates `.github/workflows/release.yml` from a built-in Jinja2 template. The workflow is a pure executor — it reads a `ReleasePlan` JSON and does exactly what it says. You never need to edit it by hand.
+This generates `.github/workflows/release.yml` from a Pydantic model (`ReleaseWorkflow`). The workflow is a pure executor — it reads a `ReleasePlan` JSON and does exactly what it says. All seven jobs (four hook slots plus build, publish, finalize) are always present; unconfigured hooks default to a no-op step and are auto-skipped in the plan.
 
-To regenerate the workflow (discarding any manual edits but preserving hooks):
+To regenerate the workflow (discarding any manual edits but preserving existing hooks):
 
 ```bash
 uvr init
 ```
+
+Running `uvr init` on an existing `release.yml` loads it, validates it through `ReleaseWorkflow.model_validate()`, and writes it back. This catches structural errors and normalizes formatting without losing your customizations.
 
 To regenerate and discard hooks too:
 
@@ -45,14 +47,27 @@ uvr status
 
 ### Configuring runners
 
-By default every package builds on `ubuntu-latest`. If a package needs native compilation on multiple platforms, assign runners with `-m`:
+By default every package builds on `ubuntu-latest`. If a package needs native compilation on multiple platforms, use the `uvr runners` command:
 
 ```bash
-uvr init -m my-native-pkg ubuntu-latest macos-14
-uvr init -m another-pkg ubuntu-latest macos-14 windows-latest
+uvr runners my-native-pkg --add macos-14
+uvr runners my-native-pkg --add windows-latest
+uvr runners another-pkg --add macos-14
 ```
 
-Each `-m` takes a package name followed by one or more runner labels. Re-run `uvr init` at any time — existing runner entries are preserved and only the packages you specify are updated.
+To remove a runner or clear all runners for a package:
+
+```bash
+uvr runners my-native-pkg --remove windows-latest
+uvr runners my-native-pkg --clear
+```
+
+To see the current runner configuration:
+
+```bash
+uvr runners             # show all packages
+uvr runners my-pkg      # show runners for one package
+```
 
 Runner configuration is stored in `[tool.uvr.matrix]` in your workspace root `pyproject.toml`.
 
@@ -79,8 +94,8 @@ uvr release
 This does three things:
 
 1. **Discovery** — Scans the workspace and diffs each package against its last dev baseline tag. Only packages with new commits (plus their downstream dependents) are included.
-2. **Plan** — Builds a `ReleasePlan` JSON containing every package to build, its version, precomputed release notes, and the runner matrix.
-3. **Prompt** — Prints the plan as JSON and asks `Dispatch release? [y/N]`. If you confirm, the plan is dispatched to GitHub Actions via `gh workflow run`.
+2. **Plan** — Builds a `ReleasePlan` JSON containing every package to build, its version, precomputed release notes, the runner matrix, and control fields like `skip` and `reuse_run_id`.
+3. **Prompt** — Prints a human-readable summary (packages, dependency pins, and a pipeline view showing topo build layers per runner) and asks `Dispatch release? [y/N]`. If you confirm, the plan is dispatched to GitHub Actions via `gh workflow run`.
 
 To skip the confirmation prompt (useful in scripts):
 
@@ -104,32 +119,75 @@ uvr release --python 3.11
 
 Sets the Python version used in CI builds. Defaults to `3.12`.
 
+### Skipping jobs
+
+You can skip individual jobs or jump to a specific point in the pipeline:
+
+```bash
+uvr release --skip pre-build               # skip a single job (repeatable)
+uvr release --skip pre-build --skip post-build  # skip multiple jobs
+uvr release --skip-to publish              # skip everything before publish
+```
+
+Valid job names: `pre-build`, `build`, `post-build`, `pre-release`, `publish`, `finalize`, `post-release`.
+
+### Reusing artifacts from a previous run
+
+If a build already succeeded but a later job failed, you can reuse the artifacts without rebuilding:
+
+```bash
+uvr release --skip-to publish --reuse-run 12345678
+```
+
+`--reuse-run RUN_ID` tells the publish job to download artifacts from a previous workflow run instead of the current one. It requires build to be skipped (via `--skip build` or `--skip-to`).
+
+To skip both build and publish (e.g., to re-run only finalize):
+
+```bash
+uvr release --skip-to finalize --reuse-release
+```
+
+`--reuse-release` assumes GitHub releases already exist, so both build and publish must be skipped.
+
+### Printing the raw plan JSON
+
+```bash
+uvr release --json
+```
+
+Prints the full `ReleasePlan` JSON alongside the human-readable summary. Useful for debugging or piping to other tools.
+
 ### Using the plan without dispatching
 
-If you don't have `gh` installed or prefer to dispatch manually, just run `uvr release` and decline the prompt. The plan JSON is printed to stdout — you can copy it into the GitHub Actions "Run workflow" UI as the `plan` input.
+If you don't have `gh` installed or prefer to dispatch manually, just run `uvr release --json` and decline the prompt. The plan JSON is printed to stdout — you can copy it into the GitHub Actions "Run workflow" UI as the `plan` input.
 
 ## CI Workflow Architecture
 
-The generated workflow has three core jobs that run in sequence:
+The generated workflow always contains seven jobs that run in a fixed sequence:
 
 ```
-build (matrix: one job per runner)
-  → publish (matrix: one per changed package)
-    → finalize (single job)
+pre-build → build → post-build → pre-release → publish → finalize → post-release
 ```
 
-**build** — One matrix entry per runner. Each runner builds all its assigned packages in topological dependency order using `uvr-steps build-all`. This ensures packages with build-time dependencies on siblings have those wheels available via `--find-links`. Wheels are uploaded as artifacts.
+The four hook jobs (`pre-build`, `post-build`, `pre-release`, `post-release`) default to a no-op step and are auto-skipped in the release plan when they only contain the default no-op. The three core jobs are:
 
-**publish** — One matrix entry per changed package. Downloads the built wheels and creates a GitHub release using `softprops/action-gh-release@v2`. Release notes are precomputed in the plan, so this job needs no Python — just `download-artifact` + the release action. The `make_latest` field (driven by `[tool.uvr.config] latest`) controls which package gets the "Latest" badge.
+**build** — A matrix job with one entry per runner. Each runner builds all its assigned packages in topological dependency order using `uvr-steps build-all`. This ensures packages with build-time dependencies on siblings have those wheels available via `--find-links`. Wheels are uploaded as artifacts.
+
+**publish** — A matrix job with one entry per changed package. Downloads the built wheels and creates a GitHub release using `softprops/action-gh-release@v2`. Release notes are precomputed in the plan, so this job needs no Python — just `download-artifact` + the release action. The `make_latest` field (driven by `[tool.uvr.config] latest`) controls which package gets the "Latest" badge.
 
 **finalize** — Bumps patch versions, commits, creates dev baseline tags, and pushes to main.
+
+### Frozen core jobs
+
+The steps, strategy, and `if` conditions on `build`, `publish`, and `finalize` are frozen — `ReleaseWorkflow.model_validate()` rejects any modifications to these fields. This guarantees the core pipeline behaves identically across all projects. Hook jobs are the intended extension points.
 
 ## Mixed-Architecture Builds
 
 When a package needs wheels for multiple platforms (e.g., a C extension), uvr expands the build matrix so each runner produces its own wheel.
 
 ```bash
-uvr init -m my-native-pkg ubuntu-latest macos-14
+uvr runners my-native-pkg --add ubuntu-latest
+uvr runners my-native-pkg --add macos-14
 ```
 
 On release, `my-native-pkg` will be built once on `ubuntu-latest` and once on `macos-14`. Both wheels are attached to the same GitHub release.
@@ -139,8 +197,9 @@ Packages without explicit runner assignments build only on `ubuntu-latest` (pure
 You can inspect and change runner assignments at any time:
 
 ```bash
-uvr status                           # see current config
-uvr init -m my-native-pkg macos-14   # update runners
+uvr runners                               # see current config
+uvr runners my-native-pkg --add macos-14  # add a runner
+uvr runners my-native-pkg --remove macos-14  # remove a runner
 ```
 
 ## CI Hooks
@@ -154,89 +213,74 @@ Hooks let you inject custom steps into the release workflow at four points:
 | `pre-release` | Before the publish job |
 | `post-release` | After the finalize job |
 
-Each configured hook becomes its own GitHub Actions job with the correct `needs:` chain. The full dependency chain is:
-
-```
-pre-build → build → post-build → pre-release → publish → finalize → post-release
-```
-
-Unconfigured hooks don't appear in the generated YAML at all.
+Each hook is its own GitHub Actions job with the correct `needs:` chain. All four are always present in `release.yml` — unconfigured hooks have a no-op default step and are automatically skipped in the release plan.
 
 ### Environment variables
 
-Every hook job exports two variables your steps can reference:
+Hook jobs can access the release plan via the workflow input:
 
-- `UVR_PLAN` — the full release plan JSON
-- `UVR_CHANGED` — space-separated list of changed package names (e.g. `pkg-alpha pkg-beta`)
+- `${{ inputs.plan }}` — the full release plan JSON (available in `if:` conditions and step expressions)
 
-### Managing hooks with the CLI
+You can also add an explicit step to export plan data to environment variables, for example:
 
-**Interactive mode** — run a phase name with no action to open the interactive builder:
-
-```bash
-uvr hooks pre-build
+```yaml
+- name: Export plan context
+  env:
+    UVR_PLAN: ${{ inputs.plan }}
+  run: |
+    echo "UVR_CHANGED=$(echo "$UVR_PLAN" | jq -r '.changed | keys | join(" ")')" >> "$GITHUB_ENV"
+    echo "UVR_PLAN=$UVR_PLAN" >> "$GITHUB_ENV"
 ```
 
-**Non-interactive operations:**
+### Editing hooks directly in release.yml
+
+There is no separate hooks CLI — you edit `.github/workflows/release.yml` directly. Each hook job has a `steps:` array you can customize. After editing, run `uvr init` to validate your changes:
 
 ```bash
-# Append a run step
-uvr hooks pre-build add --name "Run tests" --run "uv run pytest"
-
-# Append a uses step with inputs
-uvr hooks pre-build add --uses actions/setup-node@v4 --with node-version=20
-
-# Add with environment variables and conditionals
-uvr hooks post-release add --name "Deploy" --run "./deploy.sh" \
-  --env DEPLOY_ENV=prod --if "github.ref == 'refs/heads/main'"
-
-# Insert at a specific position (1-indexed)
-uvr hooks pre-build insert 1 --name "Lint" --run "ruff check ."
-
-# Update a step in place (only the fields you pass are changed)
-uvr hooks pre-build update 2 --name "Run tests (verbose)" --run "uv run pytest -v"
-
-# Remove by position
-uvr hooks pre-build remove 1
-
-# Remove all steps in a phase
-uvr hooks pre-build clear
+uvr init
 ```
 
-Steps support all GitHub Actions step fields: `--name`, `--run`, `--uses`, `--with KEY=VALUE` (repeatable), `--env KEY=VALUE` (repeatable), `--if`, and `--id`.
+This loads the YAML, validates it through the `ReleaseWorkflow` model, and writes it back. If your edits broke the schema (e.g., you accidentally modified a frozen field on a core job), validation will fail with an error.
 
-**Idempotent upserts** — pass `--id` to `add` so running the same command twice doesn't duplicate the step:
+### Example: gate releases on tests
 
-```bash
-uvr hooks pre-build add --name "Run tests" --run "uv run pytest" --id run-tests
+Edit the `pre-build` job in `release.yml`:
+
+```yaml
+  pre-build:
+    runs-on: ubuntu-latest
+    if: ${{ !contains(fromJSON(inputs.plan).skip, 'pre-build') }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - uses: astral-sh/setup-uv@v5
+      with:
+        python-version: ${{ fromJSON(inputs.plan).python_version }}
+    - name: Lint, typecheck, and test
+      run: |
+        uv sync --all-packages
+        uv run poe check
+        uv run poe test
 ```
 
-After any change, `uvr hooks` automatically re-renders `.github/workflows/release.yml`.
+### Example: notify after release
 
-### Where hooks live
+Edit the `post-release` job in `release.yml`:
 
-Hooks live in the generated `release.yml`, not in `pyproject.toml`. Use the CLI commands above to manage them — `uvr hooks` re-renders the workflow automatically after each change. Running `uvr init` preserves existing hooks unless you pass `--force`.
-
-### Common hook patterns
-
-**Gate releases on tests:**
-
-```bash
-uvr hooks pre-build add --name "Test suite" --run "uv run pytest" --id tests
-```
-
-**Lint before building:**
-
-```bash
-uvr hooks pre-build add --name "Lint" --run "ruff check ." --id lint
-```
-
-**Notify after release:**
-
-```bash
-uvr hooks post-release add --name "Slack notification" \
-  --run 'curl -X POST "$SLACK_WEBHOOK" -d "{\"text\": \"Released: $UVR_CHANGED\"}"' \
-  --id slack
+```yaml
+  post-release:
+    runs-on: ubuntu-latest
+    if: ${{ always() && !failure() && !contains(fromJSON(inputs.plan).skip, 'post-release') }}
+    needs:
+    - finalize
+    steps:
+    - name: Slack notification
+      env:
+        UVR_PLAN: ${{ inputs.plan }}
+      run: |
+        CHANGED=$(echo "$UVR_PLAN" | jq -r '.changed | keys | join(", ")')
+        curl -X POST "$SLACK_WEBHOOK" -d "{\"text\": \"Released: $CHANGED\"}"
 ```
 
 ## Installing from GitHub Releases
@@ -278,7 +322,8 @@ uvr release
   ├─ walk dependency graph
   ├─ precompute release notes
   ├─ expand build matrix
-  ├─ print plan JSON
+  ├─ print human-readable summary
+  │   (packages, dep pins, pipeline)
   └─ [confirm] dispatch plan ────────► release.yml receives plan
                                          ├─ [hook] pre-build
                                          ├─ build: per-runner, topo-ordered
@@ -294,7 +339,7 @@ uvr release
                                          └─ [hook] post-release
 ```
 
-The workflow is a **pure executor**. It receives the plan as a single JSON input and follows it exactly. All intelligence — change detection, dependency resolution, matrix expansion, release notes — lives in the CLI on your machine.
+The workflow is a **pure executor**. It receives the plan as a single JSON input and follows it exactly. All intelligence — change detection, dependency resolution, matrix expansion, release notes — lives in the CLI on your machine. The plan JSON encodes everything: `uvr_version`, `python_version`, `skip` (list of jobs to skip), `reuse_run_id`, and the full build/publish matrices.
 
 ### Version bumping
 
@@ -322,49 +367,89 @@ commit E   ← my-pkg/v1.0.2-dev  (pyproject.toml bumped to 1.0.2.dev0; new diff
 
 ## Publishing to PyPI
 
-The release workflow creates GitHub releases with wheels attached. To also publish to PyPI, add a `post-release` hook that downloads the wheel from the GitHub release and publishes it using [trusted publishing](https://docs.pypi.org/trusted-publishers/):
+The release workflow creates GitHub releases with wheels attached. To also publish to PyPI, edit the `post-release` job in `.github/workflows/release.yml` to download the wheel and publish it using [trusted publishing](https://docs.pypi.org/trusted-publishers/).
 
-```bash
-uvr hooks post-release add --id pypi-download \
-  --name "Download wheel for PyPI" \
-  --if 'contains(fromJSON(inputs.plan).changed, "my-package")' \
-  --run 'VERSION=$(echo "$UVR_PLAN" | python3 -c "import sys,json; p=json.load(sys.stdin); print(p[\"changed\"][\"my-package\"][\"version\"])")
-TAG="my-package/v${VERSION}"
-mkdir -p dist
-gh release download "$TAG" --repo "${{ github.repository }}" --pattern "my_package-*.whl" --dir dist'
+Here is a complete example for a package called `my-package`:
 
-uvr hooks post-release add --id pypi-publish \
-  --name "Publish to PyPI" \
-  --if 'contains(fromJSON(inputs.plan).changed, "my-package")' \
-  --uses pypa/gh-action-pypi-publish@release/v1
+```yaml
+  post-release:
+    runs-on: ubuntu-latest
+    if: ${{ always() && !failure() && !contains(fromJSON(inputs.plan).skip, 'post-release') }}
+    needs:
+    - finalize
+    environment: pypi
+    steps:
+    - name: Download wheel for PyPI
+      if: fromJSON(inputs.plan).changed['my-package'] != null
+      env:
+        GH_TOKEN: ${{ github.token }}
+        UVR_PLAN: ${{ inputs.plan }}
+      run: |
+        VERSION=$(echo "$UVR_PLAN" | python3 -c "import sys,json; print(json.load(sys.stdin)['changed']['my-package']['version'])")
+        mkdir -p dist
+        gh release download "my-package/v${VERSION}" --repo "${{ github.repository }}" --pattern "my_package-*.whl" --dir dist
+    - name: Publish to PyPI
+      if: fromJSON(inputs.plan).changed['my-package'] != null
+      uses: pypa/gh-action-pypi-publish@release/v1
 ```
 
-You'll also need `id-token: write` in the workflow's top-level `permissions` for trusted publishing. Add it manually to `release.yml` after the existing `contents: write` line.
+You also need `id-token: write` in the workflow's top-level `permissions` for trusted publishing. Add it to `release.yml` next to `contents: write`:
 
-This approach runs PyPI publishing as part of the same release workflow — no separate workflow, no trigger indirection, and the `--if` condition ensures it only runs when the target package was actually released.
+```yaml
+permissions:
+  contents: write
+  id-token: write
+```
+
+The `environment: pypi` on the job ties it to a [GitHub deployment environment](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment) configured with your PyPI trusted publisher. The `if:` condition on each step ensures they only run when the target package was actually released.
+
+After editing, run `uvr init` to validate:
+
+```bash
+uvr init
+```
 
 ## Command Reference
 
 ### `uvr init`
 
-Scaffold the GitHub Actions release workflow.
+Scaffold or validate the GitHub Actions release workflow.
 
 ```
-uvr init [-m PKG RUNNER [RUNNER ...]] [--force] [--workflow-dir DIR]
+uvr init [--force] [--workflow-dir DIR]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-m`, `--matrix` | — | Per-package runners. Repeatable: `-m pkg1 ubuntu-latest -m pkg2 macos-14` |
-| `--force` | — | Regenerate workflow, discarding existing hooks |
+| `--force` | — | Regenerate workflow from scratch, discarding existing hooks |
 | `--workflow-dir` | `.github/workflows` | Directory to write the workflow file |
+
+When run on an existing `release.yml`, loads and validates it through `ReleaseWorkflow.model_validate()`, then writes it back. This catches schema errors without losing customizations.
+
+### `uvr runners`
+
+Manage per-package build runners.
+
+```
+uvr runners [PKG] [--add RUNNER | --remove RUNNER | --clear]
+```
+
+| Argument/Flag | Description |
+|---------------|-------------|
+| `PKG` | Package name (omit to show all) |
+| `--add RUNNER` | Add a runner for the package |
+| `--remove RUNNER` | Remove a runner from the package |
+| `--clear` | Remove all runners for the package |
+
+Runner configuration is stored in `[tool.uvr.matrix]` in your workspace root `pyproject.toml`.
 
 ### `uvr release`
 
 Generate a release plan and optionally dispatch it to GitHub Actions.
 
 ```
-uvr release [-y] [--rebuild-all] [--python VERSION] [--workflow-dir DIR]
+uvr release [-y] [--rebuild-all] [--python VERSION] [--skip JOB] [--skip-to JOB]
+            [--reuse-run RUN_ID] [--reuse-release] [--json] [--workflow-dir DIR]
 ```
 
 | Flag | Default | Description |
@@ -372,9 +457,12 @@ uvr release [-y] [--rebuild-all] [--python VERSION] [--workflow-dir DIR]
 | `-y`, `--yes` | — | Skip confirmation prompt and dispatch immediately |
 | `--rebuild-all` | — | Rebuild all packages regardless of changes |
 | `--python` | `3.12` | Python version for CI builds |
+| `--skip` | — | Skip a job (repeatable). Valid: `pre-build`, `build`, `post-build`, `pre-release`, `publish`, `finalize`, `post-release` |
+| `--skip-to` | — | Skip all jobs before the named job |
+| `--reuse-run` | — | Download build artifacts from a previous workflow run (requires build to be skipped) |
+| `--reuse-release` | — | Assume GitHub releases already exist (requires build and publish to be skipped) |
+| `--json` | — | Also print the raw plan JSON |
 | `--workflow-dir` | `.github/workflows` | Directory containing the workflow file |
-
-By default, prints the plan as JSON and prompts `Dispatch release? [y/N]` before invoking `gh`. Without `gh` installed, you can still view the plan and dispatch manually via the GitHub UI.
 
 ### `uvr run`
 
@@ -411,27 +499,6 @@ Install a workspace package and its internal dependencies from GitHub releases.
 uvr install PACKAGE[@VERSION]
 uvr install ORG/REPO/PACKAGE[@VERSION]
 ```
-
-### `uvr hooks`
-
-Manage CI hook steps.
-
-```
-uvr hooks PHASE [ACTION]
-```
-
-**Phases:** `pre-build`, `post-build`, `pre-release`, `post-release`
-
-**Actions:**
-
-| Action | Syntax | Description |
-|--------|--------|-------------|
-| *(none)* | `uvr hooks PHASE` | Interactive builder |
-| `add` | `uvr hooks PHASE add [--name "..."] [--run "..."] [--uses "..."] [--with K=V] [--env K=V] [--if "..."] [--id ID]` | Append a step (upsert if `--id` matches) |
-| `insert` | `uvr hooks PHASE insert POS [--name "..."] [--run "..."] [--uses "..."] [--with K=V] [--env K=V] [--if "..."]` | Insert at position (1-indexed) |
-| `update` | `uvr hooks PHASE update POS [--name "..."] [--run "..."] [--uses "..."] [--with K=V] [--env K=V] [--if "..."]` | Update step at position |
-| `remove` | `uvr hooks PHASE remove POS` | Remove step at position |
-| `clear` | `uvr hooks PHASE clear` | Remove all steps in phase |
 
 ## Configuration Reference
 

@@ -171,9 +171,7 @@ _SETUP_PYTHON_STEP: dict = {
     "name": "Set up Python",
     "run": (
         f"uv python install ${{{{ {_P}.python_version }}}}\n"
-        f"uv tool install ${{{{ {_P}.uvr_version != '' "
-        f"&& format('uv-release-monorepo=={{0}}', {_P}.uvr_version) "
-        f"|| 'uv-release-monorepo' }}}}"
+        f"uv tool install ${{{{ {_P}.uvr_install }}}}"
     ),
 }
 _EXPORT_PLAN_STEP: dict = {
@@ -441,8 +439,9 @@ class ReleasePlan(BaseModel):
     commands, change detection, or version arithmetic.
     """
 
-    schema_version: int = 4
+    schema_version: int = 5
     uvr_version: str
+    uvr_install: str = "uv-release-monorepo"
     python_version: str = "3.12"
     rebuild_all: bool
     changed: dict[str, PackageInfo]

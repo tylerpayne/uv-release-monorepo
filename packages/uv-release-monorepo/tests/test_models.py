@@ -57,9 +57,9 @@ class TestReleasePlan:
             matrix=[MatrixEntry(package="pkg-alpha", runner="ubuntu-latest")],
         )
 
-    def test_schema_version_defaults_to_4(self) -> None:
+    def test_schema_version_defaults_to_5(self) -> None:
         plan = self._make_plan()
-        assert plan.schema_version == 4
+        assert plan.schema_version == 5
 
     def test_round_trip_json(self) -> None:
         plan = self._make_plan()
