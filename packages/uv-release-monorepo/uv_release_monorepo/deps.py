@@ -44,6 +44,68 @@ def pin_dep(dep_str: str, version: str) -> str:
     return f"{req.name}{extras}>={version}"
 
 
+def set_version(pyproject_path: Path, new_version: str) -> None:
+    """Update a package's version in pyproject.toml.
+
+    Uses tomlkit to preserve formatting and comments.
+
+    Args:
+        pyproject_path: Path to the pyproject.toml file.
+        new_version: New version string to set.
+    """
+    doc = load_pyproject(pyproject_path)
+    project = doc["project"]
+    assert isinstance(project, Table)
+    project["version"] = new_version
+    save_pyproject(pyproject_path, doc)
+
+
+def pin_dependencies(
+    pyproject_path: Path,
+    internal_dep_versions: dict[str, str],
+) -> None:
+    """Pin internal dependencies in pyproject.toml.
+
+    Pins internal deps in all locations:
+    - [project].dependencies
+    - [project].optional-dependencies.*
+    - [dependency-groups].*
+
+    Uses tomlkit to preserve formatting and comments.
+    No-op if internal_dep_versions is empty.
+
+    Args:
+        pyproject_path: Path to the pyproject.toml file.
+        internal_dep_versions: Map of package name → version for internal deps.
+    """
+    if not internal_dep_versions:
+        return
+    doc = load_pyproject(pyproject_path)
+    project = doc["project"]
+    assert isinstance(project, Table)
+
+    # Pin deps in [project].dependencies
+    deps = project.get("dependencies")
+    if isinstance(deps, list):
+        _pin_dep_list(deps, internal_dep_versions)
+
+    # Pin deps in [project].optional-dependencies.*
+    opt_deps = project.get("optional-dependencies")
+    if isinstance(opt_deps, dict):
+        for group in opt_deps.values():
+            if isinstance(group, list):
+                _pin_dep_list(group, internal_dep_versions)
+
+    # Pin deps in [dependency-groups].*
+    dep_groups = doc.get("dependency-groups")
+    if isinstance(dep_groups, dict):
+        for group in dep_groups.values():
+            if isinstance(group, list):
+                _pin_dep_list(group, internal_dep_versions)
+
+    save_pyproject(pyproject_path, doc)
+
+
 def rewrite_pyproject(
     pyproject_path: Path,
     new_version: str,
@@ -51,48 +113,16 @@ def rewrite_pyproject(
 ) -> None:
     """Update a package's version and pin its internal dependencies.
 
-    This function:
-    1. Updates [project].version to new_version
-    2. Finds all internal deps and pins them to exact versions
-
-    Internal deps are pinned in all locations:
-    - [project].dependencies
-    - [project].optional-dependencies.*
-    - [dependency-groups].*
-
-    Uses tomlkit to preserve formatting and comments.
+    Thin wrapper that calls set_version() + pin_dependencies() for backward
+    compatibility.
 
     Args:
         pyproject_path: Path to the pyproject.toml file.
         new_version: New version string to set.
         internal_dep_versions: Map of package name → version for internal deps.
     """
-    doc = load_pyproject(pyproject_path)
-    project = doc["project"]
-    assert isinstance(project, Table)
-    project["version"] = new_version
-
-    if internal_dep_versions:
-        # Pin deps in [project].dependencies
-        deps = project.get("dependencies")
-        if isinstance(deps, list):
-            _pin_dep_list(deps, internal_dep_versions)
-
-        # Pin deps in [project].optional-dependencies.*
-        opt_deps = project.get("optional-dependencies")
-        if isinstance(opt_deps, dict):
-            for group in opt_deps.values():
-                if isinstance(group, list):
-                    _pin_dep_list(group, internal_dep_versions)
-
-        # Pin deps in [dependency-groups].*
-        dep_groups = doc.get("dependency-groups")
-        if isinstance(dep_groups, dict):
-            for group in dep_groups.values():
-                if isinstance(group, list):
-                    _pin_dep_list(group, internal_dep_versions)
-
-    save_pyproject(pyproject_path, doc)
+    set_version(pyproject_path, new_version)
+    pin_dependencies(pyproject_path, internal_dep_versions)
 
 
 def update_dep_pins(

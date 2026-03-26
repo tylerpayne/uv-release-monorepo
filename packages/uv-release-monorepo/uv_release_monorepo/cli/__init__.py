@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from ..pipeline import build_plan, execute_plan
+from ..pipeline import PlanConfig, build_plan, execute_plan
 from ..workflow_steps import run_pipeline
 from ._common import (
     __version__,
@@ -37,6 +37,7 @@ __all__ = [
     "_yaml_delete",
     "_yaml_get",
     "_yaml_set",
+    "PlanConfig",
     "build_plan",
     "cli",
     "cmd_init",

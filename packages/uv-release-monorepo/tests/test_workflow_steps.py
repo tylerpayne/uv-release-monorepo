@@ -285,7 +285,7 @@ class TestExecuteBuildAll:
 
     @patch("uv_release_monorepo.shell.run")
     @patch("uv_release_monorepo.shell.step")
-    @patch("uv_release_monorepo.deps.rewrite_pyproject")
+    @patch("uv_release_monorepo.deps.set_version")
     @patch("uv_release_monorepo.versions.strip_dev", side_effect=lambda v: v)
     def test_builds_in_topo_order(
         self,
@@ -311,7 +311,7 @@ class TestExecuteBuildAll:
 
     @patch("uv_release_monorepo.shell.run")
     @patch("uv_release_monorepo.shell.step")
-    @patch("uv_release_monorepo.deps.rewrite_pyproject")
+    @patch("uv_release_monorepo.deps.set_version")
     @patch("uv_release_monorepo.versions.strip_dev", side_effect=lambda v: v)
     @patch("uv_release_monorepo.workflow_steps.fetch_unchanged_wheels")
     def test_fetches_unchanged_deps(
@@ -336,7 +336,7 @@ class TestExecuteBuildAll:
 
     @patch("uv_release_monorepo.shell.run")
     @patch("uv_release_monorepo.shell.step")
-    @patch("uv_release_monorepo.deps.rewrite_pyproject")
+    @patch("uv_release_monorepo.deps.set_version")
     @patch("uv_release_monorepo.versions.strip_dev", side_effect=lambda v: v)
     def test_passes_find_links(
         self,

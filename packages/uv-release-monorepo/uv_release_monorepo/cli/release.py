@@ -164,10 +164,12 @@ def cmd_release(args: argparse.Namespace) -> None:
     sys.stdout = io.StringIO()
     try:
         plan, pin_changes = _cli.build_plan(
-            rebuild_all=args.rebuild_all,
-            matrix=package_runners,
-            uvr_version=__version__,
-            python_version=args.python_version,
+            _cli.PlanConfig(
+                rebuild_all=args.rebuild_all,
+                matrix=package_runners,
+                uvr_version=__version__,
+                python_version=args.python_version,
+            )
         )
     finally:
         sys.stdout = old_stdout

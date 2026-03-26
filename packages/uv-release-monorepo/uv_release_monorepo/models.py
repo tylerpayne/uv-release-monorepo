@@ -6,6 +6,7 @@ the release pipeline.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Annotated, Any
 
 from pydantic import (
@@ -16,6 +17,27 @@ from pydantic import (
     model_serializer,
     model_validator,
 )
+
+
+@dataclass
+class PlanConfig:
+    """Configuration for build_plan().
+
+    Groups the parameters needed to generate a release plan. Uses dataclass
+    rather than BaseModel because this is internal configuration, not
+    serialized data.
+
+    Attributes:
+        rebuild_all: If True, mark all packages as changed.
+        matrix: Per-package runner configuration from the workflow file.
+        uvr_version: The uvr version to embed in the plan.
+        python_version: Python version for CI builds.
+    """
+
+    rebuild_all: bool
+    matrix: dict[str, list[str]]
+    uvr_version: str
+    python_version: str = "3.12"
 
 
 class PackageInfo(BaseModel):

@@ -8,13 +8,14 @@ from pathlib import Path
 from packaging.utils import canonicalize_name
 
 
-from ..deps import rewrite_pyproject, update_dep_pins
+from ..deps import set_version, update_dep_pins
 from ..models import (
     BumpPlan,
     DepPinChange,
     MatrixEntry,
     PackageInfo,
     PinChange,
+    PlanConfig,
     PublishEntry,
     ReleasePlan,
     VersionBump,
@@ -27,14 +28,7 @@ from .publish import generate_release_notes
 from ..shell import step
 
 
-def build_plan(
-    *,
-    rebuild_all: bool,
-    matrix: dict[str, list[str]],
-    uvr_version: str,
-    python_version: str = "3.12",
-    dry_run: bool = False,
-) -> tuple[ReleasePlan, list[PinChange]]:
+def build_plan(config: PlanConfig) -> tuple[ReleasePlan, list[PinChange]]:
     """Run discovery locally and return a ReleasePlan and pin change details.
 
     Applies internal dep pin updates to local pyproject.toml files so the
@@ -42,20 +36,17 @@ def build_plan(
     commit any pin changes before dispatching to CI.
 
     Args:
-        rebuild_all: If True, mark all packages as changed.
-        matrix: Stored per-package runner config from the workflow file.
-        uvr_version: The uvr version to embed in the plan.
-        dry_run: If True, detect pin updates but do not write them to disk.
+        config: Plan configuration (rebuild_all, matrix, uvr_version, python_version).
 
     Returns:
         (plan, pin_updates) where pin_updates is a list of PinChange models
-        for each package whose pyproject.toml was modified (or would be
-        modified in dry_run mode). Empty list means no pin changes were needed.
+        for each package whose pyproject.toml was modified. Empty list means
+        no pin changes were needed.
     """
     packages = discover_packages()
     release_tags = find_release_tags(packages)
     baselines = get_baseline_tags(packages)
-    changed_names = detect_changes(packages, baselines, rebuild_all)
+    changed_names = detect_changes(packages, baselines, config.rebuild_all)
 
     changed = {name: packages[name] for name in changed_names}
     unchanged = {
@@ -114,7 +105,7 @@ def build_plan(
     matrix_entries: list[MatrixEntry] = []
     for name in sorted(changed_names):
         info = changed[name]
-        runners = matrix.get(name, ["ubuntu-latest"])
+        runners = config.matrix.get(name, ["ubuntu-latest"])
         for runner in runners:
             matrix_entries.append(
                 MatrixEntry(
@@ -147,9 +138,9 @@ def build_plan(
     unique_runners = sorted(set(entry.runner for entry in matrix_entries))
 
     plan = ReleasePlan(
-        uvr_version=uvr_version,
-        python_version=python_version,
-        rebuild_all=rebuild_all,
+        uvr_version=config.uvr_version,
+        python_version=config.python_version,
+        rebuild_all=config.rebuild_all,
         changed=changed,
         unchanged=unchanged,
         release_tags=release_tags,
@@ -230,10 +221,9 @@ def apply_bumps(plan: ReleasePlan) -> dict[str, VersionBump]:
     for name, bump_plan in plan.bumps.items():
         info = plan.changed[name]
         dev_version = make_dev(bump_plan.new_version)
-        rewrite_pyproject(
+        set_version(
             Path(info.path) / "pyproject.toml",
             dev_version,
-            {},  # dep pins were committed locally before the release was triggered
         )
         bumped[name] = VersionBump(old=info.version, new=bump_plan.new_version)
         print(f"  {name}: {info.version} -> {dev_version}")

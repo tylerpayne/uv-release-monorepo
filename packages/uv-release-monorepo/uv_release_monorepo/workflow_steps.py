@@ -28,7 +28,7 @@ def execute_prepare_release(plan_json: str, package: str) -> None:
     """CI step: strip .dev from a package's version before building."""
     from pathlib import Path
 
-    from .deps import rewrite_pyproject
+    from .deps import set_version
     from .versions import strip_dev
 
     plan = ReleasePlan.model_validate_json(plan_json)
@@ -38,10 +38,9 @@ def execute_prepare_release(plan_json: str, package: str) -> None:
     # The plan stores the clean release version (already stripped).
     # Write it to pyproject.toml in case the checked-out file has .dev.
     # TODO(ADR-0008): version already correct after local rewrite
-    rewrite_pyproject(
+    set_version(
         Path(info.path) / "pyproject.toml",
         strip_dev(info.version),
-        {},
     )
 
 
@@ -103,7 +102,7 @@ def execute_build_all(plan_json: str, runner: str) -> None:
 
     from packaging.utils import canonicalize_name
 
-    from .deps import rewrite_pyproject
+    from .deps import set_version
     from .graph import topo_sort
     from .shell import run, step
     from .versions import strip_dev
@@ -153,10 +152,9 @@ def execute_build_all(plan_json: str, runner: str) -> None:
         info = changed_to_build[pkg]
         # Prepare release version (strip .dev).
         # TODO(ADR-0008): version already correct after local rewrite
-        rewrite_pyproject(
+        set_version(
             Path(info.path) / "pyproject.toml",
             strip_dev(info.version),
-            {},
         )
         print(f"\n  {pkg} ({info.path})")
         result = run(

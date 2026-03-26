@@ -20,7 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 
 # Re-export shell utilities so mock.patch("uv_release_monorepo.pipeline.git") still works
-from ..deps import rewrite_pyproject
+from ..deps import pin_dependencies, rewrite_pyproject, set_version
 from ..shell import fatal, gh, git, run, step
 
 # Re-export all public functions from submodules
@@ -30,6 +30,9 @@ from .changes import check_for_existing_wheels, detect_changes, get_existing_whe
 from .discovery import discover_packages, find_release_tags, get_baseline_tags
 from .execute import execute_plan, run_release
 from .plan import apply_bumps, build_plan, write_dep_pins
+
+# Re-export PlanConfig so callers can import from the pipeline package
+from ..models import PlanConfig
 from .publish import generate_release_notes, publish_release
 from .tags import tag_baselines, tag_changed_packages
 
@@ -40,7 +43,9 @@ __all__ = [
     "fatal",
     "gh",
     "git",
+    "pin_dependencies",
     "rewrite_pyproject",
+    "set_version",
     "run",
     "step",
     # Discovery
@@ -65,6 +70,7 @@ __all__ = [
     "generate_release_notes",
     "publish_release",
     # Plan
+    "PlanConfig",
     "apply_bumps",
     "build_plan",
     "write_dep_pins",

@@ -10,6 +10,7 @@ import pytest
 from uv_release_monorepo.models import (
     MatrixEntry,
     PackageInfo,
+    PlanConfig,
     PublishedPackage,
     ReleasePlan,
 )
@@ -1210,7 +1211,7 @@ class TestBuildPlan:
         mock_detect.return_value = ["pkg-a"]
 
         plan, pin_updates = build_plan(
-            rebuild_all=False, matrix={}, uvr_version="0.3.0"
+            PlanConfig(rebuild_all=False, matrix={}, uvr_version="0.3.0")
         )
 
         assert isinstance(plan, ReleasePlan)
@@ -1242,9 +1243,14 @@ class TestBuildPlan:
         mock_detect.return_value = ["pkg-a"]  # only pkg-a changed
 
         plan, _ = build_plan(
-            rebuild_all=False,
-            matrix={"pkg-a": ["ubuntu-latest", "macos-14"], "pkg-b": ["ubuntu-latest"]},
-            uvr_version="0.3.0",
+            PlanConfig(
+                rebuild_all=False,
+                matrix={
+                    "pkg-a": ["ubuntu-latest", "macos-14"],
+                    "pkg-b": ["ubuntu-latest"],
+                },
+                uvr_version="0.3.0",
+            )
         )
 
         # Only pkg-a gets matrix entries; pkg-b is unchanged
@@ -1271,7 +1277,9 @@ class TestBuildPlan:
         mock_find_dev.return_value = {"pkg-a": None}
         mock_detect.return_value = ["pkg-a"]
 
-        plan, _ = build_plan(rebuild_all=False, matrix={}, uvr_version="0.3.0")
+        plan, _ = build_plan(
+            PlanConfig(rebuild_all=False, matrix={}, uvr_version="0.3.0")
+        )
 
         assert len(plan.matrix) == 1
         assert plan.matrix[0].package == "pkg-a"
@@ -1295,7 +1303,9 @@ class TestBuildPlan:
         mock_find_dev.return_value = {"pkg-a": "pkg-a/v1.0.0-dev"}
         mock_detect.return_value = []
 
-        plan, _ = build_plan(rebuild_all=False, matrix={}, uvr_version="0.3.0")
+        plan, _ = build_plan(
+            PlanConfig(rebuild_all=False, matrix={}, uvr_version="0.3.0")
+        )
 
         assert plan.changed == {}
         assert "pkg-a" in plan.unchanged
@@ -1323,7 +1333,9 @@ class TestBuildPlan:
         mock_detect.return_value = ["pkg-a"]
         mock_gen_notes.return_value = "**Released:** pkg-a 1.0.0"
 
-        plan, _ = build_plan(rebuild_all=False, matrix={}, uvr_version="0.3.0")
+        plan, _ = build_plan(
+            PlanConfig(rebuild_all=False, matrix={}, uvr_version="0.3.0")
+        )
 
         assert plan.ci_publish is True
         assert len(plan.publish_matrix) == 1
@@ -1354,7 +1366,9 @@ class TestBuildPlan:
         mock_find_dev.return_value = {"pkg-a": None}
         mock_detect.return_value = ["pkg-a"]
 
-        plan, _ = build_plan(rebuild_all=False, matrix={}, uvr_version="0.3.0")
+        plan, _ = build_plan(
+            PlanConfig(rebuild_all=False, matrix={}, uvr_version="0.3.0")
+        )
 
         assert plan.matrix[0].path == "packages/a"
         assert plan.matrix[0].version == "1.0.0"

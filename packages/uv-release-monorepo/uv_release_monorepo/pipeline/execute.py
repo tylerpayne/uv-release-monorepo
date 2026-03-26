@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-from ..deps import rewrite_pyproject
+from ..deps import set_version
 from ..models import PackageInfo, ReleasePlan
 from ..versions import bump_patch, make_dev, strip_dev
 from .build import build_packages, fetch_unchanged_wheels
@@ -85,7 +85,7 @@ def run_release(
     for name, info in changed.items():
         release_ver = strip_dev(info.version)
         if release_ver != info.version:
-            rewrite_pyproject(Path(info.path) / "pyproject.toml", release_ver, {})
+            set_version(Path(info.path) / "pyproject.toml", release_ver)
 
     # Phase 2: Build
     fetch_unchanged_wheels(unchanged, release_tags)
