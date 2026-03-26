@@ -203,11 +203,13 @@ def cmd_release(args: argparse.Namespace) -> None:
         print()
         print("Packages need to pin new dependencies")
         print("--------------------------------------")
-        files = [f"  {plan.changed[n].path}/pyproject.toml" for n, _ in pin_changes]
-        for fp in files:
-            print(fp)
+        for name, changes in pin_changes:
+            print(f"  {plan.changed[name].path}/pyproject.toml")
+            for old_pin, new_pin in changes:
+                print(f"    - {old_pin}")
+                print(f"    + {new_pin}")
         print()
-        print(f"  uvr write-pins  # updates {len(files)} file(s)")
+        print(f"  uvr write-pins  # updates {len(pin_changes)} file(s)")
         print("  git add -A")
         print("  git commit -m 'chore: update dependency pins'")
         print("  git push")
