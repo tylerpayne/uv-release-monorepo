@@ -178,8 +178,8 @@ class TestPreRelease:
         _, next_ver = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1.dev2")
         v = _pep440(next_ver)
         assert v.is_devrelease
-        # After 1.0.1a0 → bump patch → 1.0.2.dev0
-        assert v == Version("1.0.2.dev0")
+        # After 1.0.1a0 → dev toward next alpha → 1.0.1a1.dev0
+        assert v == Version("1.0.1a1.dev0")
 
     def test_alpha_sorts_before_final(self) -> None:
         release, _ = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1.dev0")
@@ -224,11 +224,12 @@ class TestPostRelease:
         )
         assert _pep440(release) == Version("1.0.0.post1")
 
-    def test_bumps_to_post_dev(self) -> None:
+    def test_bumps_to_next_post_dev(self) -> None:
         _, next_ver = _release_and_bump(_planner("post"), "1.0.0")
         v = _pep440(next_ver)
         assert v.is_devrelease
-        assert v == Version("1.0.0.post0.dev0")
+        # After 1.0.0.post0 → dev toward next post → 1.0.0.post1.dev0
+        assert v == Version("1.0.0.post1.dev0")
 
     def test_post_sorts_after_final(self) -> None:
         release, _ = _release_and_bump(_planner("post"), "1.0.0")
@@ -255,11 +256,14 @@ class TestVersionOrdering:
             "1.0.1.dev0",  # dev release (same version)
             "1.0.1.dev1",  # auto-bump after dev
             "1.0.1a0",  # pre-release alpha
+            "1.0.1a1.dev0",  # auto-bump after alpha
             "1.0.1a1",  # second alpha
+            "1.0.1a2.dev0",  # auto-bump after second alpha
             "1.0.1b0",  # beta
             "1.0.1rc0",  # release candidate
             "1.0.1",  # final release
             "1.0.1.post0",  # post-release
+            "1.0.1.post1.dev0",  # auto-bump after post
             "1.0.2.dev0",  # auto-bump after final
         ]
         parsed = [Version(v) for v in versions]

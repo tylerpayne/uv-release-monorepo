@@ -183,9 +183,9 @@ class ReleasePlanner:
 
         The returned new_version is written directly — no further transformation.
 
-        - After final 1.0.1:     → 1.0.2.dev0
-        - After dev 1.0.1.dev2:  → 1.0.1.dev3
-        - After pre 1.0.1a0:     → 1.0.2.dev0
+        - After final 1.0.1:      → 1.0.2.dev0
+        - After dev 1.0.1.dev2:   → 1.0.1.dev3
+        - After pre 1.0.1a0:      → 1.0.1a1.dev0  (dev toward next pre)
         - After post 1.0.0.post0: → 1.0.0.post0.dev0
         """
         rt = self.config.release_type
@@ -194,8 +194,24 @@ class ReleasePlanner:
         for name, info in changed.items():
             if rt == "dev":
                 bumps[name] = BumpPlan(new_version=bump_dev(info.version))
+            elif rt == "pre":
+                # After 1.0.1a0 → 1.0.1a1.dev0 (increment pre number, add .dev0)
+                kind = self.config.pre_kind
+                # Extract current pre number and increment
+                import re
+
+                m = re.search(rf"{re.escape(kind)}(\d+)$", info.version)
+                n = int(m.group(1)) + 1 if m else 1
+                next_pre = make_pre(info.version, kind, n)
+                bumps[name] = BumpPlan(new_version=make_dev(next_pre))
             elif rt == "post":
-                bumps[name] = BumpPlan(new_version=make_dev(info.version))
+                # After 1.0.0.post0 → 1.0.0.post1.dev0 (dev toward next post)
+                import re
+
+                m = re.search(r"\.post(\d+)$", info.version)
+                n = int(m.group(1)) + 1 if m else 1
+                next_post = make_post(info.version, n)
+                bumps[name] = BumpPlan(new_version=make_dev(next_post))
             else:
                 bumps[name] = BumpPlan(new_version=make_dev(bump_patch(info.version)))
 

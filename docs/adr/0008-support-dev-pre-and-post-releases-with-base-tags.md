@@ -56,8 +56,8 @@ If the current version already matches the release type (e.g., already on `1.0.1
 Finalize always increments the dev version:
 - After final `1.0.1`: bump to `1.0.2.dev0`
 - After dev `1.0.1.dev2`: bump to `1.0.1.dev3`
-- After pre `1.0.1a0`: bump to `1.0.1.dev3` (next devN in sequence)
-- After post `1.0.0.post0`: bump to `1.0.0.post0.dev0`
+- After pre `1.0.1a0`: bump to `1.0.1a1.dev0` (dev toward next pre)
+- After post `1.0.0.post0`: bump to `1.0.0.post1.dev0` (dev toward next post)
 
 ### Version flow
 
@@ -67,16 +67,16 @@ pyproject: 1.0.1.dev0            (auto-bump)          tag: v1.0.1.dev0-base
 pyproject: 1.0.1.dev0            uvr release --dev    tag: v1.0.1.dev0
 pyproject: 1.0.1.dev1            (auto-bump)          tag: v1.0.1.dev1-base
 pyproject: 1.0.1.dev2            uvr release --pre a  tag: v1.0.1a0
-pyproject: 1.0.1.dev3            (auto-bump)          tag: v1.0.1.dev3-base
-pyproject: 1.0.1.dev3            uvr release --pre a  tag: v1.0.1a1  (auto-incremented)
-pyproject: 1.0.1.dev4            (auto-bump)          tag: v1.0.1.dev4-base
-pyproject: 1.0.1.dev4            uvr release          tag: v1.0.1
+pyproject: 1.0.1a1.dev0          (auto-bump)          tag: v1.0.1a1.dev0-base
+pyproject: 1.0.1a1.dev0          uvr release --pre a  tag: v1.0.1a1  (auto-incremented)
+pyproject: 1.0.1a2.dev0          (auto-bump)          tag: v1.0.1a2.dev0-base
+pyproject: 1.0.1a2.dev0          uvr release          tag: v1.0.1
 pyproject: 1.0.2.dev0            (auto-bump)          tag: v1.0.2.dev0-base
   (user checks out v1.0.1 tag, pyproject is 1.0.1)
 pyproject: 1.0.1                 uvr release --post   tag: v1.0.1.post0
-pyproject: 1.0.1.post0.dev0     (auto-bump)          tag: v1.0.1.post0.dev0-base
-pyproject: 1.0.1.post0.dev0     uvr release --post   tag: v1.0.1.post1  (auto-incremented)
 pyproject: 1.0.1.post1.dev0     (auto-bump)          tag: v1.0.1.post1.dev0-base
+pyproject: 1.0.1.post1.dev0     uvr release --post   tag: v1.0.1.post1  (auto-incremented)
+pyproject: 1.0.1.post2.dev0     (auto-bump)          tag: v1.0.1.post2.dev0-base
 ```
 
 ### Consequences
