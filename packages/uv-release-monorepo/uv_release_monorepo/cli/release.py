@@ -67,8 +67,11 @@ def _print_plan(
             if name in plan.changed:
                 info = plan.changed[name]
                 tag = plan.release_tags.get(name)
-                from_ver = version_from_tag(tag) if tag else "(first release)"
-                print(f"  changed    {name.ljust(w)}  {from_ver} -> {info.version}")
+                last_release = version_from_tag(tag) if tag else "(new)"
+                print(
+                    f"  changed    {name.ljust(w)}  "
+                    f"{info.version}  (last release: {last_release})"
+                )
             else:
                 tag = plan.release_tags.get(name)
                 source = tag or "(no prior release)"
