@@ -161,27 +161,25 @@ class ReleasePlanner:
         return result
 
     def _compute_bumps(self, changed: dict[str, PackageInfo]) -> dict[str, BumpPlan]:
-        """Compute the next dev version after release.
+        """Compute the exact next pyproject.toml version after release.
 
-        - After final 1.0.1: bump to 1.0.2 (make_dev applied by finalize)
-        - After dev 1.0.1.dev2: bump_dev → 1.0.1.dev3 (already has .dev)
-        - After pre 1.0.1a0: next devN in sequence
-        - After post 1.0.0.post0: bump to 1.0.0.post0.dev0 → new_version is X.Y.Z.postN
+        The returned new_version is written directly — no further transformation.
+
+        - After final 1.0.1:     → 1.0.2.dev0
+        - After dev 1.0.1.dev2:  → 1.0.1.dev3
+        - After pre 1.0.1a0:     → 1.0.2.dev0
+        - After post 1.0.0.post0: → 1.0.0.post0.dev0
         """
         rt = self.config.release_type
         bumps: dict[str, BumpPlan] = {}
 
         for name, info in changed.items():
             if rt == "dev":
-                # bump_dev: 1.0.1.dev2 → 1.0.1.dev3
                 bumps[name] = BumpPlan(new_version=bump_dev(info.version))
             elif rt == "post":
-                # After post release, dev off the post version
-                # 1.0.0.post0 → new_version=1.0.0.post0 (make_dev applied by finalize → 1.0.0.post0.dev0)
-                bumps[name] = BumpPlan(new_version=info.version)
+                bumps[name] = BumpPlan(new_version=make_dev(info.version))
             else:
-                # final and pre: bump patch from base
-                bumps[name] = BumpPlan(new_version=bump_patch(info.version))
+                bumps[name] = BumpPlan(new_version=make_dev(bump_patch(info.version)))
 
         return bumps
 
@@ -365,13 +363,8 @@ class ReleasePlanner:
         pyproject_paths: list[str] = []
         for name, bump in sorted(bumps.items()):
             info = changed[name]
-            # For dev releases, new_version is already the next devN (e.g. 1.0.1.dev3)
-            # For post releases, new_version is the post version — make_dev adds .dev0
-            # For final/pre, new_version is the bumped patch — make_dev adds .dev0
-            if self.config.release_type == "dev":
-                next_version = bump.new_version
-            else:
-                next_version = make_dev(bump.new_version)
+            # new_version is the exact pyproject.toml version (already includes .dev)
+            next_version = bump.new_version
             pyproject = f"{info.path}/pyproject.toml"
             pyproject_paths.append(pyproject)
 

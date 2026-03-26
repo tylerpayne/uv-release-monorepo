@@ -48,10 +48,8 @@ def _release_and_bump(
 ) -> tuple[str, str]:
     """Run the planner's version computation and return (release_ver, next_dev_ver).
 
-    next_dev_ver includes the make_dev wrapping that finalize applies.
+    next_dev_ver is the exact version that will be written to pyproject.toml.
     """
-    from uv_release_monorepo.shared.versions import make_dev
-
     changed = {"alpha": _pkg(pyproject_version)}
 
     with patch("uv_release_monorepo.shared.plan.git", return_value=existing_tags):
@@ -60,10 +58,7 @@ def _release_and_bump(
     bumps = planner._compute_bumps(versioned)
 
     release_ver = versioned["alpha"].version
-    if planner.config.release_type == "dev":
-        next_ver = bumps["alpha"].new_version
-    else:
-        next_ver = make_dev(bumps["alpha"].new_version)
+    next_ver = bumps["alpha"].new_version
 
     return release_ver, next_ver
 

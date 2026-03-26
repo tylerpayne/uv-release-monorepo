@@ -116,7 +116,7 @@ def _print_plan(
 
         if job == "finalize" and plan.bumps:
             for name, bump in sorted(plan.bumps.items()):
-                print(f"{_D}{name}  -> {bump.new_version}.dev0")
+                print(f"{_D}{name}  -> {bump.new_version}")
 
     print()
 
