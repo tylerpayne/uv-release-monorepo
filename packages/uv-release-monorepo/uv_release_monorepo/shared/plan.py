@@ -96,6 +96,9 @@ class ReleasePlanner:
             changed, bumps, published_versions
         )
 
+        # Validate that no tags we'll create already exist
+        self._check_tag_conflicts(changed, bumps)
+
         result_plan = ReleasePlan(
             uvr_version=self.config.uvr_version,
             python_version=self.config.python_version,
@@ -477,6 +480,41 @@ class ReleasePlanner:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _check_tag_conflicts(
+        self,
+        changed: dict[str, PackageInfo],
+        bumps: dict[str, BumpPlan],
+    ) -> None:
+        """Verify that no tags the plan will create already exist."""
+        from .shell import fatal
+
+        planned_tags: list[str] = []
+
+        # Release tags (only for local — CI publish action creates them)
+        if not self.config.ci_publish:
+            for name, info in changed.items():
+                planned_tags.append(f"{name}/v{info.version}")
+
+        # Baseline tags
+        for name, bump in bumps.items():
+            planned_tags.append(f"{name}/v{bump.new_version}-base")
+
+        # Check which already exist
+        existing = set(git("tag", "--list", check=False).splitlines())
+        conflicts = [t for t in planned_tags if t in existing]
+
+        if conflicts:
+            lines = "\n".join(f"  {t}" for t in sorted(conflicts))
+            fatal(
+                f"These tags already exist and would conflict with the release:\n"
+                f"{lines}\n"
+                f"Delete them first:\n"
+                + "\n".join(
+                    f"  git tag -d {t} && git push --delete origin {t}"
+                    for t in sorted(conflicts)
+                )
+            )
 
     @staticmethod
     def _published_versions(
