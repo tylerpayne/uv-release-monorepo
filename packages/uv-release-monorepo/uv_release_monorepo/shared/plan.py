@@ -133,15 +133,21 @@ class ReleasePlanner:
         if rt == "dev":
             # Publish as-is — the .devN version in pyproject.toml is the release.
             # Error if any package doesn't have a .dev suffix.
-            bad = [n for n, i in changed.items() if not is_dev(i.version)]
+            bad = {
+                n: changed[n] for n in sorted(changed) if not is_dev(changed[n].version)
+            }
             if bad:
                 from .shell import fatal
 
-                names = ", ".join(sorted(bad))
+                lines = "\n".join(
+                    f"  uv version --bump dev --directory {info.path}"
+                    for info in bad.values()
+                )
+                names = ", ".join(bad)
                 fatal(
                     f"--dev release requires a .devN version in pyproject.toml, "
                     f"but these packages have clean versions: {names}\n"
-                    f"  Fix: uv version --bump dev --directory <pkg-path>"
+                    f"Fix with:\n{lines}"
                 )
             for name, info in changed.items():
                 result[name] = info
