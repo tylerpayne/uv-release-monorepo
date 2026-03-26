@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 import argparse
+import io
 import sys
 from pathlib import Path
 
-from ._common import (
-    _discover_packages,
-    _print_dependencies,
-    _print_matrix_status,
-    _read_matrix,
-)
+from ._common import _discover_packages, _read_matrix
+
+
+def _section(title: str) -> None:
+    print()
+    print(title)
+    print("-" * len(title))
 
 
 def cmd_status(args: argparse.Namespace) -> None:
-    """Show the current workflow configuration."""
+    """Show the current workspace status: packages, runners, and what has changed."""
     from uv_release_monorepo.pipeline import (
         detect_changes,
         discover_packages,
@@ -26,43 +28,90 @@ def cmd_status(args: argparse.Namespace) -> None:
     dest = root / args.workflow_dir / "release.yml"
 
     if not dest.exists():
-        print("No release workflow found.")
-        print("Run `uvr init` to create one.")
+        print("No release workflow found. Run `uvr init` to create one.")
         return
 
-    package_runners = _read_matrix(root)
+    # Discover packages (lightweight, no git)
     packages = _discover_packages()
+    if not packages:
+        print("No packages found.")
+        return
+
+    # Runners
+    package_runners = _read_matrix(root)
     if not package_runners:
-        if packages:
-            package_runners = {pkg: ["ubuntu-latest"] for pkg in packages}
+        package_runners = {pkg: ["ubuntu-latest"] for pkg in packages}
 
-    # Detect dirty packages using the pipeline's logic (suppress verbose output)
-    import io
-
+    # Detect dirty packages (suppress pipeline output)
     direct_dirty: set[str] = set()
     transitive_dirty: set[str] = set()
     try:
         old_stdout = sys.stdout
-        captured = io.StringIO()
-        sys.stdout = captured
+        sys.stdout = io.StringIO()
         try:
             pipeline_pkgs = discover_packages()
             baselines = get_baseline_tags(pipeline_pkgs)
             all_dirty = set(detect_changes(pipeline_pkgs, baselines, rebuild_all=False))
         finally:
             sys.stdout = old_stdout
-
-        # Parse captured output to distinguish direct vs transitive
-        for line in captured.getvalue().splitlines():
-            stripped = line.strip()
-            if "dirty (depends on" in stripped:
-                pkg_name = stripped.split(":")[0]
-                transitive_dirty.add(pkg_name)
-        direct_dirty = all_dirty - transitive_dirty
+        direct_dirty = all_dirty.copy()
+        # Transitive: packages dirty only because a dep changed
+        for name in all_dirty:
+            info = pipeline_pkgs.get(name)
+            if info and any(dep in all_dirty for dep in info.deps):
+                if name not in direct_dirty - {
+                    n
+                    for n in all_dirty
+                    if pipeline_pkgs.get(n)
+                    and any(d in all_dirty for d in pipeline_pkgs[n].deps)
+                }:
+                    transitive_dirty.add(name)
     except (SystemExit, Exception):
-        pass  # Non-fatal — just skip dirty markers if detection fails
+        pass
 
-    _print_matrix_status(package_runners)
-    _print_dependencies(
-        packages, direct_dirty=direct_dirty, transitive_dirty=transitive_dirty
-    )
+    # -- Packages --
+    _section("Packages")
+    names = sorted(packages.keys())
+    w = max(len(n) for n in names)
+    for name in names:
+        version, deps = packages[name]
+        if name in direct_dirty:
+            status = "changed  "
+        elif name in transitive_dirty:
+            status = "transitive"
+        else:
+            status = "clean     "
+        dep_str = f"  deps: {', '.join(sorted(deps))}" if deps else ""
+        print(f"  {status}  {name.ljust(w)}  {version}{dep_str}")
+
+    # -- Runners --
+    _section("Runners")
+    for pkg in sorted(package_runners.keys()):
+        runners = package_runners[pkg]
+        if runners == ["ubuntu-latest"]:
+            continue  # skip default
+        print(f"  {pkg}  {', '.join(runners)}")
+    if all(r == ["ubuntu-latest"] for r in package_runners.values()):
+        print("  (all packages use ubuntu-latest)")
+
+    # -- Workflow --
+    _section("Workflow")
+    print(f"  {dest.relative_to(root)}")
+    try:
+        from uv_release_monorepo.cli._yaml import _load_yaml
+        from uv_release_monorepo.models import ReleaseWorkflow
+
+        import warnings
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            doc = _load_yaml(dest)
+            ReleaseWorkflow.model_validate(doc)
+
+        if caught:
+            for w_msg in caught:
+                print(f"  warning: {w_msg.message}")
+        else:
+            print("  valid")
+    except Exception as e:
+        print(f"  invalid: {e}")

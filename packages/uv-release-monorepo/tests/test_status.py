@@ -20,7 +20,7 @@ from tests._helpers import _runners_args, _write_workspace_repo
 class TestStatus:
     """Tests for status command."""
 
-    def test_status_shows_matrix(
+    def test_status_shows_runners(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
@@ -29,22 +29,15 @@ class TestStatus:
         _write_workspace_repo(tmp_path, ["pkg-alpha", "pkg-beta"])
         monkeypatch.chdir(tmp_path)
 
-        # Set up matrix via cmd_runners
-        cmd_runners(_runners_args(package="pkg-alpha", add_value="ubuntu-latest"))
-        cmd_runners(_runners_args(package="pkg-beta", add_value="ubuntu-latest"))
         cmd_runners(_runners_args(package="pkg-beta", add_value="macos-14"))
-
-        # Init workflow (needed for cmd_status to find release.yml)
         cmd_init(argparse.Namespace(workflow_dir=".github/workflows"))
-        capsys.readouterr()  # clear output
+        capsys.readouterr()
 
         cmd_status(argparse.Namespace(workflow_dir=".github/workflows"))
         output = capsys.readouterr().out
 
-        assert "Build matrix:" in output
-        assert "pkg-alpha" in output
+        assert "Runners" in output
         assert "pkg-beta" in output
-        assert "ubuntu-latest" in output
         assert "macos-14" in output
 
     def test_status_no_workflow(
@@ -59,15 +52,13 @@ class TestStatus:
         output = capsys.readouterr().out
 
         assert "No release workflow found" in output
-        assert "uvr init" in output
 
-    def test_status_simple_workflow_shows_packages(
+    def test_status_shows_packages(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Simple workflow status discovers packages and shows them on ubuntu-latest."""
         _write_workspace_repo(tmp_path, ["pkg-alpha", "pkg-beta"])
         monkeypatch.chdir(tmp_path)
 
@@ -77,17 +68,32 @@ class TestStatus:
         cmd_status(argparse.Namespace(workflow_dir=".github/workflows"))
         output = capsys.readouterr().out
 
-        assert "Build matrix:" in output
+        assert "Packages" in output
         assert "pkg-alpha" in output
         assert "pkg-beta" in output
-        assert "ubuntu-latest" in output
+
+    def test_status_shows_workflow_validation(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _write_workspace_repo(tmp_path, ["pkg-alpha"])
+        monkeypatch.chdir(tmp_path)
+
+        cmd_init(argparse.Namespace(workflow_dir=".github/workflows"))
+        capsys.readouterr()
+
+        cmd_status(argparse.Namespace(workflow_dir=".github/workflows"))
+        output = capsys.readouterr().out
+
+        assert "Workflow" in output
 
 
 class TestDiscoverPackages:
     """Tests for _discover_packages()."""
 
     def test_discovers_names_and_deps(self, tmp_path: Path) -> None:
-        """Discovers packages and resolves internal dependencies."""
         _write_workspace_repo(tmp_path, ["pkg-alpha", "pkg-beta"])
         beta_toml = tmp_path / "packages" / "pkg-beta" / "pyproject.toml"
         beta_toml.write_text(
@@ -103,20 +109,18 @@ class TestDiscoverPackages:
         assert result["pkg-beta"] == ("1.0.0", ["pkg-alpha"])
 
     def test_discovers_packages_with_explicit_root(self, tmp_path: Path) -> None:
-        """_discover_packages accepts an explicit root parameter."""
         _write_workspace_repo(tmp_path, ["pkg-x"])
 
         result = _discover_packages(root=tmp_path)
 
         assert "pkg-x" in result
 
-    def test_status_shows_dependency_matrix(
+    def test_status_shows_deps(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Status command shows dependency matrix."""
         _write_workspace_repo(tmp_path, ["pkg-alpha", "pkg-beta"])
         beta_toml = tmp_path / "packages" / "pkg-beta" / "pyproject.toml"
         beta_toml.write_text(
@@ -131,6 +135,7 @@ class TestDiscoverPackages:
         cmd_status(argparse.Namespace(workflow_dir=".github/workflows"))
         output = capsys.readouterr().out
 
-        assert "Dependencies:" in output
+        assert "Packages" in output
         assert "pkg-alpha" in output
         assert "pkg-beta" in output
+        assert "deps:" in output
