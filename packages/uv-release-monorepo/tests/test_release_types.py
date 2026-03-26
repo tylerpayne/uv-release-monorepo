@@ -1,0 +1,278 @@
+"""ADR-0008: PEP 440 release type compliance.
+
+Validates that the version flow from the ADR produces valid PEP 440
+versions at every step — release version, tag, post-release bump, and
+baseline tag.
+"""
+
+from __future__ import annotations
+
+from unittest.mock import patch
+
+from packaging.version import Version
+
+from uv_release_monorepo.shared.models import PackageInfo, PlanConfig
+from uv_release_monorepo.shared.plan import ReleasePlanner
+
+
+def _pep440(v: str) -> Version:
+    """Parse a version string and assert it is PEP 440 compliant."""
+    return Version(v)
+
+
+def _planner(
+    release_type: str = "final",
+    pre_kind: str = "",
+) -> ReleasePlanner:
+    return ReleasePlanner(
+        PlanConfig(
+            rebuild_all=True,
+            matrix={},
+            uvr_version="0.7.1",
+            ci_publish=False,
+            release_type=release_type,
+            pre_kind=pre_kind,
+        )
+    )
+
+
+def _pkg(version: str, deps: list[str] | None = None) -> PackageInfo:
+    return PackageInfo(path="packages/alpha", version=version, deps=deps or [])
+
+
+def _release_and_bump(
+    planner: ReleasePlanner,
+    pyproject_version: str,
+    *,
+    existing_tags: str = "",
+) -> tuple[str, str]:
+    """Run the planner's version computation and return (release_ver, next_dev_ver).
+
+    next_dev_ver includes the make_dev wrapping that finalize applies.
+    """
+    from uv_release_monorepo.shared.versions import make_dev
+
+    changed = {"alpha": _pkg(pyproject_version)}
+
+    with patch("uv_release_monorepo.shared.plan.git", return_value=existing_tags):
+        versioned = planner._compute_release_versions(changed, {})
+
+    bumps = planner._compute_bumps(versioned)
+
+    release_ver = versioned["alpha"].version
+    if planner.config.release_type == "dev":
+        next_ver = bumps["alpha"].new_version
+    else:
+        next_ver = make_dev(bumps["alpha"].new_version)
+
+    return release_ver, next_ver
+
+
+# ---------------------------------------------------------------------------
+# Final releases
+# ---------------------------------------------------------------------------
+
+
+class TestFinalRelease:
+    """uvr release (default) — final PEP 440 release."""
+
+    def test_strips_dev_suffix(self) -> None:
+        release, _ = _release_and_bump(_planner(), "1.0.1.dev0")
+        assert _pep440(release) == Version("1.0.1")
+
+    def test_already_clean(self) -> None:
+        release, _ = _release_and_bump(_planner(), "1.0.1")
+        assert _pep440(release) == Version("1.0.1")
+
+    def test_bumps_to_next_dev(self) -> None:
+        _, next_ver = _release_and_bump(_planner(), "1.0.1.dev0")
+        v = _pep440(next_ver)
+        assert v.is_devrelease
+        assert v > Version("1.0.1")
+
+    def test_next_dev_is_patch_bump(self) -> None:
+        _, next_ver = _release_and_bump(_planner(), "2.3.7.dev0")
+        assert _pep440(next_ver) == Version("2.3.8.dev0")
+
+    def test_release_is_not_pre_or_post(self) -> None:
+        release, _ = _release_and_bump(_planner(), "1.0.0.dev5")
+        v = _pep440(release)
+        assert not v.is_devrelease
+        assert not v.is_prerelease
+        assert not v.is_postrelease
+
+
+# ---------------------------------------------------------------------------
+# Dev releases
+# ---------------------------------------------------------------------------
+
+
+class TestDevRelease:
+    """uvr release --dev — PEP 440 dev release."""
+
+    def test_publishes_as_is(self) -> None:
+        release, _ = _release_and_bump(_planner("dev"), "1.0.1.dev0")
+        assert _pep440(release) == Version("1.0.1.dev0")
+
+    def test_is_dev_release(self) -> None:
+        release, _ = _release_and_bump(_planner("dev"), "1.0.1.dev3")
+        assert _pep440(release).is_devrelease
+
+    def test_bumps_dev_number(self) -> None:
+        _, next_ver = _release_and_bump(_planner("dev"), "1.0.1.dev0")
+        assert _pep440(next_ver) == Version("1.0.1.dev1")
+
+    def test_bumps_higher_dev_number(self) -> None:
+        _, next_ver = _release_and_bump(_planner("dev"), "1.0.1.dev5")
+        assert _pep440(next_ver) == Version("1.0.1.dev6")
+
+    def test_next_dev_sorts_after_release(self) -> None:
+        release, next_ver = _release_and_bump(_planner("dev"), "1.0.1.dev2")
+        assert _pep440(next_ver) > _pep440(release)
+
+
+# ---------------------------------------------------------------------------
+# Pre-releases (alpha, beta, rc)
+# ---------------------------------------------------------------------------
+
+
+class TestPreRelease:
+    """uvr release --pre {a,b,rc} — PEP 440 pre-release."""
+
+    def test_alpha_first(self) -> None:
+        release, _ = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1.dev2")
+        assert _pep440(release) == Version("1.0.1a0")
+
+    def test_alpha_is_prerelease(self) -> None:
+        release, _ = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1.dev0")
+        assert _pep440(release).is_prerelease
+
+    def test_alpha_increments_from_tags(self) -> None:
+        release, _ = _release_and_bump(
+            _planner("pre", pre_kind="a"),
+            "1.0.1.dev3",
+            existing_tags="alpha/v1.0.1a0",
+        )
+        assert _pep440(release) == Version("1.0.1a1")
+
+    def test_beta(self) -> None:
+        release, _ = _release_and_bump(_planner("pre", pre_kind="b"), "1.0.1.dev0")
+        assert _pep440(release) == Version("1.0.1b0")
+
+    def test_rc(self) -> None:
+        release, _ = _release_and_bump(_planner("pre", pre_kind="rc"), "1.0.1.dev0")
+        assert _pep440(release) == Version("1.0.1rc0")
+
+    def test_rc_increments(self) -> None:
+        release, _ = _release_and_bump(
+            _planner("pre", pre_kind="rc"),
+            "1.0.1.dev5",
+            existing_tags="alpha/v1.0.1rc0\nalpha/v1.0.1rc1",
+        )
+        assert _pep440(release) == Version("1.0.1rc2")
+
+    def test_bumps_to_next_dev(self) -> None:
+        _, next_ver = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1.dev2")
+        v = _pep440(next_ver)
+        assert v.is_devrelease
+        # After 1.0.1a0 → bump patch → 1.0.2.dev0
+        assert v == Version("1.0.2.dev0")
+
+    def test_alpha_sorts_before_final(self) -> None:
+        release, _ = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1.dev0")
+        assert _pep440(release) < Version("1.0.1")
+
+    def test_rc_sorts_before_final(self) -> None:
+        release, _ = _release_and_bump(_planner("pre", pre_kind="rc"), "1.0.1.dev0")
+        assert _pep440(release) < Version("1.0.1")
+
+    def test_alpha_sorts_before_beta(self) -> None:
+        a, _ = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1.dev0")
+        b, _ = _release_and_bump(_planner("pre", pre_kind="b"), "1.0.1.dev0")
+        assert _pep440(a) < _pep440(b)
+
+    def test_beta_sorts_before_rc(self) -> None:
+        b, _ = _release_and_bump(_planner("pre", pre_kind="b"), "1.0.1.dev0")
+        rc, _ = _release_and_bump(_planner("pre", pre_kind="rc"), "1.0.1.dev0")
+        assert _pep440(b) < _pep440(rc)
+
+
+# ---------------------------------------------------------------------------
+# Post-releases
+# ---------------------------------------------------------------------------
+
+
+class TestPostRelease:
+    """uvr release --post — PEP 440 post-release."""
+
+    def test_post_first(self) -> None:
+        release, _ = _release_and_bump(_planner("post"), "1.0.0")
+        assert _pep440(release) == Version("1.0.0.post0")
+
+    def test_is_post_release(self) -> None:
+        release, _ = _release_and_bump(_planner("post"), "1.0.0")
+        assert _pep440(release).is_postrelease
+
+    def test_post_increments(self) -> None:
+        release, _ = _release_and_bump(
+            _planner("post"),
+            "1.0.0",
+            existing_tags="alpha/v1.0.0.post0",
+        )
+        assert _pep440(release) == Version("1.0.0.post1")
+
+    def test_bumps_to_post_dev(self) -> None:
+        _, next_ver = _release_and_bump(_planner("post"), "1.0.0")
+        v = _pep440(next_ver)
+        assert v.is_devrelease
+        assert v == Version("1.0.0.post0.dev0")
+
+    def test_post_sorts_after_final(self) -> None:
+        release, _ = _release_and_bump(_planner("post"), "1.0.0")
+        assert _pep440(release) > Version("1.0.0")
+
+    def test_post_sorts_before_next_final(self) -> None:
+        release, _ = _release_and_bump(_planner("post"), "1.0.0")
+        assert _pep440(release) < Version("1.0.1")
+
+
+# ---------------------------------------------------------------------------
+# PEP 440 sort order across the full lifecycle
+# ---------------------------------------------------------------------------
+
+
+class TestVersionOrdering:
+    """The full lifecycle from the ADR produces correctly ordered versions."""
+
+    def test_full_lifecycle_ordering(self) -> None:
+        """Versions from the ADR flow must sort in chronological order."""
+        versions = [
+            "1.0.0",  # final release
+            "1.0.1.dev0",  # auto-bump after final
+            "1.0.1.dev0",  # dev release (same version)
+            "1.0.1.dev1",  # auto-bump after dev
+            "1.0.1a0",  # pre-release alpha
+            "1.0.1a1",  # second alpha
+            "1.0.1b0",  # beta
+            "1.0.1rc0",  # release candidate
+            "1.0.1",  # final release
+            "1.0.1.post0",  # post-release
+            "1.0.2.dev0",  # auto-bump after final
+        ]
+        parsed = [Version(v) for v in versions]
+        # Each version should be >= the previous (some are equal, like dev0 released)
+        for i in range(1, len(parsed)):
+            assert parsed[i] >= parsed[i - 1], (
+                f"{versions[i]} should sort >= {versions[i - 1]}"
+            )
+
+    def test_dev_before_pre_before_final(self) -> None:
+        """dev < alpha < beta < rc < final for same base version."""
+        assert Version("1.0.1.dev0") < Version("1.0.1a0")
+        assert Version("1.0.1a0") < Version("1.0.1b0")
+        assert Version("1.0.1b0") < Version("1.0.1rc0")
+        assert Version("1.0.1rc0") < Version("1.0.1")
+
+    def test_post_after_final(self) -> None:
+        assert Version("1.0.1.post0") > Version("1.0.1")
+        assert Version("1.0.1.post0") < Version("1.0.2")
