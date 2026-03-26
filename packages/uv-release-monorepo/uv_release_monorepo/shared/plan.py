@@ -528,7 +528,7 @@ class ReleasePlanner:
                 post_ver = make_post(
                     ver, next_post_number(list(existing_releases), t.split("/v")[0])
                 )
-                post_versions.append(f"    {t.split('/v')[0]}: {post_ver}")
+                post_versions.append(f"     {t.split('/v')[0]}: {post_ver}")
 
         post_hint = ""
         if post_versions:
