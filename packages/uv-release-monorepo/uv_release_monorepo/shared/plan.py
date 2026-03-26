@@ -140,7 +140,7 @@ class ReleasePlanner:
                 from .shell import fatal
 
                 lines = "\n".join(
-                    f"  uv version --bump dev --directory {info.path}"
+                    f"  uv version {make_dev(info.version)} --directory {info.path}"
                     for info in bad.values()
                 )
                 names = ", ".join(bad)
