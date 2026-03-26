@@ -60,7 +60,7 @@ Commands:
   release       Plan and execute a release (locally or via CI)
   status        Preview the release plan (alias for release --dry-run)
   runners       Manage per-package build runners
-  install       Install a package from GitHub releases
+  install       Install a package from GitHub releases (org/repo/pkg)
   init          Scaffold the GitHub Actions workflow
   validate      Validate an existing release.yml
 
@@ -273,7 +273,7 @@ Run 'uvr <command> --help' for details on a specific command.
     install_parser = subparsers.add_parser("install", help=_H)
     install_parser.add_argument(
         "package",
-        help="Package name, optionally pinned: PKG[@VERSION]",
+        help="Install spec: ORG/REPO/PKG[@VERSION]",
     )
     install_parser.set_defaults(func=cmd_install)
 

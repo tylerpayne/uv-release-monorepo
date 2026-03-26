@@ -7,7 +7,7 @@ Push-button releases for [uv](https://github.com/astral-sh/uv) monorepos. Rebuil
 ```bash
 uv tool install uv-release-monorepo
 uvr init        # generate .github/workflows/release.yml
-uvr release     # detect changes, show plan, prompt before dispatch to CI
+uvr release     # detect changes, show plan, dispatch to CI
 ```
 
 ## Releasing
@@ -52,8 +52,8 @@ uvr runners my-pkg --clear         # reset to default (ubuntu-latest)
 ## Installing from releases
 
 ```bash
-uvr install my-pkg           # latest release
-uvr install my-pkg@1.2.3     # specific version
+uvr install myorg/myrepo/my-pkg           # latest release
+uvr install myorg/myrepo/my-pkg@1.2.3     # specific version
 ```
 
 ## How it works

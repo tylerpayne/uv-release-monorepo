@@ -25,34 +25,20 @@ class TestCmdInstall:
     def test_installs_package_and_deps(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Installs the requested package and its transitive internal deps."""
-        _write_workspace_repo(tmp_path, ["pkg-alpha", "pkg-beta"])
-        beta_toml = tmp_path / "packages" / "pkg-beta" / "pyproject.toml"
-        beta_toml.write_text(
-            '[project]\nname = "pkg-beta"\nversion = "1.0.0"\n'
-            'dependencies = ["pkg-alpha>=1.0"]\n'
-        )
-        monkeypatch.chdir(tmp_path)
-
+        """Installs the requested package from a remote repo."""
         calls: list[list[str]] = []
 
         def fake_run(cmd, **kwargs):
             calls.append(list(cmd))
             result = MagicMock()
             result.returncode = 0
-            result.stdout = json.dumps(
-                [
-                    {"tagName": "pkg-alpha/v1.0.0"},
-                    {"tagName": "pkg-beta/v1.0.0"},
-                ]
-            )
+            result.stdout = json.dumps([{"tagName": "pkg-beta/v1.0.0"}])
             if "download" in cmd:
                 dir_idx = cmd.index("--dir") + 1
                 whl_dir = Path(cmd[dir_idx])
                 whl_dir.mkdir(parents=True, exist_ok=True)
-                # Create fake wheels matching the glob pkg_name-*.whl
                 tag_idx = cmd.index("download") + 1
-                tag = cmd[tag_idx]  # e.g. "pkg-alpha/v1.0.0"
+                tag = cmd[tag_idx]
                 pkg_name = tag.split("/v")[0].replace("-", "_")
                 ver = tag.split("/v")[1]
                 (whl_dir / f"{pkg_name}-{ver}-py3-none-any.whl").write_bytes(b"")
@@ -60,21 +46,17 @@ class TestCmdInstall:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        args = argparse.Namespace(package="pkg-beta")
+        args = argparse.Namespace(package="acme/my-repo/pkg-beta")
         cmd_install(args)
 
-        # Should have called uv pip install with two wheels (alpha + beta)
         install_calls = [c for c in calls if c[:3] == ["uv", "pip", "install"]]
         assert len(install_calls) == 1
-        assert len(install_calls[0]) == 5  # uv pip install <alpha.whl> <beta.whl>
+        assert len(install_calls[0]) == 4  # uv pip install <beta.whl>
 
-    def test_fails_for_unknown_package(
+    def test_fails_for_bare_package(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Exits with error when package is not in workspace."""
-        _write_workspace_repo(tmp_path, ["pkg-alpha"])
-        monkeypatch.chdir(tmp_path)
-
+        """Exits with error when package spec has no org/repo."""
         args = argparse.Namespace(package="nonexistent-pkg")
 
         with pytest.raises(SystemExit):
@@ -83,10 +65,7 @@ class TestCmdInstall:
     def test_pinned_version_uses_specific_tag(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """PACKAGE@VERSION uses that exact release tag."""
-        _write_workspace_repo(tmp_path, ["pkg-alpha"])
-        monkeypatch.chdir(tmp_path)
-
+        """ORG/REPO/PACKAGE@VERSION uses that exact release tag."""
         download_tags: list[str] = []
 
         def fake_run(cmd, **kwargs):
@@ -104,7 +83,7 @@ class TestCmdInstall:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
 
-        args = argparse.Namespace(package="pkg-alpha@0.1.5")
+        args = argparse.Namespace(package="acme/my-repo/pkg-alpha@0.1.5")
         cmd_install(args)
 
         assert "pkg-alpha/v0.1.5" in download_tags
@@ -177,17 +156,13 @@ class TestCmdInstallRemote:
 class TestParseInstallSpec:
     """Tests for _parse_install_spec()."""
 
-    def test_local_package(self) -> None:
-        gh_repo, package, version = _parse_install_spec("pkg-alpha")
-        assert gh_repo is None
-        assert package == "pkg-alpha"
-        assert version is None
+    def test_bare_package_raises(self) -> None:
+        with pytest.raises(SystemExit):
+            _parse_install_spec("pkg-alpha")
 
-    def test_local_package_with_version(self) -> None:
-        gh_repo, package, version = _parse_install_spec("pkg-alpha@1.2.3")
-        assert gh_repo is None
-        assert package == "pkg-alpha"
-        assert version == "1.2.3"
+    def test_bare_package_with_version_raises(self) -> None:
+        with pytest.raises(SystemExit):
+            _parse_install_spec("pkg-alpha@1.2.3")
 
     def test_remote_package(self) -> None:
         gh_repo, package, version = _parse_install_spec("acme/my-monorepo/pkg-alpha")
