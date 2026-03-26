@@ -121,9 +121,8 @@ jobs:
       if: fromJSON(inputs.plan).changed['uv-release-monorepo'] != null
       env:
         GH_TOKEN: ${{ github.token }}
-        UVR_PLAN: ${{ inputs.plan }}
+        VERSION: ${{ fromJSON(inputs.plan).changed['uv-release-monorepo'].version }}
       run: |
-        VERSION=$(echo "$UVR_PLAN" | python3 -c "import sys,json; print(json.load(sys.stdin)['changed']['uv-release-monorepo']['version'])")
         mkdir -p dist
         gh release download "uv-release-monorepo/v${VERSION}" --repo "${{ github.repository }}" --pattern "uv_release_monorepo-*.whl" --dir dist
     - uses: pypa/gh-action-pypi-publish@release/v1
