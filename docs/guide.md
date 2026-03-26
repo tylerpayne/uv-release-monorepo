@@ -177,9 +177,9 @@ The four hook jobs (`pre-build`, `post-build`, `pre-release`, `post-release`) de
 
 **finalize** — Bumps patch versions, commits, creates dev baseline tags, and pushes to main.
 
-### Frozen core jobs
+### Core job defaults
 
-The steps, strategy, and `if` conditions on `build`, `publish`, and `finalize` are frozen — `ReleaseWorkflow.model_validate()` rejects any modifications to these fields. This guarantees the core pipeline behaves identically across all projects. Hook jobs are the intended extension points.
+The `build`, `publish`, and `finalize` jobs have default steps, strategy, and `if` conditions that drive the release pipeline. You can modify these if needed (e.g., installing uvr from a local checkout for dogfooding), but `uvr validate` will emit a warning for each changed field so you're aware of the divergence from defaults.
 
 ## Mixed-Architecture Builds
 
@@ -240,7 +240,7 @@ There is no separate hooks CLI — you edit `.github/workflows/release.yml` dire
 uvr validate
 ```
 
-This loads the YAML, validates it through the `ReleaseWorkflow` model, and writes it back. If your edits broke the schema (e.g., you accidentally modified a frozen field on a core job), validation will fail with an error.
+This checks the YAML against the `ReleaseWorkflow` model. Invalid structure (missing jobs, wrong types) produces errors. Modified core job fields (build/publish/finalize steps, strategy, if) produce warnings.
 
 ### Example: gate releases on tests
 
