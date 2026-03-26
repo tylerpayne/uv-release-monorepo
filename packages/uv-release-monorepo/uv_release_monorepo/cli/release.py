@@ -127,7 +127,14 @@ def _print_plan(
                         if max_layer > 0:
                             print(f"{_D}  layer {layer}")
                         for e in pkgs:
-                            print(f"{_D}    {e.package.ljust(bw)}  {e.version}")
+                            cur = plan.current_versions.get(e.package, e.version)
+                            if cur != e.version:
+                                print(
+                                    f"{_D}    {e.package.ljust(bw)}  "
+                                    f"{cur} -> {e.version}"
+                                )
+                            else:
+                                print(f"{_D}    {e.package.ljust(bw)}  {e.version}")
 
         if job == "publish" and plan.publish_matrix:
             for entry in plan.publish_matrix:
