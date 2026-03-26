@@ -183,21 +183,25 @@ def cmd_release(args: argparse.Namespace) -> None:
         print("Nothing changed since last release. Use --rebuild-all to rebuild all.")
         return
 
+    # Auto-skip hook jobs that only have the default no-op step
+    if where == "ci":
+        _HOOK_PHASES = ["pre-build", "post-build", "pre-release", "post-release"]
+        workflow_path = root / args.workflow_dir / "release.yml"
+        if workflow_path.exists():
+            workflow_doc = _load_yaml(workflow_path)
+            model = ReleaseWorkflow.model_validate(workflow_doc)
+            jobs_dict = model.model_dump(by_alias=True, exclude_none=True).get(
+                "jobs", {}
+            )
+            for phase in _HOOK_PHASES:
+                job = jobs_dict.get(phase, {})
+                if job.get("steps") == _NOOP_STEPS:
+                    skipped.add(phase)
+
     # Dry run: print summary and exit
     if getattr(args, "dry_run", False):
         _print_plan(plan, skipped)
         return
-
-    # Auto-skip hook jobs that only have the default no-op step (CI mode)
-    if where == "ci":
-        _HOOK_PHASES = ["pre-build", "post-build", "pre-release", "post-release"]
-        workflow_doc = _load_yaml(root / args.workflow_dir / "release.yml")
-        model = ReleaseWorkflow.model_validate(workflow_doc)
-        jobs_dict = model.model_dump(by_alias=True, exclude_none=True).get("jobs", {})
-        for phase in _HOOK_PHASES:
-            job = jobs_dict.get(phase, {})
-            if job.get("steps") == _NOOP_STEPS:
-                skipped.add(phase)
 
     # Set skip/reuse fields on the plan
     if skipped:
