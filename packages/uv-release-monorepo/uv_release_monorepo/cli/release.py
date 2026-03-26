@@ -194,31 +194,6 @@ def cmd_release(args: argparse.Namespace) -> None:
     # Read stored matrix from pyproject.toml
     package_runners = _read_matrix(root)
 
-    # Local mode: warn if packages have platform-specific runners configured
-    if where == "local" and package_runners:
-        import platform
-
-        system = platform.system().lower()
-        compatible_prefixes = {
-            "darwin": "macos",
-            "linux": "ubuntu",
-            "windows": "windows",
-        }
-        local_prefix = compatible_prefixes.get(system, "")
-        incompatible: list[str] = []
-        for pkg, runners in package_runners.items():
-            for r in runners:
-                if not r.startswith(local_prefix):
-                    incompatible.append(f"  {pkg}: {r}")
-        if incompatible:
-            lines = "\n".join(incompatible)
-            _fatal(
-                f"--where local but these packages have runners for a different "
-                f"platform ({system}):\n{lines}\n"
-                f"Use 'uvr release' (CI mode) instead, or remove custom runners:\n"
-                f"  uvr runners <pkg> --clear"
-            )
-
     # Build the plan locally (suppress discovery output)
     import io
     import sys
@@ -249,6 +224,33 @@ def cmd_release(args: argparse.Namespace) -> None:
     if not plan.changed:
         print("Nothing changed since last release. Use --rebuild-all to rebuild all.")
         return
+
+    # Local mode: warn if packages have platform-specific runners configured
+    if where == "local" and package_runners:
+        import platform
+
+        system = platform.system().lower()
+        compatible_prefixes = {
+            "darwin": "macos",
+            "linux": "ubuntu",
+            "windows": "windows",
+        }
+        local_prefix = compatible_prefixes.get(system, "")
+        incompatible: list[str] = []
+        for pkg, runners in package_runners.items():
+            if pkg not in plan.changed:
+                continue
+            for r in runners:
+                if not r.startswith(local_prefix):
+                    incompatible.append(f"  {pkg}: {r}")
+        if incompatible:
+            lines = "\n".join(incompatible)
+            _fatal(
+                f"--where local but these changed packages have runners for a "
+                f"different platform ({system}):\n{lines}\n"
+                f"Use 'uvr release' (CI mode) instead, or remove custom runners:\n"
+                f"  uvr runners <pkg> --clear"
+            )
 
     # Auto-skip hook jobs that only have the default no-op step
     if where == "ci":
