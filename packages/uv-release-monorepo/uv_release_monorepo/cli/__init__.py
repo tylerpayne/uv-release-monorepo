@@ -21,7 +21,6 @@ from .init import cmd_init, cmd_validate
 from .install import _find_latest_release_tag, _parse_install_spec, cmd_install
 from .release import cmd_release
 from .runners import cmd_runners
-from .status import cmd_status
 
 __all__ = [
     "_MISSING",
@@ -46,7 +45,6 @@ __all__ = [
     "cmd_install",
     "cmd_release",
     "cmd_runners",
-    "cmd_status",
     "cmd_validate",
 ]
 
@@ -60,7 +58,7 @@ Lazy monorepo wheel builder — only rebuilds what changed.
 
 Commands:
   release       Plan and execute a release (locally or via CI)
-  status        Show workspace status: packages, runners, changes
+  status        Preview the release plan (alias for release --dry-run)
   runners       Manage per-package build runners
   install       Install a package from GitHub releases
   init          Scaffold the GitHub Actions workflow
@@ -232,14 +230,29 @@ Run 'uvr <command> --help' for details on a specific command.
     )
     release_parser.set_defaults(func=cmd_release)
 
-    # status
+    # status (alias for release --dry-run)
+    def _cmd_status(a: argparse.Namespace) -> None:
+        a.where = "ci"
+        a.dry_run = True
+        a.plan = None
+        a.rebuild_all = False
+        a.yes = False
+        a.no_push = False
+        a.python_version = "3.12"
+        a.skip = None
+        a.skip_to = None
+        a.reuse_run = None
+        a.reuse_release = False
+        a.json = False
+        cmd_release(a)
+
     status_parser = subparsers.add_parser("status", help=_H)
     status_parser.add_argument(
         "--workflow-dir",
         default=".github/workflows",
         help="Workflow directory (default: %(default)s).",
     )
-    status_parser.set_defaults(func=cmd_status)
+    status_parser.set_defaults(func=_cmd_status)
 
     # runners
     runners_parser = subparsers.add_parser("runners", help=_H)
