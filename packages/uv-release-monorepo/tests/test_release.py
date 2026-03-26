@@ -122,9 +122,13 @@ class TestCmdRelease:
         cmd_release(_release_args(yes=True))
 
         calls = [c for c in mock_subprocess_run.call_args_list]
-        trigger_call = calls[1][0][0]  # second call (first is git status)
-        assert "gh" in trigger_call
-        assert "workflow" in trigger_call
-        assert "run" in trigger_call
+        # Find the gh workflow run call
+        trigger_call = None
+        for c in calls:
+            args = c[0][0]
+            if args[0] == "gh" and "workflow" in args:
+                trigger_call = args
+                break
+        assert trigger_call is not None
         joined = " ".join(str(a) for a in trigger_call)
         assert "plan=" in joined

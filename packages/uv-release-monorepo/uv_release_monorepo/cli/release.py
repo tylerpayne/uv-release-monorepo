@@ -164,6 +164,23 @@ def cmd_release(args: argparse.Namespace) -> None:
                 + result.stdout
             )
 
+        # Ensure local HEAD matches remote
+        subprocess.run(["git", "fetch", "--quiet"], capture_output=True, check=False)
+        local = subprocess.run(
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True
+        ).stdout.strip()
+        remote = subprocess.run(
+            ["git", "rev-parse", "@{u}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip()
+        if remote and local != remote:
+            _fatal(
+                "Local HEAD differs from remote. Pull or push first:\n"
+                "  git pull --rebase && git push"
+            )
+
         workflow_path = root / args.workflow_dir / "release.yml"
         if not workflow_path.exists():
             _fatal("No release workflow found. Run `uvr init` first.")
