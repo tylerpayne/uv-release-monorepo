@@ -8,7 +8,6 @@ from pathlib import Path
 
 from ..shared.graph import topo_layers
 from ..shared.models import JOB_ORDER, ReleasePlan, ReleaseWorkflow, _NOOP_STEPS
-from ..shared.versions import version_from_tag
 from ._common import __version__, _fatal, _read_matrix
 from ._yaml import _load_yaml
 
@@ -75,9 +74,7 @@ def _print_plan(
                 rel_strs[name] = plan.changed[name].version
             else:
                 cur_strs[name] = plan.unchanged[name].version
-                tag = plan.release_tags.get(name)
-                ver = version_from_tag(tag) if tag else "—"
-                rel_strs[name] = ver
+                rel_strs[name] = "—"
         cw = max(len(v) for v in cur_strs.values())
 
         # Header
