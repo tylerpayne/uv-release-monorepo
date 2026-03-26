@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .deps import dep_canonical_name
 from .models import PackageInfo
-from .shell import fatal, git, step
+from .shell import fatal, gh, git, step
 from .toml import (
     get_all_dependency_strings,
     get_project_name,
@@ -97,41 +97,54 @@ def discover_packages(root: Path | None = None) -> dict[str, PackageInfo]:
 
 
 def find_release_tags(packages: dict[str, PackageInfo]) -> dict[str, str | None]:
-    """Find the most recent release tag for each package.
+    """Find the most recent GitHub release tag for each package.
 
-    The release tag is the most recent ``{name}/v{version}`` tag whose
-    version is less than or equal to the package's current base version.
-    Baseline tags (``-base``) are excluded.
+    Queries actual GitHub releases (not git tags) to find the most recent
+    release whose version is less than the package's current base version.
+    This ensures baseline tags and unreleased tags are never matched.
 
     Args:
         packages: Map of package name -> PackageInfo.
 
     Returns:
-        Map of package name to its last release tag, or None if no tag exists.
+        Map of package name to its last release tag, or None if no release exists.
     """
     from .versions import parse_version
 
     step("Finding last release tags")
 
+    # Fetch all GitHub release tag names in one call
+    release_tag_names: set[str] = set()
+    raw = gh("release", "list", "--json", "tagName", "--limit", "1000", check=False)
+    if raw:
+        import json
+
+        try:
+            for entry in json.loads(raw):
+                release_tag_names.add(entry["tagName"])
+        except (json.JSONDecodeError, KeyError):
+            pass
+
     release_tags: dict[str, str | None] = {}
     for name, info in packages.items():
         current_base = parse_version(info.version)
-        tags = git("tag", "--list", f"{name}/v*", "--sort=-v:refname", check=False)
-        found = None
-        for tag in tags.splitlines():
-            if tag.endswith("-base"):
+        # Filter to this package's releases, sorted by version descending
+        pkg_releases = []
+        prefix = f"{name}/v"
+        for tag in release_tag_names:
+            if not tag.startswith(prefix):
                 continue
-            # Extract version and check it's a real release at or below current
-            tag_ver_str = tag.split("/v", 1)[-1]
+            tag_ver_str = tag[len(prefix) :]
             try:
                 tag_ver = parse_version(tag_ver_str)
             except (ValueError, TypeError):
                 continue
-            if tag_ver <= current_base:
-                found = tag
-                break
-        release_tags[name] = found
-        print(f"  {name}: {found or '<none>'}")
+            if tag_ver < current_base:
+                pkg_releases.append((tag_ver, tag))
+        # Pick the highest version
+        pkg_releases.sort(reverse=True)
+        release_tags[name] = pkg_releases[0][1] if pkg_releases else None
+        print(f"  {name}: {release_tags[name] or '<none>'}")
 
     return release_tags
 

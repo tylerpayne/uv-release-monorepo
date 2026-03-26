@@ -37,78 +37,89 @@ class TestFindReleaseTags:
     def sample_packages(self) -> dict[str, PackageInfo]:
         """Create sample packages for testing."""
         return {
-            "pkg-a": PackageInfo(path="packages/a", version="1.0.0", deps=[]),
-            "pkg-b": PackageInfo(path="packages/b", version="1.0.0", deps=[]),
+            "pkg-a": PackageInfo(path="packages/a", version="1.0.1.dev0", deps=[]),
+            "pkg-b": PackageInfo(path="packages/b", version="1.0.1.dev0", deps=[]),
         }
 
-    @patch("uv_release_monorepo.shared.discovery.git")
+    @patch("uv_release_monorepo.shared.discovery.gh")
     @patch("uv_release_monorepo.shared.discovery.step")
-    def test_returns_per_package_tags(
+    def test_returns_per_package_releases(
         self,
         mock_step: MagicMock,
-        mock_git: MagicMock,
+        mock_gh: MagicMock,
         sample_packages: dict[str, PackageInfo],
     ) -> None:
-        """Returns the most recent release tag for each package."""
-        mock_git.side_effect = [
-            "pkg-a/v1.0.0\npkg-a/v0.9.0",  # Tags for pkg-a
-            "pkg-b/v1.0.0",  # Tags for pkg-b
-        ]
+        """Returns the most recent release for each package."""
+        import json
+
+        mock_gh.return_value = json.dumps(
+            [
+                {"tagName": "pkg-a/v1.0.0"},
+                {"tagName": "pkg-a/v0.9.0"},
+                {"tagName": "pkg-b/v1.0.0"},
+            ]
+        )
 
         result = find_release_tags(sample_packages)
 
         assert result == {"pkg-a": "pkg-a/v1.0.0", "pkg-b": "pkg-b/v1.0.0"}
 
-    @patch("uv_release_monorepo.shared.discovery.git")
+    @patch("uv_release_monorepo.shared.discovery.gh")
     @patch("uv_release_monorepo.shared.discovery.step")
     def test_returns_none_for_new_packages(
         self,
         mock_step: MagicMock,
-        mock_git: MagicMock,
+        mock_gh: MagicMock,
         sample_packages: dict[str, PackageInfo],
     ) -> None:
-        """Returns None for packages with no tags."""
-        mock_git.side_effect = [
-            "pkg-a/v1.0.0",  # pkg-a has a tag
-            "",  # pkg-b has no tags
-        ]
+        """Returns None for packages with no releases."""
+        import json
+
+        mock_gh.return_value = json.dumps([{"tagName": "pkg-a/v1.0.0"}])
 
         result = find_release_tags(sample_packages)
 
         assert result == {"pkg-a": "pkg-a/v1.0.0", "pkg-b": None}
 
-    @patch("uv_release_monorepo.shared.discovery.git")
+    @patch("uv_release_monorepo.shared.discovery.gh")
     @patch("uv_release_monorepo.shared.discovery.step")
     def test_all_new_packages(
         self,
         mock_step: MagicMock,
-        mock_git: MagicMock,
+        mock_gh: MagicMock,
         sample_packages: dict[str, PackageInfo],
     ) -> None:
-        """When no packages have tags, all return None."""
-        mock_git.return_value = ""
+        """When no releases exist, all return None."""
+        mock_gh.return_value = ""
 
         result = find_release_tags(sample_packages)
 
         assert result == {"pkg-a": None, "pkg-b": None}
 
-    @patch("uv_release_monorepo.shared.discovery.git")
+    @patch("uv_release_monorepo.shared.discovery.gh")
     @patch("uv_release_monorepo.shared.discovery.step")
-    def test_skips_base_tags(
+    def test_excludes_future_versions(
         self,
         mock_step: MagicMock,
-        mock_git: MagicMock,
-        sample_packages: dict[str, PackageInfo],
+        mock_gh: MagicMock,
     ) -> None:
-        """Baseline (-base) tags are excluded from release tags."""
-        mock_git.side_effect = [
-            "pkg-a/v1.0.1-base\npkg-a/v1.0.0",  # -base tag skipped, release tag found
-            "pkg-b/v2.0.1-base",  # Only a -base tag
-        ]
+        """Releases with versions >= current base are excluded."""
+        import json
 
-        result = find_release_tags(sample_packages)
+        packages = {
+            "pkg-a": PackageInfo(path="packages/a", version="1.0.1.dev0", deps=[]),
+        }
+        mock_gh.return_value = json.dumps(
+            [
+                {"tagName": "pkg-a/v1.0.1"},
+                {"tagName": "pkg-a/v1.0.0"},
+            ]
+        )
 
-        assert result == {"pkg-a": "pkg-a/v1.0.0", "pkg-b": None}
+        result = find_release_tags(packages)
+
+        # v1.0.1 is >= current base 1.0.1, so only v1.0.0 matches
+        assert result == {"pkg-a": "pkg-a/v1.0.0"}
 
 
 class TestGetBaselineTags:
