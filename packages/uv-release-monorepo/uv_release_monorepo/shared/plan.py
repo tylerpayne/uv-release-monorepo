@@ -517,16 +517,19 @@ class ReleasePlanner:
         conflicts = sorted(set(tag_conflicts + release_conflicts))
         if conflicts:
             lines = "\n".join(f"  {t}" for t in conflicts)
-            fix_cmds = []
-            for t in conflicts:
-                if t in existing_releases:
-                    fix_cmds.append(f"  gh release delete {t} --yes")
-                if t in existing_tags:
-                    fix_cmds.append(f"  git tag -d {t} && git push --delete origin {t}")
+            delete_cmds = "\n".join(
+                f"     gh release delete {t} --yes && "
+                f"git tag -d {t} && git push --delete origin {t}"
+                for t in conflicts
+            )
             fatal(
                 f"These tags/releases already exist and would conflict:\n"
-                f"{lines}\n"
-                f"Delete them first:\n" + "\n".join(fix_cmds)
+                f"{lines}\n\n"
+                f"To resolve, either:\n"
+                f"  1. Use --post to publish a post-release of the existing version\n"
+                f"  2. Bump to a new version: uv version <new-version> --directory <pkg>\n"
+                f"  3. Delete the conflicting tags/releases (last resort):\n"
+                f"{delete_cmds}"
             )
 
     @staticmethod
