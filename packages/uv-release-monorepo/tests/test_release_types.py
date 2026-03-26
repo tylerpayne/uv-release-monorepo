@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
 from packaging.version import Version
 
 from uv_release_monorepo.shared.models import PackageInfo, PlanConfig
@@ -124,6 +125,13 @@ class TestDevRelease:
     def test_next_dev_sorts_after_release(self) -> None:
         release, next_ver = _release_and_bump(_planner("dev"), "1.0.1.dev2")
         assert _pep440(next_ver) > _pep440(release)
+
+    def test_rejects_clean_version(self) -> None:
+        """--dev on a non-.dev version errors with instructions."""
+        planner = _planner("dev")
+        changed = {"alpha": _pkg("1.0.1")}
+        with pytest.raises(SystemExit):
+            planner._compute_release_versions(changed, {})
 
 
 # ---------------------------------------------------------------------------

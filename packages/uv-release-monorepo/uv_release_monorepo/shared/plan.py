@@ -25,6 +25,7 @@ from .versions import (
     base_version,
     bump_dev,
     bump_patch,
+    is_dev,
     make_dev,
     make_post,
     make_pre,
@@ -130,7 +131,18 @@ class ReleasePlanner:
         result: dict[str, PackageInfo] = {}
 
         if rt == "dev":
-            # Publish as-is — the .devN version in pyproject.toml is the release
+            # Publish as-is — the .devN version in pyproject.toml is the release.
+            # Error if any package doesn't have a .dev suffix.
+            bad = [n for n, i in changed.items() if not is_dev(i.version)]
+            if bad:
+                from .shell import fatal
+
+                names = ", ".join(sorted(bad))
+                fatal(
+                    f"--dev release requires a .devN version in pyproject.toml, "
+                    f"but these packages have clean versions: {names}\n"
+                    f"  Fix: uv version --bump dev --directory <pkg-path>"
+                )
             for name, info in changed.items():
                 result[name] = info
         elif rt == "pre":
