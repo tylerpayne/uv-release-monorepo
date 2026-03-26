@@ -128,7 +128,20 @@ def cmd_release(args: argparse.Namespace) -> None:
     # Late import to allow patching via ``uv_release_monorepo.cli.build_plan``.
     import uv_release_monorepo.cli as _cli
 
+    import subprocess
+
     root = Path.cwd()
+
+    # Ensure clean worktree
+    result = subprocess.run(
+        ["git", "status", "--porcelain"], capture_output=True, text=True
+    )
+    if result.stdout.strip():
+        _fatal(
+            "Working tree is not clean. Commit or stash your changes first.\n"
+            + result.stdout
+        )
+
     workflow_path = root / args.workflow_dir / "release.yml"
     if not workflow_path.exists():
         _fatal("No release workflow found. Run `uvr init` first.")

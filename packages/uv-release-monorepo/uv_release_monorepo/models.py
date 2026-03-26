@@ -251,15 +251,16 @@ def _needs_validator(*required: str):
     return _check
 
 
-def _frozen(default: Any) -> AfterValidator:
+def _frozen(default: Any, *, job: str = "", field: str = "") -> AfterValidator:
     """AfterValidator that warns when a value differs from the expected default."""
     import warnings
+
+    label = f"{job}.{field}" if job and field else "core job field"
 
     def _check(v: Any) -> Any:
         if v != default:
             warnings.warn(
-                "core job field was modified from its default -- "
-                "this may break the release pipeline",
+                f"{label} was modified from its default",
                 UserWarning,
                 stacklevel=2,
             )
@@ -299,17 +300,17 @@ _BUILD_STRATEGY = {
 class BuildJob(Job):
     """The build job. Frozen -- immutable fields enforced per-field."""
 
-    if_condition: Annotated[str | None, _frozen(_BUILD_IF)] = Field(
-        default=_BUILD_IF, alias="if"
+    if_condition: Annotated[str | None, _frozen(_BUILD_IF, job="build", field="if")] = (
+        Field(default=_BUILD_IF, alias="if")
     )
-    strategy: Annotated[dict, _frozen(_BUILD_STRATEGY)] = Field(
-        default_factory=lambda: dict(_BUILD_STRATEGY)
+    strategy: Annotated[
+        dict, _frozen(_BUILD_STRATEGY, job="build", field="strategy")
+    ] = Field(default_factory=lambda: dict(_BUILD_STRATEGY))
+    runs_on: Annotated[str, _frozen(_BUILD_RUNS_ON, job="build", field="runs-on")] = (
+        Field(default=_BUILD_RUNS_ON, alias="runs-on")
     )
-    runs_on: Annotated[str, _frozen(_BUILD_RUNS_ON)] = Field(
-        default=_BUILD_RUNS_ON, alias="runs-on"
-    )
-    steps: Annotated[list[dict], _frozen(_BUILD_STEPS)] = Field(
-        default_factory=lambda: list(_BUILD_STEPS)
+    steps: Annotated[list[dict], _frozen(_BUILD_STEPS, job="build", field="steps")] = (
+        Field(default_factory=lambda: list(_BUILD_STEPS))
     )
     _ensure_needs = _needs_validator("pre-build")
 
@@ -344,15 +345,15 @@ _PUBLISH_STRATEGY = {
 class PublishJob(Job):
     """The publish job. Frozen -- immutable fields enforced per-field."""
 
-    if_condition: Annotated[str | None, _frozen(_PUBLISH_IF)] = Field(
-        default=_PUBLISH_IF, alias="if"
-    )
-    strategy: Annotated[dict, _frozen(_PUBLISH_STRATEGY)] = Field(
-        default_factory=lambda: dict(_PUBLISH_STRATEGY)
-    )
-    steps: Annotated[list[dict], _frozen(_PUBLISH_STEPS)] = Field(
-        default_factory=lambda: list(_PUBLISH_STEPS)
-    )
+    if_condition: Annotated[
+        str | None, _frozen(_PUBLISH_IF, job="publish", field="if")
+    ] = Field(default=_PUBLISH_IF, alias="if")
+    strategy: Annotated[
+        dict, _frozen(_PUBLISH_STRATEGY, job="publish", field="strategy")
+    ] = Field(default_factory=lambda: dict(_PUBLISH_STRATEGY))
+    steps: Annotated[
+        list[dict], _frozen(_PUBLISH_STEPS, job="publish", field="steps")
+    ] = Field(default_factory=lambda: list(_PUBLISH_STEPS))
     _ensure_needs = _needs_validator("pre-release")
 
 
@@ -362,12 +363,12 @@ _FINALIZE_IF = f"${{{{ always() && !failure() && !contains({_P}.skip, 'finalize'
 class FinalizeJob(Job):
     """The finalize job. Frozen -- immutable fields enforced per-field."""
 
-    if_condition: Annotated[str | None, _frozen(_FINALIZE_IF)] = Field(
-        default=_FINALIZE_IF, alias="if"
-    )
-    steps: Annotated[list[dict], _frozen(_FINALIZE_STEPS)] = Field(
-        default_factory=lambda: list(_FINALIZE_STEPS)
-    )
+    if_condition: Annotated[
+        str | None, _frozen(_FINALIZE_IF, job="finalize", field="if")
+    ] = Field(default=_FINALIZE_IF, alias="if")
+    steps: Annotated[
+        list[dict], _frozen(_FINALIZE_STEPS, job="finalize", field="steps")
+    ] = Field(default_factory=lambda: list(_FINALIZE_STEPS))
     _ensure_needs = _needs_validator("publish")
 
 

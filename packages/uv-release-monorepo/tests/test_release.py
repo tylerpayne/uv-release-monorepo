@@ -114,7 +114,14 @@ class TestCmdRelease:
         plan = _make_plan(changed=["pkg-alpha"])
         mock_build_plan.return_value = plan, []
 
-        mock_subprocess_run.return_value = MagicMock(returncode=0, stdout="[]")
+        def _fake_run(cmd, **kwargs):
+            # git status --porcelain returns empty (clean tree)
+            if cmd[0] == "git":
+                return MagicMock(returncode=0, stdout="")
+            # gh commands return success
+            return MagicMock(returncode=0, stdout="[]")
+
+        mock_subprocess_run.side_effect = _fake_run
 
         args = argparse.Namespace(
             rebuild_all=False,
@@ -131,7 +138,7 @@ class TestCmdRelease:
 
         # Verify gh workflow run was called with -f plan=...
         calls = [c for c in mock_subprocess_run.call_args_list]
-        trigger_call = calls[0][0][0]  # first positional arg of first call
+        trigger_call = calls[1][0][0]  # second call (first is git status)
         assert "gh" in trigger_call
         assert "workflow" in trigger_call
         assert "run" in trigger_call
