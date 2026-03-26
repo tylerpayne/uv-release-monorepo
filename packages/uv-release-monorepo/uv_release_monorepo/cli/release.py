@@ -113,7 +113,7 @@ def _print_plan(
         # Show publish entries inline under publish
         if job == "publish" and plan.publish_matrix:
             for entry in plan.publish_matrix:
-                print(f"{_D}{entry.package}  {entry.version}  -> {entry.tag}")
+                print(f"{_D}{entry.tag}")
 
         # Show version bumps inline under finalize
         if job == "finalize" and plan.bumps:
