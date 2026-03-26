@@ -837,11 +837,13 @@ def build_plan(
 
 
 def write_dep_pins(plan: ReleasePlan) -> list[tuple[str, list[tuple[str, str]]]]:
-    """Write pending dep pin updates to disk.
+    """Write pending dep pin updates via ``uv add --package PKG --frozen DEP>=VER``.
 
     Returns list of (package_name, [(old_spec, new_spec), ...]) for each
-    package whose pyproject.toml was modified.
+    package whose dependencies were updated.
     """
+    import subprocess
+
     # Compute published versions from the plan
     published_versions: dict[str, str] = {}
     for name, info in plan.changed.items():
@@ -852,6 +854,7 @@ def write_dep_pins(plan: ReleasePlan) -> list[tuple[str, list[tuple[str, str]]]]
             tag.split("/v")[-1] if tag and "/v" in tag else plan.unchanged[name].version
         )
 
+    # Detect what needs updating (dry run)
     result: list[tuple[str, list[tuple[str, str]]]] = []
     for name, info in plan.changed.items():
         dep_versions = {
@@ -860,10 +863,24 @@ def write_dep_pins(plan: ReleasePlan) -> list[tuple[str, list[tuple[str, str]]]]
             if dep in published_versions
         }
         changes = update_dep_pins(
-            Path(info.path) / "pyproject.toml", dep_versions, write=True
+            Path(info.path) / "pyproject.toml", dep_versions, write=False
         )
         if changes:
             result.append((name, changes))
+
+    # Apply via uv add
+    for name, changes in result:
+        for _old_spec, new_spec in changes:
+            cmd = [
+                "uv",
+                "add",
+                "--package",
+                name,
+                "--frozen",
+                new_spec,
+            ]
+            subprocess.run(cmd, check=True)
+
     return result
 
 
