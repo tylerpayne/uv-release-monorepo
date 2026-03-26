@@ -62,20 +62,29 @@ def _print_plan(
     _section("Packages")
     all_names = sorted({*plan.changed, *plan.unchanged})
     if all_names:
-        w = max(len(n) for n in all_names)
+        nw = max(len(n) for n in all_names)
+        # Compute version column width for alignment
+        ver_strs: dict[str, str] = {}
+        for name in all_names:
+            if name in plan.changed:
+                ver_strs[name] = plan.changed[name].version
+            else:
+                tag = plan.release_tags.get(name)
+                ver_strs[name] = f"reuse from {tag or '(no prior release)'}"
+        vw = max(len(v) for v in ver_strs.values())
         for name in all_names:
             if name in plan.changed:
                 info = plan.changed[name]
                 tag = plan.release_tags.get(name)
-                last_release = version_from_tag(tag) if tag else "(new)"
+                last_release = version_from_tag(tag) if tag else "none"
                 print(
-                    f"  changed    {name.ljust(w)}  "
-                    f"{info.version}  (last release: {last_release})"
+                    f"  changed    {name.ljust(nw)}  "
+                    f"{info.version.ljust(vw)}  (last release: {last_release})"
                 )
             else:
                 tag = plan.release_tags.get(name)
                 source = tag or "(no prior release)"
-                print(f"  unchanged  {name.ljust(w)}  reuse from {source}")
+                print(f"  unchanged  {name.ljust(nw)}  reuse from {source}")
 
     # -- Pipeline (job-by-job with details inline) --
     _section("Pipeline")
@@ -98,6 +107,9 @@ def _print_plan(
                 by_runner: dict[str, list] = {}
                 for me in plan.matrix:
                     by_runner.setdefault(me.runner, []).append(me)
+                # Column width for package names in build section
+                all_build_pkgs = [e.package for e in plan.matrix]
+                bw = max(len(p) for p in all_build_pkgs) if all_build_pkgs else 0
                 for runner, runner_entries in sorted(by_runner.items()):
                     print(f"{_D}{runner}")
                     for layer in range(max_layer + 1):
@@ -111,15 +123,16 @@ def _print_plan(
                         if max_layer > 0:
                             print(f"{_D}  layer {layer}")
                         for e in pkgs:
-                            print(f"{_D}    {e.package} ({e.version})")
+                            print(f"{_D}    {e.package.ljust(bw)}  {e.version}")
 
         if job == "publish" and plan.publish_matrix:
             for entry in plan.publish_matrix:
                 print(f"{_D}{entry.tag}")
 
         if job == "finalize" and plan.bumps:
+            fw = max(len(n) for n in plan.bumps)
             for name, bump in sorted(plan.bumps.items()):
-                print(f"{_D}{name}  -> {bump.new_version}")
+                print(f"{_D}{name.ljust(fw)}  -> {bump.new_version}")
 
     print()
 
