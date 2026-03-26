@@ -31,7 +31,7 @@ To regenerate the workflow (discarding any manual edits but preserving existing 
 uvr init
 ```
 
-Running `uvr init` on an existing `release.yml` loads it, validates it through `ReleaseWorkflow.model_validate()`, and writes it back. This catches structural errors and normalizes formatting without losing your customizations.
+`uvr init` creates a fresh workflow from the model defaults. If `release.yml` already exists, it refuses without `--force`. Use `uvr validate` to check an existing file.
 
 To regenerate and discard hooks too:
 
@@ -234,10 +234,10 @@ You can also add an explicit step to export plan data to environment variables, 
 
 ### Editing hooks directly in release.yml
 
-There is no separate hooks CLI — you edit `.github/workflows/release.yml` directly. Each hook job has a `steps:` array you can customize. After editing, run `uvr init` to validate your changes:
+There is no separate hooks CLI — you edit `.github/workflows/release.yml` directly. Each hook job has a `steps:` array you can customize. After editing, run `uvr validate` to check your changes:
 
 ```bash
-uvr init
+uvr validate
 ```
 
 This loads the YAML, validates it through the `ReleaseWorkflow` model, and writes it back. If your edits broke the schema (e.g., you accidentally modified a frozen field on a core job), validation will fail with an error.
@@ -403,17 +403,17 @@ permissions:
 
 The `environment: pypi` on the job ties it to a [GitHub deployment environment](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment) configured with your PyPI trusted publisher. The `if:` condition on each step ensures they only run when the target package was actually released.
 
-After editing, run `uvr init` to validate:
+After editing, run `uvr validate` to check:
 
 ```bash
-uvr init
+uvr validate
 ```
 
 ## Command Reference
 
 ### `uvr init`
 
-Scaffold or validate the GitHub Actions release workflow.
+Scaffold the GitHub Actions release workflow.
 
 ```
 uvr init [--force] [--workflow-dir DIR]
@@ -421,10 +421,24 @@ uvr init [--force] [--workflow-dir DIR]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--force` | — | Regenerate workflow from scratch, discarding existing hooks |
+| `--force` | — | Overwrite existing `release.yml` with fresh defaults |
 | `--workflow-dir` | `.github/workflows` | Directory to write the workflow file |
 
-When run on an existing `release.yml`, loads and validates it through `ReleaseWorkflow.model_validate()`, then writes it back. This catches schema errors without losing customizations.
+Fails if `release.yml` already exists (use `--force` to overwrite). After generating, edit the file to add your hook steps, then run `uvr validate` to check.
+
+### `uvr validate`
+
+Validate an existing `release.yml` against the `ReleaseWorkflow` model.
+
+```
+uvr validate [--workflow-dir DIR]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--workflow-dir` | `.github/workflows` | Directory containing the workflow file |
+
+Reports errors for invalid structure (missing required jobs, wrong types) and warnings for modified core job fields (build, publish, finalize steps/strategy).
 
 ### `uvr runners`
 

@@ -61,7 +61,7 @@ Each `--add` assigns a runner to a package. Use `--remove` and `--clear` to mana
 
 ### Customize the workflow
 
-`uvr init` generates `release.yml` from the `ReleaseWorkflow` model with all 7 pipeline jobs. Edit the file directly to customize hook jobs — add steps, set environment, change runners. Run `uvr init` to validate.
+`uvr init` generates `release.yml` from the `ReleaseWorkflow` model with all 7 pipeline jobs. Edit the file directly to customize hook jobs — add steps, set environment, change runners. Run `uvr validate` to check your changes.
 
 ### Example: pre-build checks and PyPI publish
 
