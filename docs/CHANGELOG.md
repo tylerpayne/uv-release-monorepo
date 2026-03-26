@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Add `--dev`, `--pre {a,b,rc}`, and `--post` flags to `uvr release` for PEP 440 dev, pre, and post releases (ADR-0008)
+- Add `uvr build`, `uvr finalize`, `uvr set-version`, and `uvr pin-deps` subcommands (previously separate `uvr-ci` entry point)
+- Add `--where {ci,local}` flag to `uvr release` — replaces the separate `uvr run` command
+- Add `--dry-run` flag to `uvr release` for previewing the release plan without changes
+- Add `PlanCommand` model for pre-computed shell commands in the release plan
+- Add `ReleasePlanner` class as the single entry point for creating release plans
+
+### Changed
+- **BREAKING**: Remove `uvr run` command — use `uvr release --where local` instead
+- **BREAKING**: Remove `uvr-ci` / `uvr-steps` entry point — all subcommands are now under `uvr`
+- **BREAKING**: Rename CI subcommand `build-all` to `build`
+- **BREAKING**: Bump `ReleasePlan` schema version to 6 — plans include pre-computed command sequences
+- Change `ReleaseExecutor` to a pure command runner — all domain logic moved to `ReleasePlanner`
+- Change `find_release_tags` to query GitHub releases instead of git tags
+- Change release tag lookup to only match versions below the current base version
+- Change `BumpPlan.new_version` to store the exact pyproject.toml version (includes `.dev0` suffix)
+- Improve `uvr --help` with grouped command listing (Commands, CI steps, Low-level)
+- Improve `uvr release --help` with argument groups (mode, build, dispatch, local, output)
+- Column-align package, build, and finalize sections in dry-run output
+
+### Removed
+- Remove `pipeline/` re-export package — all imports use `shared.*` directly
+- Remove `ci/` package — step functions inlined into CLI
+- Remove `run_release()`, `execute_plan()`, `bump_versions()`, `collect_published_state()` functions
+- Remove legacy `-dev` baseline tag handling
+
+### Fixed
+- Fix `--dry-run` not showing auto-skipped no-op hook jobs
+- Fix `--dev` release silently publishing a clean version when pyproject.toml has no `.dev` suffix
+- Fix double `.dev0.dev0` in post-release bump versions
+- Fix pre-release bump producing a patch bump instead of next pre-release `.dev0` (e.g. `a0` → `a1.dev0`)
+- Fix post-release bump producing `.post0.dev0` instead of `.post1.dev0`
+
 ## [v0.6.1] - 2026-03-25
 
 ### Added
