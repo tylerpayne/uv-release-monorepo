@@ -52,12 +52,12 @@ class TestFindReleaseTags:
         """Returns the most recent release tag for each package."""
         mock_git.side_effect = [
             "pkg-a/v1.0.0\npkg-a/v0.9.0",  # Tags for pkg-a
-            "pkg-b/v2.0.0",  # Tags for pkg-b
+            "pkg-b/v1.0.0",  # Tags for pkg-b
         ]
 
         result = find_release_tags(sample_packages)
 
-        assert result == {"pkg-a": "pkg-a/v1.0.0", "pkg-b": "pkg-b/v2.0.0"}
+        assert result == {"pkg-a": "pkg-a/v1.0.0", "pkg-b": "pkg-b/v1.0.0"}
 
     @patch("uv_release_monorepo.shared.discovery.git")
     @patch("uv_release_monorepo.shared.discovery.step")

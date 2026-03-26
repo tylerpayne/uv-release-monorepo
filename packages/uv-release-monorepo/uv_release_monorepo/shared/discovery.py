@@ -99,9 +99,9 @@ def discover_packages(root: Path | None = None) -> dict[str, PackageInfo]:
 def find_release_tags(packages: dict[str, PackageInfo]) -> dict[str, str | None]:
     """Find the most recent release tag for each package.
 
-    Tags follow the pattern {package-name}/v{version}. Baseline tags
-    ({package-name}/v{version}-base) are excluded. Release tags are used
-    to fetch unchanged wheels from prior GitHub releases.
+    The release tag is the most recent ``{name}/v{version}`` tag whose
+    version is less than or equal to the package's current base version.
+    Baseline tags (``-base``, legacy ``-dev``) are excluded.
 
     Args:
         packages: Map of package name -> PackageInfo.
@@ -109,16 +109,25 @@ def find_release_tags(packages: dict[str, PackageInfo]) -> dict[str, str | None]
     Returns:
         Map of package name to its last release tag, or None if no tag exists.
     """
+    from .versions import parse_version
+
     step("Finding last release tags")
 
     release_tags: dict[str, str | None] = {}
-    for name in packages:
-        # Get tags matching this package's pattern, sorted by version
+    for name, info in packages.items():
+        current_base = parse_version(info.version)
         tags = git("tag", "--list", f"{name}/v*", "--sort=-v:refname", check=False)
-        # Find the first tag that is NOT a -base baseline
         found = None
         for tag in tags.splitlines():
-            if not tag.endswith("-base"):
+            if tag.endswith("-base") or tag.endswith("-dev"):
+                continue
+            # Extract version and check it's a real release at or below current
+            tag_ver_str = tag.split("/v", 1)[-1]
+            try:
+                tag_ver = parse_version(tag_ver_str)
+            except (ValueError, TypeError):
+                continue
+            if tag_ver <= current_base:
                 found = tag
                 break
         release_tags[name] = found
