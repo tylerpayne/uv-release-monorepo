@@ -86,7 +86,7 @@ pyproject: 1.0.1.post1.dev0     (auto-bump)          tag: v1.0.1.post1.dev0-base
 - Good, because the `-base` suffix frees up `-dev` for actual dev release tags
 - Good, because `--dev` releases require zero version changes (publish as-is)
 - Bad, because renaming `-dev` to `-base` requires migrating existing repos (backward compat fallback mitigates this)
-- Bad, because post-release flow creates compound versions (`1.0.0.post0.dev0`) that look unusual
+- Neutral, because post-release flow creates compound versions (`1.0.0.post0.dev0`) — valid PEP 440, but unfamiliar to some users
 - Bad, because `uvr release --post` requires the pyproject version to be a plain final release (no `.dev`, no `a/b/rc`) — user must check out a release tag first. This is correct per PEP 440 (post-releases are tied to final releases only).
 
 ## Links
