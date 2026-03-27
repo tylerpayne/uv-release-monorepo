@@ -20,13 +20,14 @@ class TestCmdRunners:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """No matrix configured shows default message."""
+        """No matrix configured shows default runners for all packages."""
         _write_workspace_repo(tmp_path, ["pkg-alpha"])
         monkeypatch.chdir(tmp_path)
 
         cmd_runners(_runners_args())
         output = capsys.readouterr().out
-        assert "No runners configured" in output
+        assert "pkg-alpha" in output
+        assert "ubuntu-latest" in output
 
     def test_add_runner(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Adds a runner for a package, verifiable via _read_matrix."""

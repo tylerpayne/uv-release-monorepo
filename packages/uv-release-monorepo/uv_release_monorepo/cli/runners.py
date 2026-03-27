@@ -6,7 +6,9 @@ import argparse
 from pathlib import Path
 
 from ..shared.toml import get_uvr_matrix, load_pyproject, save_pyproject, set_uvr_matrix
-from ._common import _fatal, _print_matrix_status
+from ._common import _discover_package_names, _fatal, _print_matrix_status
+
+_DEFAULT_RUNNERS: list[list[str]] = [["ubuntu-latest"]]
 
 
 def cmd_runners(args: argparse.Namespace) -> None:
@@ -24,12 +26,11 @@ def cmd_runners(args: argparse.Namespace) -> None:
     remove_val: str | None = getattr(args, "remove_value", None)
     clear: bool = getattr(args, "clear", False)
 
-    # No package -> show all
+    # No package -> show all (fill in defaults for unconfigured packages)
     if not pkg:
-        if not matrix:
-            print("No runners configured. All packages build on ubuntu-latest.")
-        else:
-            _print_matrix_status(matrix)
+        all_packages = _discover_package_names()
+        effective = {name: matrix.get(name, _DEFAULT_RUNNERS) for name in all_packages}
+        _print_matrix_status(effective)
         return
 
     # --clear
@@ -74,9 +75,6 @@ def cmd_runners(args: argparse.Namespace) -> None:
         return
 
     # Read
-    runners = matrix.get(pkg)
-    if runners:
-        for r in runners:
-            print(f"  [{', '.join(r)}]")
-    else:
-        print(f"'{pkg}' has no runners configured (defaults to [ubuntu-latest]).")
+    runners = matrix.get(pkg, _DEFAULT_RUNNERS)
+    for r in runners:
+        print(f"  [{', '.join(r)}]")

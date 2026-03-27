@@ -21,19 +21,23 @@ def _read_matrix(root: Path) -> dict[str, list[list[str]]]:
 
 
 def _print_matrix_status(package_runners: dict[str, list[list[str]]]) -> None:
-    """Print each package's build runners as a list."""
+    """Print the build matrix grouped by runner."""
     if not package_runners:
         return
 
-    names = sorted(package_runners.keys())
-    w = max(len(n) for n in names)
+    # Invert: runner -> sorted list of packages
+    runner_to_pkgs: dict[str, list[str]] = {}
+    for pkg, runners in package_runners.items():
+        for labels in runners:
+            key = f"[{', '.join(labels)}]"
+            runner_to_pkgs.setdefault(key, []).append(pkg)
 
     print()
     print("Build matrix:")
-    for pkg in names:
-        runners = package_runners[pkg]
-        runner_strs = [f"[{', '.join(r)}]" for r in runners]
-        print(f"  {pkg.ljust(w)}  \u2192  {', '.join(runner_strs)}")
+    for runner in sorted(runner_to_pkgs):
+        print(f"  {runner}")
+        for pkg in sorted(runner_to_pkgs[runner]):
+            print(f"    {pkg}")
 
 
 def _discover_packages(root: Path | None = None) -> dict[str, tuple[str, list[str]]]:
