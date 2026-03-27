@@ -311,7 +311,8 @@ def _frozen(default: Any, *, job: str = "", field: str = "") -> AfterValidator:
 _BUILD_IF = f"${{{{ !contains({_P}.skip, 'build') }}}}"
 _BUILD_RUNS_ON = "${{ matrix.runner }}"
 _BUILD_STRATEGY = {
-    "fail-fast": False,
+    # Avoid messy partial --reuse-build merges: all runners succeed or all runners fail
+    "fail-fast": True,
     "matrix": {"runner": f"${{{{ {_P}.runners }}}}"},
 }
 
@@ -411,6 +412,13 @@ JOB_ORDER: list[str] = [
     "finalize",
 ]
 """Canonical ordering of jobs in the release workflow pipeline."""
+
+FROZEN_FIELDS: dict[str, list[str]] = {
+    "build": ["if", "strategy", "runs-on", "steps"],
+    "release": ["if", "strategy", "steps"],
+    "finalize": ["if", "steps"],
+}
+"""Core job fields that ``uvr init --upgrade`` overwrites from the fresh template."""
 
 
 class ReleasePlan(BaseModel):
