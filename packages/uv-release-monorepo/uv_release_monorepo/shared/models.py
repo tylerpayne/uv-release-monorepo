@@ -424,13 +424,6 @@ JOB_ORDER: list[str] = [
 ]
 """Canonical ordering of jobs in the release workflow pipeline."""
 
-FROZEN_FIELDS: dict[str, list[str]] = {
-    "build": ["if", "strategy", "runs-on", "steps"],
-    "release": ["if", "strategy", "steps"],
-    "finalize": ["if", "steps"],
-}
-"""Core job fields that ``uvr init --upgrade`` overwrites from the fresh template."""
-
 
 class ReleasePlan(BaseModel):
     """Self-contained release plan generated locally and executed by CI.
@@ -439,9 +432,14 @@ class ReleasePlan(BaseModel):
     what their last release tags were, which runners to use for each build,
     and the pre-computed version bumps. The executor never needs to run git
     commands, change detection, or version arithmetic.
+
+    Extra keys are allowed (``extra="allow"``) so that user hooks can attach
+    custom data that travels through the pipeline to CI.
     """
 
-    schema_version: int = 7
+    model_config = ConfigDict(extra="allow")
+
+    schema_version: int = 8
     uvr_version: str
     uvr_install: str = "uv-release-monorepo"
     python_version: str = "3.12"

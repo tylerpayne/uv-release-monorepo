@@ -22,7 +22,7 @@ from .init import cmd_init, cmd_upgrade, cmd_validate
 from .install import _find_latest_release_tag, _parse_install_spec, cmd_install
 from .release import cmd_release
 from .runners import cmd_runners
-from .skill import cmd_skill_init
+from .skill import cmd_skill_init, cmd_skill_upgrade
 
 __all__ = [
     "_MISSING",
@@ -326,18 +326,41 @@ Run 'uvr <command> --help' for details on a specific command.
         help="Copy Claude skills to .claude/skills/",
         description="Copy bundled Claude Code skills into your project.",
     )
-    skill_init_parser.add_argument(
+    _skill_mut = skill_init_parser.add_mutually_exclusive_group()
+    _skill_mut.add_argument(
         "--force",
         action="store_true",
         help="Overwrite existing skill files.",
     )
-    skill_init_parser.set_defaults(func=cmd_skill_init)
+    _skill_mut.add_argument(
+        "--upgrade",
+        action="store_true",
+        help="Three-way merge bundled skills into existing files.",
+    )
+    skill_init_parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="Apply upgrade without interactive review.",
+    )
+
+    def _cmd_skill_dispatch(a: argparse.Namespace) -> None:
+        if getattr(a, "upgrade", False):
+            cmd_skill_upgrade(a)
+        else:
+            cmd_skill_init(a)
+
+    skill_init_parser.set_defaults(func=_cmd_skill_dispatch)
 
     # -- CI steps ------------------------------------------------------
 
     def _cmd_build(a: argparse.Namespace) -> None:
+        from pathlib import Path
+        from ..shared.hooks import load_hook
+
         plan = ReleasePlan.model_validate_json(_resolve_plan_json(a.plan))
-        ReleaseExecutor(plan).build(runner=a.runner)
+        hook = load_hook(Path.cwd())
+        ReleaseExecutor(plan, hook).build(runner=a.runner)
 
     build_parser = subparsers.add_parser("build", help=_H)
     build_parser.add_argument(
@@ -349,8 +372,12 @@ Run 'uvr <command> --help' for details on a specific command.
     build_parser.set_defaults(func=_cmd_build)
 
     def _cmd_finalize(a: argparse.Namespace) -> None:
+        from pathlib import Path
+        from ..shared.hooks import load_hook
+
         plan = ReleasePlan.model_validate_json(_resolve_plan_json(a.plan))
-        ReleaseExecutor(plan).finalize()
+        hook = load_hook(Path.cwd())
+        ReleaseExecutor(plan, hook).finalize()
 
     finalize_parser = subparsers.add_parser("finalize", help=_H)
     finalize_parser.add_argument(

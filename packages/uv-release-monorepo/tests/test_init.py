@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
 from uv_release_monorepo.cli import cmd_init, cmd_upgrade
-from uv_release_monorepo.cli._yaml import _load_yaml
 
 from tests._helpers import _write_workspace_repo
 
@@ -139,113 +139,51 @@ class TestUpgrade:
         cmd_upgrade(_upgrade_args())
         assert "Already up to date" in capsys.readouterr().out
 
-    def test_updates_matched_steps(
+    def test_preserves_user_customization(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Steps matched by name are updated; unmatched user steps survive."""
+        """User additions are preserved in the three-way merge."""
         wf = _init_and_get_path(tmp_path, monkeypatch)
-        doc = _load_yaml(wf)
-        # Tamper a named step
-        for step in doc["jobs"]["finalize"]["steps"]:
-            if step.get("name") == "Finalize release":
-                step["run"] = "echo tampered"
-        # Add a custom user step
-        doc["jobs"]["finalize"]["steps"].append(
-            {"name": "My custom step", "run": "echo hello"}
+        # Add a custom line that doesn't exist in the template
+        text = wf.read_text()
+        text = text.replace(
+            "name: Release Wheels",
+            "name: Release Wheels\n# Custom user comment",
         )
-        from uv_release_monorepo.cli._yaml import _write_yaml
-
-        _write_yaml(wf, doc)
+        wf.write_text(text)
         _git_commit_wf(wf)
 
         cmd_upgrade(_upgrade_args())
 
-        upgraded = _load_yaml(wf)
-        steps = upgraded["jobs"]["finalize"]["steps"]
-        # Matched step was restored
-        finalize_step = next(s for s in steps if s.get("name") == "Finalize release")
-        assert finalize_step["run"] != "echo tampered"
-        # Custom step preserved
-        assert any(s.get("name") == "My custom step" for s in steps)
+        result = wf.read_text()
+        # User addition preserved (may be in a conflict block, but present)
+        assert "Custom user comment" in result
 
-    def test_preserves_extra_jobs(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        wf = _init_and_get_path(tmp_path, monkeypatch)
-        doc = _load_yaml(wf)
-        doc["jobs"]["my-custom-job"] = {"runs-on": "ubuntu-latest", "steps": []}
-        # Tamper a frozen field to ensure the upgrade has something to do
-        doc["jobs"]["finalize"]["steps"] = [{"run": "echo tampered"}]
-        from uv_release_monorepo.cli._yaml import _write_yaml
-
-        _write_yaml(wf, doc)
-        _git_commit_wf(wf)
-
-        cmd_upgrade(_upgrade_args())
-
-        upgraded = _load_yaml(wf)
-        assert "my-custom-job" in upgraded["jobs"]
-
-    def test_preserves_extra_triggers(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        wf = _init_and_get_path(tmp_path, monkeypatch)
-        doc = _load_yaml(wf)
-        doc["on"]["push"] = {"branches": ["main"]}
-        doc["jobs"]["finalize"]["steps"] = [{"run": "echo tampered"}]
-        from uv_release_monorepo.cli._yaml import _write_yaml
-
-        _write_yaml(wf, doc)
-        _git_commit_wf(wf)
-
-        cmd_upgrade(_upgrade_args())
-
-        upgraded = _load_yaml(wf)
-        assert "push" in upgraded["on"]
-
-    def test_preserves_custom_env(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        wf = _init_and_get_path(tmp_path, monkeypatch)
-        doc = _load_yaml(wf)
-        doc["jobs"]["build"]["env"] = {"MY_VAR": "hello"}
-        doc["jobs"]["finalize"]["steps"] = [{"run": "echo tampered"}]
-        from uv_release_monorepo.cli._yaml import _write_yaml
-
-        _write_yaml(wf, doc)
-        _git_commit_wf(wf)
-
-        cmd_upgrade(_upgrade_args())
-
-        upgraded = _load_yaml(wf)
-        assert upgraded["jobs"]["build"]["env"]["MY_VAR"] == "hello"
-
-    @patch("uv_release_monorepo.cli.init.subprocess.run")
     def test_declined_no_changes(
         self,
-        mock_run: MagicMock,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         wf = _init_and_get_path(tmp_path, monkeypatch)
-        doc = _load_yaml(wf)
-        # Tamper a matched step so the merge produces a real diff
-        for step in doc["jobs"]["finalize"]["steps"]:
-            if step.get("id") == "finalize":
-                step["run"] = "echo tampered"
-        from uv_release_monorepo.cli._yaml import _write_yaml
-
-        _write_yaml(wf, doc)
+        # Add a user line so there's a diff to decline
+        text = wf.read_text().replace(
+            "name: Release Wheels",
+            "name: My Custom Release",
+        )
+        wf.write_text(text)
+        _git_commit_wf(wf)
         original = wf.read_text()
 
-        # Simulate git checkout -p reverting all hunks (restores original)
-        def fake_checkout_p(cmd, **kwargs):
-            if "checkout" in cmd and "-p" in cmd:
-                wf.write_text(original)
-            return MagicMock(returncode=0)
+        _real_run = subprocess.run
 
-        mock_run.side_effect = fake_checkout_p
+        def fake_run(cmd, **kwargs):
+            if isinstance(cmd, list) and "checkout" in cmd and "-p" in cmd:
+                wf.write_text(original)
+                return MagicMock(returncode=0)
+            return _real_run(cmd, **kwargs)
+
+        monkeypatch.setattr("uv_release_monorepo.cli.init.subprocess.run", fake_run)
         cmd_upgrade(_upgrade_args(yes=False))
 
         assert wf.read_text() == original

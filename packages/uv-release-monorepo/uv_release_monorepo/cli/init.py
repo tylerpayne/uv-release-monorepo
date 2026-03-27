@@ -3,14 +3,70 @@
 from __future__ import annotations
 
 import argparse
-import copy
 import subprocess
+import tempfile
 from pathlib import Path
 
-from ..shared.models import FROZEN_FIELDS, ReleaseWorkflow
-from ..shared.toml import load_pyproject
+from ..shared.models import ReleaseWorkflow
+from ..shared.toml import load_pyproject, save_pyproject
 from ._common import _fatal
 from ._yaml import _dump_yaml, _load_yaml, _write_yaml
+
+
+def _git_commit_and_record(
+    root: Path,
+    files: list[str],
+    message: str,
+    config_key: str,
+) -> None:
+    """Stage *files*, commit, and store the commit hash in [tool.uvr.config].
+
+    Prompts the user for confirmation before committing.
+    """
+    from ..shared.gitops import open_repo
+
+    rel_files = [str(Path(f).relative_to(root)) for f in files]
+    print()
+    print("The following will be committed:")
+    for f in rel_files:
+        print(f"  git add {f}")
+    print(f'  git commit -m "{message}"')
+    print()
+    try:
+        answer = input("Commit? [Y/n] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("\nSkipped commit.")
+        return
+    if answer and answer != "y":
+        print("Skipped commit.")
+        return
+
+    repo = open_repo(str(root))
+    for f in rel_files:
+        repo.index.add(f)
+    repo.index.write()
+
+    sig = repo.default_signature
+    tree = repo.index.write_tree()
+    parent = repo.head.peel().id
+    commit_oid = repo.create_commit("HEAD", sig, sig, message, tree, [parent])
+
+    # Store the commit hash in [tool.uvr.config]
+    pyproject = root / "pyproject.toml"
+    doc = load_pyproject(pyproject)
+    tool = doc.setdefault("tool", {})
+    uvr = tool.setdefault("uvr", {})
+    config = uvr.setdefault("config", {})
+    config[config_key] = str(commit_oid)
+    save_pyproject(pyproject, doc)
+
+    # Amend the commit to include the pyproject.toml change
+    repo.index.add("pyproject.toml")
+    repo.index.write()
+    tree = repo.index.write_tree()
+    repo.create_commit("HEAD", sig, sig, message, tree, [parent])
+
+    print(f"OK: Committed {len(rel_files)} file(s)")
 
 
 def cmd_init(args: argparse.Namespace) -> None:
@@ -50,6 +106,14 @@ def cmd_init(args: argparse.Namespace) -> None:
     _write_yaml(dest, ReleaseWorkflow().model_dump(by_alias=True, exclude_none=True))
 
     print(f"OK: Wrote workflow to {dest.relative_to(root)}")
+
+    _git_commit_and_record(
+        root,
+        [str(dest)],
+        "chore: uvr init",
+        "init_commit",
+    )
+
     print()
     print("Next steps:")
     print("  1. Edit the workflow to add your hook steps")
@@ -91,107 +155,83 @@ def cmd_validate(args: argparse.Namespace) -> None:
         print(f"Valid: {rel} (0 errors, 0 warnings)")
 
 
-def _step_keys(step: dict) -> list[str]:
-    """Return all candidate identity keys for a workflow step.
+def _get_base_text(root: Path, rel_path: str, config_key: str) -> str:
+    """Retrieve the base file content from the init commit, or empty string."""
+    import pygit2
 
-    A step can be identified by ``id``, ``name``, or ``uses``.  We return
-    all that are present so matching works even when the fresh template adds
-    an ``id`` to a step the user only has ``uses`` for.
-    """
-    keys: list[str] = []
-    if "id" in step:
-        keys.append(f"id:{step['id']}")
-    if "name" in step:
-        keys.append(f"name:{step['name']}")
-    if "uses" in step:
-        keys.append(f"uses:{step['uses']}")
-    return keys
+    from ..shared.gitops import open_repo
 
+    pyproject = root / "pyproject.toml"
+    if not pyproject.exists():
+        return ""
+    doc = load_pyproject(pyproject)
+    commit_hex = doc.get("tool", {}).get("uvr", {}).get("config", {}).get(config_key)
+    if not commit_hex:
+        return ""
 
-def _merge_steps(existing_steps: list[dict], fresh_steps: list[dict]) -> list[dict]:
-    """Merge fresh template steps into existing steps.
-
-    For each fresh step, if a matching step exists (by id, name, or uses),
-    update it in place.  If no match, insert it at the position it appears
-    in the fresh template.  Existing steps not in the fresh template are
-    preserved.
-    """
-    merged = copy.deepcopy(existing_steps)
-    # Map every candidate key to its index in merged
-    existing_keys: dict[str, int] = {}
-    for i, s in enumerate(merged):
-        for k in _step_keys(s):
-            existing_keys[k] = i
-
-    insert_offset = 0
-    matched_indices: set[int] = set()
-    for fresh_idx, fresh_step in enumerate(fresh_steps):
-        keys = _step_keys(fresh_step)
-        idx = next((existing_keys[k] for k in keys if k in existing_keys), None)
-        if idx is not None and idx not in matched_indices:
-            merged[idx] = copy.deepcopy(fresh_step)
-            matched_indices.add(idx)
-        elif keys:
-            # New step from template — insert at the corresponding position
-            pos = min(fresh_idx + insert_offset, len(merged))
-            merged.insert(pos, copy.deepcopy(fresh_step))
-            insert_offset += 1
-    return merged
+    try:
+        repo = open_repo(str(root))
+        commit = repo.get(commit_hex)
+        if commit is None:
+            return ""
+        tree = commit.peel(pygit2.Tree) if hasattr(commit, "peel") else commit.tree
+        entry = tree[rel_path]
+        blob = repo.get(entry.id)
+        if blob is None:
+            return ""
+        return blob.data.decode("utf-8")  # type: ignore[union-attr]
+    except (KeyError, ValueError, AttributeError):
+        return ""
 
 
-def _merge_frozen(existing: dict, fresh: dict) -> dict:
-    """Merge fresh frozen fields into an existing workflow dict.
+def _three_way_merge(dest: Path, base_text: str, fresh_text: str) -> tuple[str, bool]:
+    """Run git merge-file and return (merged_text, has_conflicts)."""
+    with (
+        tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yml", prefix="base-", delete=False
+        ) as base_f,
+        tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yml", prefix="fresh-", delete=False
+        ) as fresh_f,
+    ):
+        base_f.write(base_text)
+        base_f.flush()
+        fresh_f.write(fresh_text)
+        fresh_f.flush()
+        base_path = Path(base_f.name)
+        fresh_path = Path(fresh_f.name)
 
-    For scalar frozen fields (if, strategy, runs-on), replaces with the fresh
-    value.  For ``steps``, does a step-level merge: matching steps (by name
-    or uses) are updated, unmatched user steps are preserved.
-    """
-    merged = copy.deepcopy(existing)
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "merge-file",
+                "-p",
+                "-L",
+                "current",
+                "-L",
+                "base",
+                "-L",
+                "template",
+                str(dest),
+                str(base_path),
+                str(fresh_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        base_path.unlink(missing_ok=True)
+        fresh_path.unlink(missing_ok=True)
 
-    for job_name, frozen_aliases in FROZEN_FIELDS.items():
-        if job_name not in merged.get("jobs", {}):
-            continue
-        fresh_job = fresh.get("jobs", {}).get(job_name, {})
-        for alias in frozen_aliases:
-            if alias not in fresh_job:
-                continue
-            if alias == "steps":
-                merged["jobs"][job_name]["steps"] = _merge_steps(
-                    merged["jobs"][job_name].get("steps", []),
-                    fresh_job["steps"],
-                )
-            else:
-                merged["jobs"][job_name][alias] = copy.deepcopy(fresh_job[alias])
+    if result.returncode > 1:
+        _fatal(f"git merge-file failed:\n{result.stderr}")
 
-    # Update workflow_dispatch inputs (core contract)
-    fresh_inputs = fresh.get("on", {}).get("workflow_dispatch", {}).get("inputs", {})
-    if fresh_inputs:
-        merged.setdefault("on", {}).setdefault("workflow_dispatch", {}).setdefault(
-            "inputs", {}
-        ).update(copy.deepcopy(fresh_inputs))
-
-    # Ensure permissions includes contents: write
-    fresh_perms = fresh.get("permissions", {})
-    if fresh_perms:
-        merged.setdefault("permissions", {}).update(fresh_perms)
-
-    # Ensure required `needs` dependencies are present
-    for job_name in ["release", "finalize"]:
-        if job_name not in merged.get("jobs", {}):
-            continue
-        fresh_needs = fresh.get("jobs", {}).get(job_name, {}).get("needs", [])
-        existing_needs = merged["jobs"][job_name].get("needs", [])
-        for dep in fresh_needs:
-            if dep not in existing_needs:
-                existing_needs.insert(0, dep)
-        if existing_needs:
-            merged["jobs"][job_name]["needs"] = existing_needs
-
-    return merged
+    return result.stdout, result.returncode == 1
 
 
 def cmd_upgrade(args: argparse.Namespace) -> None:
-    """Upgrade frozen fields in an existing release.yml."""
+    """Upgrade an existing release.yml using three-way merge with git merge-file."""
     root = Path.cwd()
     workflow_dir = getattr(args, "workflow_dir", ".github/workflows")
     dest = root / workflow_dir / "release.yml"
@@ -210,18 +250,29 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
             "  Commit or stash them before upgrading."
         )
 
-    existing = _load_yaml(dest)
-    fresh = ReleaseWorkflow().model_dump(by_alias=True, exclude_none=True)
-    merged = _merge_frozen(existing, fresh)
-
+    # Generate fresh template
+    fresh_text = _dump_yaml(
+        ReleaseWorkflow().model_dump(by_alias=True, exclude_none=True)
+    )
     existing_text = dest.read_text()
-    merged_text = _dump_yaml(merged)
 
-    if existing_text.rstrip() == merged_text.rstrip():
+    if existing_text.rstrip() == fresh_text.rstrip():
         print("Already up to date.")
         return
 
     rel_dest = str(dest.relative_to(root))
+
+    # Get base from the init commit (if tracked), otherwise empty
+    base_text = _get_base_text(root, rel_dest, "init_commit")
+
+    merged_text, has_conflicts = _three_way_merge(dest, base_text, fresh_text)
+
+    if merged_text.rstrip() == existing_text.rstrip():
+        print("Already up to date.")
+        return
+
+    if has_conflicts:
+        print(f"Merge has conflicts -- resolve markers in {rel_dest} after applying.")
 
     # Write merged content over the file
     dest.write_text(merged_text)
@@ -251,6 +302,19 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
             return
 
     print(f"OK: Upgraded {rel_dest}")
+
+    # Record the upgrade commit
+    _git_commit_and_record(
+        root,
+        [str(dest)],
+        "chore: uvr init --upgrade",
+        "init_commit",
+    )
+
+    # Skip validation if conflicts remain
+    if has_conflicts or "<<<<<<" in dest.read_text():
+        print("  Resolve conflict markers before committing.")
+        return
 
     # Validate the result
     import warnings
