@@ -10,6 +10,7 @@ from uv_release_monorepo.shared.toml import (
     get_all_dependency_strings,
     get_project_name,
     get_project_version,
+    get_uvr_hooks,
     get_uvr_matrix,
     get_workspace_member_globs,
     load_pyproject,
@@ -96,6 +97,20 @@ class TestGetWorkspaceMemberGlobs:
     def test_returns_members(self, sample_toml_doc: tomlkit.TOMLDocument) -> None:
         members = get_workspace_member_globs(sample_toml_doc)
         assert members == ["packages/*", "libs/*"]
+
+
+class TestUvrHooks:
+    def test_returns_empty_when_missing(self) -> None:
+        doc = tomlkit.parse("[project]\nname = 'foo'\n")
+        assert get_uvr_hooks(doc) == {}
+
+    def test_string_value(self) -> None:
+        doc = tomlkit.parse('[tool.uvr.hooks]\nfile = "uvr_hooks.py:MyHook"\n')
+        assert get_uvr_hooks(doc) == {"file": "uvr_hooks.py:MyHook"}
+
+    def test_bare_path(self) -> None:
+        doc = tomlkit.parse('[tool.uvr.hooks]\nfile = "scripts/hooks.py"\n')
+        assert get_uvr_hooks(doc) == {"file": "scripts/hooks.py"}
 
 
 class TestUvrMatrix:

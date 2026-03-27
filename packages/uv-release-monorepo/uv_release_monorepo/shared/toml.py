@@ -104,6 +104,18 @@ def get_uvr_config(doc: tomlkit.TOMLDocument) -> dict:
     }
 
 
+def get_uvr_hooks(doc: tomlkit.TOMLDocument) -> dict[str, str]:
+    """Extract [tool.uvr.hooks] as a dict.
+
+    Supported keys:
+        file: Path to a Python module containing a :class:`ReleaseHook`
+              subclass, optionally with ``:ClassName`` suffix.  When the
+              class name is omitted it defaults to ``Hook``.
+    """
+    raw = doc.get("tool", {}).get("uvr", {}).get("hooks", {})
+    return {str(k): str(v) for k, v in raw.items()}
+
+
 def get_uvr_matrix(doc: tomlkit.TOMLDocument) -> dict[str, list[list[str]]]:
     """Extract [tool.uvr.matrix] as {package: [[label, ...], ...]}."""
     raw = doc.get("tool", {}).get("uvr", {}).get("matrix", {})
