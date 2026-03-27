@@ -49,7 +49,7 @@ def cmd_init(args: argparse.Namespace) -> None:
 
     _write_yaml(dest, ReleaseWorkflow().model_dump(by_alias=True, exclude_none=True))
 
-    print(f"\u2713 Wrote workflow to {dest.relative_to(root)}")
+    print(f"OK: Wrote workflow to {dest.relative_to(root)}")
     print()
     print("Next steps:")
     print("  1. Edit the workflow to add your hook steps")
@@ -250,7 +250,7 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
             print("Reverted. No changes applied.")
             return
 
-    print(f"\u2713 Upgraded {rel_dest}")
+    print(f"OK: Upgraded {rel_dest}")
 
     # Validate the result
     import warnings
@@ -263,9 +263,9 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
         try:
             ReleaseWorkflow.model_validate(reloaded)
         except ValidationError as e:
-            print(f"\n\u26a0 Upgraded file has validation errors:\n{e}")
+            print(f"\nUpgraded file has validation errors:\n{e}")
             return
 
     if caught:
         for w in caught:
-            print(f"\u26a0 {w.message}")
+            print(f"  Warning: {w.message}")
