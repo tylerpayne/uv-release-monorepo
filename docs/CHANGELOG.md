@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [v0.12.0] - 2026-03-27
+
+### Changed
+- Change `uvr release --json` to output only the plan JSON to stdout — no human-readable output, no worktree check, no dispatch prompt
+
 ## [v0.11.3] - 2026-03-27
 
 ### Fixed
