@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [v0.11.2] - 2026-03-27
+
+### Changed
+- Change `uvr runners` to group output by runner instead of by package and show the default (`ubuntu-latest`) for unconfigured packages
+
 ## [v0.11.1] - 2026-03-27
 
 ### Fixed
