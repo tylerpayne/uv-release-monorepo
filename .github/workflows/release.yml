@@ -10,9 +10,9 @@ permissions:
   contents: write
   id-token: write
 jobs:
-  pre-build:
+  check:
     runs-on: ubuntu-latest
-    if: ${{ !contains(fromJSON(inputs.plan).skip, 'pre-build') }}
+    if: ${{ !contains(fromJSON(inputs.plan).skip, 'check') }}
     steps:
     - uses: actions/checkout@v4
       with:
@@ -29,7 +29,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     if: ${{ !contains(fromJSON(inputs.plan).skip, 'build') }}
     needs:
-    - pre-build
+    - check
     steps:
     - uses: actions/checkout@v4
       with:
@@ -53,27 +53,16 @@ jobs:
       fail-fast: false
       matrix:
         runner: ${{ fromJSON(inputs.plan).runners }}
-  post-build:
-    runs-on: ubuntu-latest
-    if: ${{ always() && !failure() && !contains(fromJSON(inputs.plan).skip, 'post-build') }}
-    needs:
-    - build
-    steps:
-    - name: Never
-      run: echo 'Never'
-  pre-release:
-    runs-on: ubuntu-latest
-    if: ${{ always() && !failure() && !contains(fromJSON(inputs.plan).skip, 'pre-release') }}
-    needs:
-    - post-build
-    steps:
-    - name: Never
-      run: echo 'Never'
-  publish:
+  
+  release:
     runs-on: ubuntu-latest
     if: ${{ always() && !failure() && !contains(fromJSON(inputs.plan).skip, 'publish') }}
     needs:
-    - pre-release
+    - build
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.plan).publish_matrix }}
     steps:
     - uses: actions/download-artifact@v4
       with:
@@ -88,15 +77,11 @@ jobs:
         body: ${{ matrix.body }}
         files: dist/${{ matrix.dist_name }}-${{ matrix.version }}*.whl
         make_latest: ${{ matrix.make_latest }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(inputs.plan).publish_matrix }}
   finalize:
     runs-on: ubuntu-latest
     if: ${{ always() && !failure() && !contains(fromJSON(inputs.plan).skip, 'finalize') }}
     needs:
-    - publish
+    - release
     steps:
     - uses: actions/checkout@v4
       with:
@@ -110,7 +95,7 @@ jobs:
       env:
         UVR_PLAN: ${{ inputs.plan }}
       run: uvr finalize --plan "$UVR_PLAN"
-  post-release:
+  publish:
     runs-on: ubuntu-latest
     if: ${{ always() && !failure() && !contains(fromJSON(inputs.plan).skip, 'post-release') }}
     needs:
