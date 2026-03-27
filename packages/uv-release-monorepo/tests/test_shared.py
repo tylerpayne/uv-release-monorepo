@@ -249,12 +249,12 @@ class TestDetectChanges:
         all_tags: dict[str, str],
     ) -> None:
         """When only one leaf package changes, only it is rebuilt."""
-        # Each package calls git diff against its own tag
-        mock_git.side_effect = [
-            "",  # pkg-a: no changes
-            "",  # pkg-b: no changes
-            "packages/c/src.py",  # pkg-c: changed
-        ]
+        responses = {
+            "pkg-a/v1.0.0": "",
+            "pkg-b/v1.0.0": "",
+            "pkg-c/v1.0.0": "packages/c/src.py",
+        }
+        mock_git.side_effect = lambda *a, **kw: responses.get(a[2], "")
 
         changed = detect_changes(sample_packages, baselines=all_tags, rebuild_all=False)
 
@@ -270,11 +270,12 @@ class TestDetectChanges:
         all_tags: dict[str, str],
     ) -> None:
         """When a dependency changes, its dependents are also marked dirty."""
-        mock_git.side_effect = [
-            "packages/a/src.py",  # pkg-a: changed
-            "",  # pkg-b: no direct changes
-            "",  # pkg-c: no direct changes
-        ]
+        responses = {
+            "pkg-a/v1.0.0": "packages/a/src.py",
+            "pkg-b/v1.0.0": "",
+            "pkg-c/v1.0.0": "",
+        }
+        mock_git.side_effect = lambda *a, **kw: responses.get(a[2], "")
 
         changed = detect_changes(sample_packages, baselines=all_tags, rebuild_all=False)
 
@@ -291,11 +292,12 @@ class TestDetectChanges:
         all_tags: dict[str, str],
     ) -> None:
         """When a middle package changes, only it and its dependents are dirty."""
-        mock_git.side_effect = [
-            "",  # pkg-a: no changes
-            "packages/b/src.py",  # pkg-b: changed
-            "",  # pkg-c: no direct changes
-        ]
+        responses = {
+            "pkg-a/v1.0.0": "",
+            "pkg-b/v1.0.0": "packages/b/src.py",
+            "pkg-c/v1.0.0": "",
+        }
+        mock_git.side_effect = lambda *a, **kw: responses.get(a[2], "")
 
         changed = detect_changes(sample_packages, baselines=all_tags, rebuild_all=False)
 
@@ -312,11 +314,7 @@ class TestDetectChanges:
         all_tags: dict[str, str],
     ) -> None:
         """When root pyproject.toml changes since a package's tag, it's marked dirty."""
-        mock_git.side_effect = [
-            "pyproject.toml",  # pkg-a: root config changed
-            "pyproject.toml",  # pkg-b: root config changed
-            "pyproject.toml",  # pkg-c: root config changed
-        ]
+        mock_git.return_value = "pyproject.toml"
 
         changed = detect_changes(sample_packages, baselines=all_tags, rebuild_all=False)
 
@@ -332,11 +330,7 @@ class TestDetectChanges:
         all_tags: dict[str, str],
     ) -> None:
         """When nothing changed, returns empty changed list."""
-        mock_git.side_effect = [
-            "unrelated/file.txt",  # pkg-a: unrelated change
-            "unrelated/file.txt",  # pkg-b: unrelated change
-            "unrelated/file.txt",  # pkg-c: unrelated change
-        ]
+        mock_git.return_value = "unrelated/file.txt"
 
         changed = detect_changes(sample_packages, baselines=all_tags, rebuild_all=False)
 
@@ -380,12 +374,13 @@ class TestDetectChangesDiamondDeps:
         diamond_tags: dict[str, str],
     ) -> None:
         """Changing bottom affects all packages in diamond."""
-        mock_git.side_effect = [
-            "packages/bottom/src.py",  # bottom: changed
-            "",  # left: no direct changes
-            "",  # right: no direct changes
-            "",  # top: no direct changes
-        ]
+        responses = {
+            "bottom/v1.0.0": "packages/bottom/src.py",
+            "left/v1.0.0": "",
+            "right/v1.0.0": "",
+            "top/v1.0.0": "",
+        }
+        mock_git.side_effect = lambda *a, **kw: responses.get(a[2], "")
 
         changed = detect_changes(
             diamond_packages, baselines=diamond_tags, rebuild_all=False
@@ -403,12 +398,13 @@ class TestDetectChangesDiamondDeps:
         diamond_tags: dict[str, str],
     ) -> None:
         """Changing left affects only left and top."""
-        mock_git.side_effect = [
-            "",  # bottom: no changes
-            "packages/left/src.py",  # left: changed
-            "",  # right: no changes
-            "",  # top: no direct changes
-        ]
+        responses = {
+            "bottom/v1.0.0": "",
+            "left/v1.0.0": "packages/left/src.py",
+            "right/v1.0.0": "",
+            "top/v1.0.0": "",
+        }
+        mock_git.side_effect = lambda *a, **kw: responses.get(a[2], "")
 
         changed = detect_changes(
             diamond_packages, baselines=diamond_tags, rebuild_all=False
@@ -426,12 +422,13 @@ class TestDetectChangesDiamondDeps:
         diamond_tags: dict[str, str],
     ) -> None:
         """Changing top affects only top (no dependents)."""
-        mock_git.side_effect = [
-            "",  # bottom: no changes
-            "",  # left: no changes
-            "",  # right: no changes
-            "packages/top/src.py",  # top: changed
-        ]
+        responses = {
+            "bottom/v1.0.0": "",
+            "left/v1.0.0": "",
+            "right/v1.0.0": "",
+            "top/v1.0.0": "packages/top/src.py",
+        }
+        mock_git.side_effect = lambda *a, **kw: responses.get(a[2], "")
 
         changed = detect_changes(
             diamond_packages, baselines=diamond_tags, rebuild_all=False
@@ -467,10 +464,10 @@ class TestBuildPlan:
 
     @pytest.fixture(autouse=True)
     def _mock_tag_checks(self) -> None:  # type: ignore[return]
-        """Suppress git/gh calls in _check_tag_conflicts."""
+        """Suppress git/gh calls fetched once at top of plan()."""
         with (
             patch("uv_release_monorepo.shared.plan.git", return_value=""),
-            patch("uv_release_monorepo.shared.shell.gh", return_value="[]"),
+            patch("uv_release_monorepo.shared.plan.gh", return_value="[]"),
         ):
             yield
 

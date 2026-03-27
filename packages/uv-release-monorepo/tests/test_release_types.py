@@ -7,8 +7,6 @@ baseline tag.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
 import pytest
 from packaging.version import Version
 
@@ -54,8 +52,8 @@ def _release_and_bump(
     """
     changed = {"alpha": _pkg(pyproject_version)}
 
-    with patch("uv_release_monorepo.shared.plan.git", return_value=existing_tags):
-        versioned = planner._compute_release_versions(changed, {})
+    tag_lines = existing_tags.splitlines() if existing_tags else []
+    versioned = planner._compute_release_versions(changed, {}, tag_lines)
 
     bumps = planner._compute_bumps(versioned)
 
@@ -142,7 +140,7 @@ class TestDevRelease:
         planner = _planner("dev")
         changed = {"alpha": _pkg("1.0.1")}
         with pytest.raises(SystemExit):
-            planner._compute_release_versions(changed, {})
+            planner._compute_release_versions(changed, {}, [])
 
 
 # ---------------------------------------------------------------------------
@@ -304,26 +302,26 @@ class TestVersionOrdering:
 class TestTagConflicts:
     """Planner rejects plans when tags already exist."""
 
-    @patch("uv_release_monorepo.shared.plan.git")
-    def test_errors_on_existing_baseline_tag(self, mock_git: MagicMock) -> None:
+    def test_errors_on_existing_baseline_tag(self) -> None:
         """Planner errors when a baseline tag already exists."""
         from uv_release_monorepo.shared.models import BumpPlan
 
-        mock_git.return_value = "alpha/v1.0.2.dev0-base"
         planner = _planner("final")
         changed = {"alpha": _pkg("1.0.1")}
         bumps = {"alpha": BumpPlan(new_version="1.0.2.dev0")}
         with pytest.raises(SystemExit):
-            planner._check_tag_conflicts(changed, bumps)
+            planner._check_tag_conflicts(
+                changed, bumps, {"alpha/v1.0.2.dev0-base"}, set()
+            )
 
-    @patch("uv_release_monorepo.shared.plan.git")
-    def test_passes_when_no_conflicts(self, mock_git: MagicMock) -> None:
+    def test_passes_when_no_conflicts(self) -> None:
         """Planner proceeds when no tags conflict."""
         from uv_release_monorepo.shared.models import BumpPlan
 
-        mock_git.return_value = "alpha/v1.0.0\nalpha/v1.0.1.dev0-base"
         planner = _planner("final")
         changed = {"alpha": _pkg("1.0.1")}
         bumps = {"alpha": BumpPlan(new_version="1.0.2.dev0")}
         # Should not raise
-        planner._check_tag_conflicts(changed, bumps)
+        planner._check_tag_conflicts(
+            changed, bumps, {"alpha/v1.0.0", "alpha/v1.0.1.dev0-base"}, set()
+        )

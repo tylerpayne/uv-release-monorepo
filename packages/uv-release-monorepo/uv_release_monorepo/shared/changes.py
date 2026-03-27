@@ -3,10 +3,31 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 from .models import PackageInfo
 from .shell import git, step
+
+
+def _check_package(
+    name: str, info: PackageInfo, baseline: str
+) -> tuple[str, str | None]:
+    """Check a single package for changes since its baseline.
+
+    Returns ``(name, reason)`` where *reason* is a human-readable string
+    if the package is dirty, or ``None`` if it is clean.
+    """
+    changed_files = set(git("diff", "--name-only", baseline, "HEAD").splitlines())
+
+    prefix = info.path.rstrip("/") + "/"
+    if any(f.startswith(prefix) for f in changed_files):
+        return name, f"changed since {baseline}"
+
+    if "pyproject.toml" in changed_files:
+        return name, f"root config changed since {baseline}"
+
+    return name, None
 
 
 def detect_changes(
@@ -44,32 +65,29 @@ def detect_changes(
         print("  Force rebuild: all packages marked dirty")
     else:
         dirty: set[str] = set()
-        # Check each package for direct changes since its baseline
+
+        # Packages without baselines are automatically dirty (first release)
+        to_check: list[tuple[str, PackageInfo, str]] = []
         for name, info in packages.items():
             baseline = baselines.get(name)
             if not baseline:
-                # First release for this package
                 dirty.add(name)
                 print(f"  {name}: new package")
-                continue
+            else:
+                to_check.append((name, info, baseline))
 
-            # Get files changed since this package's dev baseline
-            changed_files = set(
-                git("diff", "--name-only", baseline, "HEAD").splitlines()
-            )
-
-            # Filter to files in this package's directory
-            prefix = info.path.rstrip("/") + "/"
-            pkg_changed_files = {f for f in changed_files if f.startswith(prefix)}
-
-            if pkg_changed_files:
-                dirty.add(name)
-                print(f"  {name}: changed since {baseline}")
-
-            # Root config changes affect this package
-            elif "pyproject.toml" in changed_files:
-                dirty.add(name)
-                print(f"  {name}: root config changed since {baseline}")
+        # Check remaining packages concurrently
+        if to_check:
+            with ThreadPoolExecutor(max_workers=min(len(to_check), 8)) as pool:
+                futures = {
+                    pool.submit(_check_package, name, info, baseline): name
+                    for name, info, baseline in to_check
+                }
+                for future in as_completed(futures):
+                    name, reason = future.result()
+                    if reason:
+                        dirty.add(name)
+                        print(f"  {name}: {reason}")
 
     # Build reverse dependency map
     reverse_deps: dict[str, list[str]] = {n: [] for n in packages}

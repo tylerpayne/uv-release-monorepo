@@ -35,7 +35,7 @@ from .versions import (
 from .changes import detect_changes
 from .discovery import discover_packages, find_release_tags, get_baseline_tags
 from .publish import generate_release_notes
-from .shell import git
+from .shell import gh, git
 
 
 class ReleasePlanner:
@@ -50,9 +50,14 @@ class ReleasePlanner:
 
     def plan(self) -> tuple[ReleasePlan, list[PinChange]]:
         """Discover packages, detect changes, return a ReleasePlan."""
+        # Fetch shared data once — avoids redundant subprocess calls
+        all_git_tags = git("tag", "--list", check=False).splitlines()
+        all_git_tags_set = set(all_git_tags)
+        all_gh_releases = self._fetch_gh_releases()
+
         packages = discover_packages()
-        release_tags = find_release_tags(packages)
-        baselines = get_baseline_tags(packages)
+        release_tags = find_release_tags(packages, gh_releases=all_gh_releases)
+        baselines = get_baseline_tags(packages, all_tags=all_git_tags_set)
         changed_names = detect_changes(packages, baselines, self.config.rebuild_all)
 
         changed = {name: packages[name] for name in changed_names}
@@ -64,7 +69,7 @@ class ReleasePlanner:
         current_versions = {name: info.version for name, info in changed.items()}
 
         # Compute release versions based on release_type
-        changed = self._compute_release_versions(changed, release_tags)
+        changed = self._compute_release_versions(changed, release_tags, all_git_tags)
 
         # Compute published versions for internal dep pinning
         published_versions = self._published_versions(
@@ -78,6 +83,13 @@ class ReleasePlanner:
         # Pre-compute version bumps (always bump to next .devN)
         bumps = self._compute_bumps(changed)
 
+        # Pre-compute release notes once (used by both publish commands and publish matrix)
+        release_notes: dict[str, str] = {}
+        for name in changed_names:
+            info = changed[name]
+            baseline = release_tags.get(name)
+            release_notes[name] = generate_release_notes(name, info, baseline)
+
         # Expand matrix
         matrix_entries = self._expand_matrix(changed_names, changed)
         unique_runners = sorted(
@@ -87,20 +99,22 @@ class ReleasePlanner:
 
         # Build publish matrix
         publish_entries = self._build_publish_matrix(
-            changed_names, changed, release_tags
+            changed_names, changed, release_notes
         )
 
         # Generate command sequences
         build_commands = self._generate_build_commands(
             changed, unchanged, release_tags, matrix_entries
         )
-        publish_commands = self._generate_publish_commands(changed, release_tags)
+        publish_commands = self._generate_publish_commands(
+            changed, release_tags, release_notes
+        )
         finalize_commands = self._generate_finalize_commands(
             changed, bumps, published_versions
         )
 
         # Validate that no tags we'll create already exist
-        self._check_tag_conflicts(changed, bumps)
+        self._check_tag_conflicts(changed, bumps, all_git_tags_set, all_gh_releases)
 
         result_plan = ReleasePlan(
             uvr_version=self.config.uvr_version,
@@ -143,6 +157,7 @@ class ReleasePlanner:
         self,
         changed: dict[str, PackageInfo],
         release_tags: dict[str, str | None],
+        all_git_tags: list[str],
     ) -> dict[str, PackageInfo]:
         """Compute the release version for each changed package.
 
@@ -176,19 +191,17 @@ class ReleasePlanner:
             for name, info in changed.items():
                 result[name] = info
         elif rt == "pre":
-            all_tags = git("tag", "--list", check=False).splitlines()
             for name, info in changed.items():
                 bv = base_version(info.version)
-                n = next_pre_number(all_tags, name, self.config.pre_kind)
+                n = next_pre_number(all_git_tags, name, self.config.pre_kind)
                 version = make_pre(bv, self.config.pre_kind, n)
                 result[name] = PackageInfo(
                     path=info.path, version=version, deps=info.deps
                 )
         elif rt == "post":
-            all_tags = git("tag", "--list", check=False).splitlines()
             for name, info in changed.items():
                 bv = base_version(info.version)
-                n = next_post_number(all_tags, name)
+                n = next_post_number(all_git_tags, name)
                 version = make_post(bv, n)
                 result[name] = PackageInfo(
                     path=info.path, version=version, deps=info.deps
@@ -372,6 +385,7 @@ class ReleasePlanner:
         self,
         changed: dict[str, PackageInfo],
         release_tags: dict[str, str | None],
+        release_notes: dict[str, str],
     ) -> list[PlanCommand]:
         """Generate publish commands (only for local execution)."""
         if self.config.ci_publish:
@@ -381,8 +395,7 @@ class ReleasePlanner:
         for name, info in sorted(changed.items()):
             tag = f"{name}/v{info.version}"
             dist_name = canonicalize_name(name).replace("-", "_")
-            baseline = release_tags.get(name)
-            notes = generate_release_notes(name, info, baseline)
+            notes = release_notes.get(name, "")
             cmds.append(
                 PlanCommand(
                     args=[
@@ -528,11 +541,11 @@ class ReleasePlanner:
         self,
         changed: dict[str, PackageInfo],
         bumps: dict[str, BumpPlan],
+        all_git_tags: set[str],
+        all_gh_releases: set[str],
     ) -> None:
         """Verify that no tags or releases the plan will create already exist."""
-        import json as _json
-
-        from .shell import fatal, gh
+        from .shell import fatal
 
         # Collect all tags the plan will create
         planned_tags: list[str] = []
@@ -542,20 +555,11 @@ class ReleasePlanner:
             planned_tags.append(f"{name}/v{bump.new_version}-base")
 
         # Check git tags
-        existing_tags = set(git("tag", "--list", check=False).splitlines())
-        tag_conflicts = [t for t in planned_tags if t in existing_tags]
+        tag_conflicts = [t for t in planned_tags if t in all_git_tags]
 
         # Check GitHub releases (release tags created by publish action)
-        existing_releases: set[str] = set()
-        raw = gh("release", "list", "--json", "tagName", "--limit", "1000", check=False)
-        if raw:
-            try:
-                for entry in _json.loads(raw):
-                    existing_releases.add(entry["tagName"])
-            except (_json.JSONDecodeError, KeyError):
-                pass
         release_tags = [f"{n}/v{changed[n].version}" for n in changed]
-        release_conflicts = [t for t in release_tags if t in existing_releases]
+        release_conflicts = [t for t in release_tags if t in all_gh_releases]
 
         conflicts = sorted(set(tag_conflicts + release_conflicts))
         if not conflicts:
@@ -566,10 +570,10 @@ class ReleasePlanner:
         # Compute what --post would produce for each conflicting release
         post_versions = []
         for t in conflicts:
-            if t in existing_releases:
+            if t in all_gh_releases:
                 ver = version_from_tag(t)
                 post_ver = make_post(
-                    ver, next_post_number(list(existing_releases), t.split("/v")[0])
+                    ver, next_post_number(list(all_gh_releases), t.split("/v")[0])
                 )
                 post_versions.append(f"     {t.split('/v')[0]}: {post_ver}")
 
@@ -583,7 +587,7 @@ class ReleasePlanner:
         # Compute bump commands for each conflicting package
         bump_cmds = []
         for t in conflicts:
-            if t in existing_releases:
+            if t in all_gh_releases:
                 ver = version_from_tag(t)
                 next_ver = make_dev(bump_patch(ver))
                 pkg_name = t.split("/v")[0]
@@ -651,26 +655,40 @@ class ReleasePlanner:
         self,
         changed_names: list[str] | set[str],
         changed: dict[str, PackageInfo],
-        release_tags: dict[str, str | None],
+        release_notes: dict[str, str],
     ) -> list[PublishEntry]:
         root_doc = load_pyproject(Path.cwd() / "pyproject.toml")
         latest_pkg = get_uvr_config(root_doc).get("latest", "")
         entries: list[PublishEntry] = []
         for name in sorted(changed_names):
             info = changed[name]
-            baseline = release_tags.get(name)
             entries.append(
                 PublishEntry(
                     package=name,
                     version=info.version,
                     tag=f"{name}/v{info.version}",
                     title=f"{name} {info.version}",
-                    body=generate_release_notes(name, info, baseline),
+                    body=release_notes.get(name, ""),
                     make_latest=name == latest_pkg,
                     dist_name=canonicalize_name(name).replace("-", "_"),
                 )
             )
         return entries
+
+    @staticmethod
+    def _fetch_gh_releases() -> set[str]:
+        """Fetch all GitHub release tag names in one call."""
+        import json as _json
+
+        release_tag_names: set[str] = set()
+        raw = gh("release", "list", "--json", "tagName", "--limit", "1000", check=False)
+        if raw:
+            try:
+                for entry in _json.loads(raw):
+                    release_tag_names.add(entry["tagName"])
+            except (_json.JSONDecodeError, KeyError):
+                pass
+        return release_tag_names
 
     @staticmethod
     def _collect_deps(
