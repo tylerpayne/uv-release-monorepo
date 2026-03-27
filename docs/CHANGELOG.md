@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [v0.13.3] - 2026-03-27
+
+### Fixed
+- Fix `uvr status` build display to show all packages built per runner, including transitive deps marked with `(dep)`
+
 ## [v0.13.2] - 2026-03-27
 
 ### Fixed
