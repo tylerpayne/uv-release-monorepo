@@ -821,8 +821,8 @@ class TestBuildCommandStages:
         # tools wheel should be cleaned from dist/ (not assigned to macos-14)
         cleanup_stage = macos_stages[-1]
         assert "__cleanup__" in cleanup_stage.commands
-        cleanup_labels = [c.label for c in cleanup_stage.commands["__cleanup__"]]
-        assert any("tools" in label for label in cleanup_labels)
+        cleanup_cmd = cleanup_stage.commands["__cleanup__"][0]
+        assert "tools" in " ".join(cleanup_cmd.args)
 
 
 class TestGenerateReleaseNotes:

@@ -276,7 +276,17 @@ class ReleasePlanner:
 
             # -- Stage 0: setup (mkdir + fetch unchanged dep wheels) --
             setup_cmds: list[PlanCommand] = []
-            setup_cmds.append(PlanCommand(args=["mkdir", "-p", "dist", "deps"]))
+            setup_cmds.append(
+                PlanCommand(
+                    args=[
+                        "uv",
+                        "run",
+                        "python",
+                        "-c",
+                        "from pathlib import Path; Path('dist').mkdir(exist_ok=True); Path('deps').mkdir(exist_ok=True)",
+                    ],
+                )
+            )
 
             for name in sorted(unchanged_deps):
                 tag = release_tags.get(name)
@@ -330,25 +340,30 @@ class ReleasePlanner:
                 stages.append(BuildStage(commands=layer_cmds))
 
             # -- Cleanup stage: remove built wheels not assigned to this runner --
-            cleanup_cmds: list[PlanCommand] = []
-            for pkg in sorted(changed_to_build):
-                if pkg not in assigned:
-                    dist_name = canonicalize_name(pkg).replace("-", "_")
-                    cleanup_cmds.append(
-                        PlanCommand(
-                            args=[
-                                "find",
-                                "dist",
-                                "-name",
-                                f"{dist_name}-*.whl",
-                                "-delete",
-                            ],
-                            label=f"Remove transitive dep wheel {pkg}",
-                            check=False,
-                        )
-                    )
-            if cleanup_cmds:
-                stages.append(BuildStage(commands={"__cleanup__": cleanup_cmds}))
+            # Collect transitive dep wheel patterns to remove
+            remove_patterns = [
+                f"{canonicalize_name(pkg).replace('-', '_')}-*.whl"
+                for pkg in sorted(changed_to_build)
+                if pkg not in assigned
+            ]
+            if remove_patterns:
+                # Single python command to remove all transitive dep wheels
+                globs = "; ".join(
+                    f'[p.unlink() for p in Path("dist").glob("{pat}")]'
+                    for pat in remove_patterns
+                )
+                cleanup_cmd = PlanCommand(
+                    args=[
+                        "uv",
+                        "run",
+                        "python",
+                        "-c",
+                        f"from pathlib import Path; {globs}",
+                    ],
+                    label="Remove transitive dep wheels",
+                    check=False,
+                )
+                stages.append(BuildStage(commands={"__cleanup__": [cleanup_cmd]}))
 
             result[runner] = stages
         return result
