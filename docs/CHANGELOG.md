@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [v0.13.2] - 2026-03-27
+
+### Fixed
+- Fix cross-runner builds failing when a workspace dependency is only assigned to a different runner — unchanged deps are now fetched into `deps/` and changed transitive deps are built on every runner that needs them (#7)
+
 ## [v0.13.1] - 2026-03-27
 
 ### Fixed
