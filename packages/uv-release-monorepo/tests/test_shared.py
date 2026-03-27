@@ -724,6 +724,20 @@ class TestBuildCommandStages:
         # No cleanup stage (all packages assigned to the same runner)
         assert len(stages) == 4
 
+        # Layer 0 (alpha) should NOT have --no-sources
+        alpha_build = [
+            c for c in stages[1].commands["alpha"] if c.label == "Build alpha"
+        ][0]
+        assert "--no-sources" not in alpha_build.args
+
+        # Layer 1+ (beta, delta, gamma) SHOULD have --no-sources
+        for stage, pkgs in [(stages[2], ["beta", "delta"]), (stages[3], ["gamma"])]:
+            for pkg in pkgs:
+                build_cmd = [
+                    c for c in stage.commands[pkg] if c.label == f"Build {pkg}"
+                ][0]
+                assert "--no-sources" in build_cmd.args
+
     @patch("uv_release_monorepo.shared.plan.detect_changes")
     @patch("uv_release_monorepo.shared.plan.get_baseline_tags")
     @patch("uv_release_monorepo.shared.plan.find_release_tags")

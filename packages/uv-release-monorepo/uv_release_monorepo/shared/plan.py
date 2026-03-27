@@ -320,19 +320,19 @@ class ReleasePlanner:
                             )
                         )
 
+                    build_args = [
+                        "uv",
+                        "build",
+                        info.path,
+                        "--out-dir",
+                        "dist/",
+                        "--find-links",
+                        "dist/",
+                    ]
+                    if layer > 0:
+                        build_args.append("--no-sources")
                     pkg_cmds.append(
-                        PlanCommand(
-                            args=[
-                                "uv",
-                                "build",
-                                info.path,
-                                "--out-dir",
-                                "dist/",
-                                "--find-links",
-                                "dist/",
-                            ],
-                            label=f"Build {pkg}",
-                        ),
+                        PlanCommand(args=build_args, label=f"Build {pkg}"),
                     )
                     layer_cmds[pkg] = pkg_cmds
                 stages.append(BuildStage(commands=layer_cmds))
