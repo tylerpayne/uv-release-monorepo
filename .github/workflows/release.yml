@@ -31,7 +31,8 @@ jobs:
     needs:
     - check
     steps:
-    - uses: actions/checkout@v4
+    - id: checkout
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
     - uses: astral-sh/setup-uv@v5
@@ -43,17 +44,17 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
         UVR_PLAN: ${{ inputs.plan }}
-      run: uvr build --plan "$UVR_PLAN" --runner '${{ toJSON(matrix.runner) }}'
-    - uses: actions/upload-artifact@v4
+      run: uvr build --runner '${{ toJSON(matrix.runner) }}'
+    - id: upload
+      uses: actions/upload-artifact@v4
       with:
         name: wheels-${{ join(matrix.runner, '-') }}
         path: dist/*.whl
         if-no-files-found: error
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         runner: ${{ fromJSON(inputs.plan).runners }}
-  
   release:
     runs-on: ubuntu-latest
     if: ${{ always() && !failure() && !contains(fromJSON(inputs.plan).skip, 'publish') }}
@@ -64,13 +65,15 @@ jobs:
       matrix:
         include: ${{ fromJSON(inputs.plan).publish_matrix }}
     steps:
-    - uses: actions/download-artifact@v4
+    - id: download
+      uses: actions/download-artifact@v4
       with:
         pattern: wheels-*
         merge-multiple: true
         path: dist
         run-id: ${{ fromJSON(inputs.plan).reuse_run_id != '' && fromJSON(inputs.plan).reuse_run_id || github.run_id }}
-    - uses: softprops/action-gh-release@v2
+    - id: publish
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ matrix.tag }}
         name: ${{ matrix.title }}
@@ -83,7 +86,8 @@ jobs:
     needs:
     - release
     steps:
-    - uses: actions/checkout@v4
+    - id: checkout
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
     - uses: astral-sh/setup-uv@v5
@@ -94,7 +98,7 @@ jobs:
     - name: Finalize release
       env:
         UVR_PLAN: ${{ inputs.plan }}
-      run: uvr finalize --plan "$UVR_PLAN"
+      run: uvr finalize
   publish:
     runs-on: ubuntu-latest
     if: ${{ always() && !failure() && !contains(fromJSON(inputs.plan).skip, 'post-release') }}
