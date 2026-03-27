@@ -50,10 +50,40 @@ class TestInit:
 
 def _init_and_get_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Scaffold a workspace and init the workflow, return the release.yml path."""
+    import subprocess as _sp
+
     _write_workspace_repo(tmp_path, ["pkg-alpha"])
     monkeypatch.chdir(tmp_path)
+    _sp.run(["git", "init"], capture_output=True, check=True)
+    _sp.run(["git", "add", "-A"], capture_output=True, check=True)
+    _sp.run(
+        ["git", "commit", "-m", "init"],
+        capture_output=True,
+        check=True,
+        env={
+            **__import__("os").environ,
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "t@t",
+            "GIT_COMMITTER_NAME": "test",
+            "GIT_COMMITTER_EMAIL": "t@t",
+        },
+    )
     cmd_init(argparse.Namespace(workflow_dir=".github/workflows"))
-    return tmp_path / ".github" / "workflows" / "release.yml"
+    wf = tmp_path / ".github" / "workflows" / "release.yml"
+    _sp.run(["git", "add", str(wf)], capture_output=True, check=True)
+    _sp.run(
+        ["git", "commit", "-m", "add workflow"],
+        capture_output=True,
+        check=True,
+        env={
+            **__import__("os").environ,
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "t@t",
+            "GIT_COMMITTER_NAME": "test",
+            "GIT_COMMITTER_EMAIL": "t@t",
+        },
+    )
+    return wf
 
 
 def _upgrade_args(**overrides: object) -> argparse.Namespace:
@@ -64,6 +94,28 @@ def _upgrade_args(**overrides: object) -> argparse.Namespace:
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
+
+
+_GIT_ENV = {
+    **__import__("os").environ,
+    "GIT_AUTHOR_NAME": "test",
+    "GIT_AUTHOR_EMAIL": "t@t",
+    "GIT_COMMITTER_NAME": "test",
+    "GIT_COMMITTER_EMAIL": "t@t",
+}
+
+
+def _git_commit_wf(wf: Path) -> None:
+    """Stage and commit the workflow file so it passes the dirty check."""
+    import subprocess as _sp
+
+    _sp.run(["git", "add", str(wf)], capture_output=True, check=True)
+    _sp.run(
+        ["git", "commit", "-m", "update wf"],
+        capture_output=True,
+        check=True,
+        env=_GIT_ENV,
+    )
 
 
 class TestUpgrade:
@@ -104,6 +156,7 @@ class TestUpgrade:
         from uv_release_monorepo.cli._yaml import _write_yaml
 
         _write_yaml(wf, doc)
+        _git_commit_wf(wf)
 
         cmd_upgrade(_upgrade_args())
 
@@ -126,6 +179,7 @@ class TestUpgrade:
         from uv_release_monorepo.cli._yaml import _write_yaml
 
         _write_yaml(wf, doc)
+        _git_commit_wf(wf)
 
         cmd_upgrade(_upgrade_args())
 
@@ -142,6 +196,7 @@ class TestUpgrade:
         from uv_release_monorepo.cli._yaml import _write_yaml
 
         _write_yaml(wf, doc)
+        _git_commit_wf(wf)
 
         cmd_upgrade(_upgrade_args())
 
@@ -158,6 +213,7 @@ class TestUpgrade:
         from uv_release_monorepo.cli._yaml import _write_yaml
 
         _write_yaml(wf, doc)
+        _git_commit_wf(wf)
 
         cmd_upgrade(_upgrade_args())
 

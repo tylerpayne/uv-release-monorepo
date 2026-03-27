@@ -90,9 +90,16 @@ def cmd_validate(args: argparse.Namespace) -> None:
 
 
 def _step_key(step: dict) -> str | None:
-    """Return a stable identity for a workflow step, or None if unidentifiable."""
+    """Return a stable identity for a workflow step, or None if unidentifiable.
+
+    Checks ``id`` first, then ``name``, then ``uses``.
+    """
     if "id" in step:
-        return step["id"]
+        return f"id:{step['id']}"
+    if "name" in step:
+        return f"name:{step['name']}"
+    if "uses" in step:
+        return f"uses:{step['uses']}"
     return None
 
 
@@ -180,6 +187,17 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
     if not dest.exists():
         _fatal(f"No workflow found at {dest.relative_to(root)}. Run `uvr init` first.")
 
+    # Ensure release.yml has no uncommitted changes
+    result = subprocess.run(
+        ["git", "diff", "--quiet", "--", str(dest)],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        _fatal(
+            f"{dest.relative_to(root)} has uncommitted changes.\n"
+            "  Commit or stash them before upgrading."
+        )
+
     existing = _load_yaml(dest)
     fresh = ReleaseWorkflow().model_dump(by_alias=True, exclude_none=True)
     merged = _merge_frozen(existing, fresh)
@@ -198,7 +216,12 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
 
     if not getattr(args, "yes", False):
         # Interactive: let user revert hunks they don't want
-        subprocess.run(["git", "checkout", "-p", "--", str(dest)])
+        result = subprocess.run(["git", "checkout", "-p", "--", str(dest)])
+        if result.returncode != 0:
+            # User quit — restore original
+            dest.write_text(existing_text)
+            print("Aborted. No changes applied.")
+            return
 
     final_text = dest.read_text()
     if final_text.rstrip() == existing_text.rstrip():
