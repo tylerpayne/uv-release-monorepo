@@ -481,6 +481,13 @@ class ReleasePlan(BaseModel):
     skip: list[str] = Field(default_factory=list)
     reuse_run_id: str = ""
 
+    @model_validator(mode="after")
+    def _forbid_skip_validate_plan(self) -> ReleasePlan:
+        if "validate-plan" in self.skip or "validate_plan" in self.skip:
+            msg = "validate-plan cannot be skipped"
+            raise ValueError(msg)
+        return self
+
     # Pre-computed command sequences for the executor
     build_commands: dict[str, list[BuildStage]] = Field(default_factory=dict)
     publish_commands: list[PlanCommand] = Field(default_factory=list)

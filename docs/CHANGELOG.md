@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [v0.16.0] - 2026-03-27
+
+### Added
+- Add `validate-plan` CI job that runs first in the release pipeline — validates the plan JSON as a `ReleasePlan` and pretty-prints it to stdout
+- Add `uvr validate-plan` CLI subcommand for validating and displaying a release plan
+
+### Changed
+- Change pipeline order to `validate-plan → build → publish → finalize` — build now depends on validate-plan
+
 ## [v0.15.0] - 2026-03-27
 
 ### Added

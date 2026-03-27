@@ -84,10 +84,10 @@ Or just drop a `uvr_hooks.py` with a `Hook` class at the workspace root — it's
 
 ## How it works
 
-`uvr release` scans your workspace, diffs each package against its last baseline tag, walks the dependency graph, and builds a plan containing every shell command needed for the release. It dispatches this plan to GitHub Actions, which runs seven jobs:
+`uvr release` scans your workspace, diffs each package against its last baseline tag, walks the dependency graph, and builds a plan containing every shell command needed for the release. It dispatches this plan to GitHub Actions, which runs eight jobs:
 
 ```
-pre-build → build → post-build → pre-release → publish → finalize → post-release
+validate-plan → pre-build → build → post-build → pre-release → publish → finalize → post-release
 ```
 
 Hook jobs (pre-build, post-build, pre-release, post-release) are no-ops by default — edit `release.yml` directly to add tests, linting, PyPI publish, or notifications.
