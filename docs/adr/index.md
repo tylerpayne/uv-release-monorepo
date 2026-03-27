@@ -14,6 +14,9 @@
 * [0008 - Support Dev, Pre, and Post Releases with Base Tags](0008-support-dev-pre-and-post-releases-with-base-tags.md)
 * [0009 - Inline Dependency Pinning Into CI Build Commands](0009-inline-dependency-pinning-into-ci-build-commands.md)
 * [0010 - Apply Release Versions Locally Before CI Dispatch](0010-apply-release-versions-locally-before-ci-dispatch.md)
+* [0011 - Use Python Hook System For Release Pipeline Extensibility](0011-use-python-hook-system-for-release-pipeline-extensibility.md)
+* [0012 - Replace Git And Gh Subprocesses With Pygit2 And Httpx](0012-replace-git-and-gh-subprocesses-with-pygit2-and-httpx.md)
+* [0013 - Use Three Way Merge For Workflow Upgrades](0013-use-three-way-merge-for-workflow-upgrades.md)
 
 ## Rejected Records
 
