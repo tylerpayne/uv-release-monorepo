@@ -36,19 +36,21 @@ jobs:
         fetch-depth: 0
     - uses: astral-sh/setup-uv@v5
     - name: Set up Python
-      run: "uv python install ${{ fromJSON(inputs.plan).python_version }}\nuv tool install ${{ fromJSON(inputs.plan).uvr_install }}"
+      run: |
+        uv python install ${{ fromJSON(inputs.plan).python_version }}
+        uv tool install ./packages/uv-release-monorepo
     - name: Build packages
       env:
         GH_TOKEN: ${{ github.token }}
         UVR_PLAN: ${{ inputs.plan }}
-      run: uvr build --runner '${{ toJSON(matrix.runner) }}'
+      run: uvr build --plan "$UVR_PLAN" --runner '${{ toJSON(matrix.runner) }}'
     - uses: actions/upload-artifact@v4
       with:
         name: wheels-${{ join(matrix.runner, '-') }}
         path: dist/*.whl
         if-no-files-found: error
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         runner: ${{ fromJSON(inputs.plan).runners }}
   post-build:
@@ -101,11 +103,13 @@ jobs:
         fetch-depth: 0
     - uses: astral-sh/setup-uv@v5
     - name: Set up Python
-      run: "uv python install ${{ fromJSON(inputs.plan).python_version }}\nuv tool install ${{ fromJSON(inputs.plan).uvr_install }}"
+      run: |
+        uv python install ${{ fromJSON(inputs.plan).python_version }}
+        uv tool install ./packages/uv-release-monorepo
     - name: Finalize release
       env:
         UVR_PLAN: ${{ inputs.plan }}
-      run: uvr finalize
+      run: uvr finalize --plan "$UVR_PLAN"
   post-release:
     runs-on: ubuntu-latest
     if: ${{ always() && !failure() && !contains(fromJSON(inputs.plan).skip, 'post-release') }}
