@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [v0.14.0] - 2026-03-27
+
+### Added
+- Add `uvr init --upgrade` to update frozen template fields in an existing `release.yml` while preserving custom jobs, triggers, and env vars
+- Add `uvr skill init` to copy bundled Claude Code skills into your project
+
 ## [v0.13.4] - 2026-03-27
 
 ### Fixed
