@@ -62,41 +62,6 @@ class PackageInfo(BaseModel):
     deps: list[str] = Field(default_factory=list)
 
 
-class VersionBump(BaseModel):
-    """Records a version change for a package.
-
-    Used to track what versions were bumped during a release so we can
-    generate commit messages and update dependent packages.
-
-    Attributes:
-        old: The version before bumping.
-        new: The version after bumping.
-    """
-
-    old: str
-    new: str
-
-
-class PublishedPackage(BaseModel):
-    """Captures the published state of a package in a release cycle.
-
-    Records which version of the package is now on PyPI (just built or
-    fetched from a prior release). Used by bump_versions() to write
-    correct '>=' dependency constraints into dependent packages.
-
-    Attributes:
-        info: Original package metadata.
-        published_version: The version now available on PyPI for this cycle.
-            For changed packages: the version that was just built and published.
-            For unchanged packages: the version fetched from the last release tag.
-        changed: True if the package was newly built; False if reused.
-    """
-
-    info: PackageInfo
-    published_version: str
-    changed: bool
-
-
 class BumpPlan(BaseModel):
     """Pre-computed version bump for a single package.
 
@@ -125,6 +90,22 @@ class PlanCommand(BaseModel):
     args: list[str]
     label: str = ""
     check: bool = True
+
+
+class BuildStage(BaseModel):
+    """A group of per-package command sequences that execute concurrently.
+
+    Stages execute sequentially (layer 0 completes before layer 1 starts).
+    Within a stage, each package's commands run in a separate thread so
+    independent packages build in parallel.
+
+    Attributes:
+        commands: Map of package name (or ``__setup__``/``__cleanup__``) to
+            its command list.  Commands for different keys run concurrently;
+            commands within a single key run sequentially.
+    """
+
+    commands: dict[str, list[PlanCommand]]
 
 
 class MatrixEntry(BaseModel):
@@ -440,7 +421,7 @@ class ReleasePlan(BaseModel):
     commands, change detection, or version arithmetic.
     """
 
-    schema_version: int = 6
+    schema_version: int = 7
     uvr_version: str
     uvr_install: str = "uv-release-monorepo"
     python_version: str = "3.12"
@@ -459,6 +440,6 @@ class ReleasePlan(BaseModel):
     reuse_run_id: str = ""
 
     # Pre-computed command sequences for the executor
-    build_commands: dict[str, list[PlanCommand]] = Field(default_factory=dict)
+    build_commands: dict[str, list[BuildStage]] = Field(default_factory=dict)
     publish_commands: list[PlanCommand] = Field(default_factory=list)
     finalize_commands: list[PlanCommand] = Field(default_factory=list)

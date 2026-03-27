@@ -6,7 +6,6 @@ from uv_release_monorepo.shared.models import (
     MatrixEntry,
     PackageInfo,
     ReleasePlan,
-    VersionBump,
 )
 
 
@@ -25,13 +24,6 @@ class TestPackageInfo:
         pkg = PackageInfo(path="pkg", version="1.0.0")
         pkg.deps.append("new-dep")
         assert pkg.deps == ["new-dep"]
-
-
-class TestVersionBump:
-    def test_create(self) -> None:
-        bump = VersionBump(old="1.0.0", new="1.0.1")
-        assert bump.old == "1.0.0"
-        assert bump.new == "1.0.1"
 
 
 class TestMatrixEntry:
@@ -57,9 +49,9 @@ class TestReleasePlan:
             matrix=[MatrixEntry(package="pkg-alpha", runner=["ubuntu-latest"])],
         )
 
-    def test_schema_version_defaults_to_6(self) -> None:
+    def test_schema_version_defaults_to_7(self) -> None:
         plan = self._make_plan()
-        assert plan.schema_version == 6
+        assert plan.schema_version == 7
 
     def test_round_trip_json(self) -> None:
         plan = self._make_plan()

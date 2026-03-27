@@ -8,8 +8,9 @@ from pathlib import Path
 from packaging.utils import canonicalize_name
 
 from .deps import update_dep_pins
-from .graph import topo_sort
+from .graph import topo_layers
 from .models import (
+    BuildStage,
     BumpPlan,
     DepPinChange,
     MatrixEntry,
@@ -237,8 +238,12 @@ class ReleasePlanner:
         unchanged: dict[str, PackageInfo],
         release_tags: dict[str, str | None],
         matrix_entries: list[MatrixEntry],
-    ) -> dict[str, list[PlanCommand]]:
-        """Generate build commands per runner."""
+    ) -> dict[str, list[BuildStage]]:
+        """Generate build command stages per runner.
+
+        Returns a list of :class:`BuildStage` per runner.  Stages execute
+        sequentially; packages *within* a stage execute concurrently.
+        """
         import json as _json
 
         all_packages = {**changed, **unchanged}
@@ -247,22 +252,24 @@ class ReleasePlanner:
             key = _json.dumps(entry.runner)
             by_runner.setdefault(key, set()).add(entry.package)
 
-        result: dict[str, list[PlanCommand]] = {}
+        result: dict[str, list[BuildStage]] = {}
         for runner, assigned in sorted(by_runner.items()):
-            cmds: list[PlanCommand] = []
-            cmds.append(PlanCommand(args=["mkdir", "-p", "dist"]))
+            stages: list[BuildStage] = []
 
             # Collect transitive deps
             needed = self._collect_deps(assigned, all_packages)
             changed_to_build = {n: changed[n] for n in needed if n in changed}
             unchanged_deps = {n: unchanged[n] for n in needed if n in unchanged}
 
-            # Fetch unchanged dep wheels
+            # -- Stage 0: setup (mkdir + fetch unchanged wheels) --
+            setup_cmds: list[PlanCommand] = []
+            setup_cmds.append(PlanCommand(args=["mkdir", "-p", "dist"]))
+
             for name in sorted(unchanged_deps):
                 tag = release_tags.get(name)
                 if tag:
                     wheel_name = canonicalize_name(name).replace("-", "_")
-                    cmds.append(
+                    setup_cmds.append(
                         PlanCommand(
                             args=[
                                 "gh",
@@ -279,44 +286,50 @@ class ReleasePlanner:
                             check=False,
                         )
                     )
+            stages.append(BuildStage(commands={"__setup__": setup_cmds}))
 
-            # Build changed packages in topo order
-            build_order = topo_sort(changed_to_build)
-            for pkg in build_order:
-                info = changed_to_build[pkg]
-                release_ver = strip_dev(info.version)
-                cmds.append(
-                    PlanCommand(
-                        args=[
-                            "uv",
-                            "version",
-                            release_ver,
-                            "--directory",
-                            info.path,
-                        ],
-                        label=f"Set {pkg} version to {release_ver}",
-                    )
-                )
-                cmds.append(
-                    PlanCommand(
-                        args=[
-                            "uv",
-                            "build",
-                            info.path,
-                            "--out-dir",
-                            "dist/",
-                            "--find-links",
-                            "dist/",
-                        ],
-                        label=f"Build {pkg}",
-                    )
-                )
+            # -- Build stages: one per topo layer --
+            layers = topo_layers(changed_to_build)
+            max_layer = max(layers.values()) if layers else -1
+            for layer in range(max_layer + 1):
+                layer_cmds: dict[str, list[PlanCommand]] = {}
+                for pkg, pkg_layer in sorted(layers.items()):
+                    if pkg_layer != layer:
+                        continue
+                    info = changed_to_build[pkg]
+                    release_ver = strip_dev(info.version)
+                    layer_cmds[pkg] = [
+                        PlanCommand(
+                            args=[
+                                "uv",
+                                "version",
+                                release_ver,
+                                "--directory",
+                                info.path,
+                            ],
+                            label=f"Set {pkg} version to {release_ver}",
+                        ),
+                        PlanCommand(
+                            args=[
+                                "uv",
+                                "build",
+                                info.path,
+                                "--out-dir",
+                                "dist/",
+                                "--find-links",
+                                "dist/",
+                            ],
+                            label=f"Build {pkg}",
+                        ),
+                    ]
+                stages.append(BuildStage(commands=layer_cmds))
 
-            # Remove wheels for packages not assigned to this runner
+            # -- Cleanup stage: remove wheels not assigned to this runner --
+            cleanup_cmds: list[PlanCommand] = []
             for pkg in sorted(set(changed_to_build) | set(unchanged_deps)):
                 if pkg not in assigned:
                     dist_name = canonicalize_name(pkg).replace("-", "_")
-                    cmds.append(
+                    cleanup_cmds.append(
                         PlanCommand(
                             args=[
                                 "find",
@@ -329,8 +342,10 @@ class ReleasePlanner:
                             check=False,
                         )
                     )
+            if cleanup_cmds:
+                stages.append(BuildStage(commands={"__cleanup__": cleanup_cmds}))
 
-            result[runner] = cmds
+            result[runner] = stages
         return result
 
     def _generate_publish_commands(

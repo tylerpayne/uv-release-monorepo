@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
-
-from packaging.utils import canonicalize_name
 
 
 from .models import PackageInfo
-from .shell import fatal, gh, git, step
+from .shell import git, step
 
 
 def detect_changes(
@@ -91,110 +88,3 @@ def detect_changes(
                 queue.append(dependent)
 
     return list(dirty)
-
-
-def get_existing_wheels(package_name: str | None = None) -> set[str]:
-    """Fetch wheel filenames from GitHub releases.
-
-    When *package_name* is provided, only the release tagged for that
-    package is inspected (``{package_name}/v*``). Otherwise all releases
-    are scanned (kept for backward compatibility but discouraged).
-
-    Args:
-        package_name: If given, scope the search to this package's releases.
-
-    Returns:
-        Set of wheel filenames (e.g., {"pkg_a-1.0.0-py3-none-any.whl"}).
-        Returns empty set if no releases exist or gh CLI fails.
-    """
-    if package_name is not None:
-        # Scope to this package's releases only
-        output = gh(
-            "release", "list", "--json", "tagName", "--limit", "100", check=False
-        )
-        if not output:
-            return set()
-        try:
-            releases = json.loads(output)
-        except json.JSONDecodeError:
-            return set()
-        # Filter to tags belonging to this package
-        releases = [
-            r for r in releases if r.get("tagName", "").startswith(f"{package_name}/v")
-        ]
-    else:
-        output = gh(
-            "release", "list", "--json", "tagName", "--limit", "100", check=False
-        )
-        if not output:
-            return set()
-        try:
-            releases = json.loads(output)
-        except json.JSONDecodeError:
-            return set()
-
-    existing_wheels: set[str] = set()
-
-    for release in releases:
-        tag = release.get("tagName", "")
-        if not tag:
-            continue
-
-        assets_output = gh("release", "view", tag, "--json", "assets", check=False)
-        if assets_output:
-            try:
-                assets_data = json.loads(assets_output)
-                for asset in assets_data.get("assets", []):
-                    name = asset.get("name", "")
-                    if name.endswith(".whl"):
-                        existing_wheels.add(name)
-            except json.JSONDecodeError:
-                continue
-
-    return existing_wheels
-
-
-def check_for_existing_wheels(changed: dict[str, PackageInfo]) -> None:
-    """Check if any package version already exists in GitHub releases.
-
-    Prevents accidentally releasing the same version twice by comparing
-    the versions of packages about to be built against wheels already
-    published in GitHub releases.
-
-    Args:
-        changed: Map of changed package names to PackageInfo.
-
-    Raises:
-        SystemExit: If any version already exists in releases.
-    """
-    step("Checking for duplicate versions")
-
-    # Check each package against its own releases rather than scanning all
-    existing_wheels: set[str] = set()
-    for pkg_name in changed:
-        existing_wheels |= get_existing_wheels(package_name=pkg_name)
-    if not existing_wheels:
-        print("  No existing releases found")
-        return
-
-    duplicates: list[str] = []
-
-    for pkg_name, info in changed.items():
-        # Wheel names use underscores, not hyphens
-        wheel_prefix = (
-            f"{canonicalize_name(pkg_name).replace('-', '_')}-{info.version}-"
-        )
-
-        for wheel in existing_wheels:
-            if wheel.startswith(wheel_prefix):
-                duplicates.append(f"{pkg_name} {info.version} (found: {wheel})")
-                break
-
-    if duplicates:
-        fatal(
-            "The following package versions already exist in releases:\n"
-            + "\n".join(f"  - {d}" for d in duplicates)
-            + "\n\nBump the version in pyproject.toml before releasing."
-        )
-
-    print("  No duplicates found")

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 
 from uv_release_monorepo.shared.models import (
+    BuildStage,
     MatrixEntry,
     PackageInfo,
     PlanCommand,
@@ -53,16 +54,25 @@ def _make_plan_json(
 
 @patch("uv_release_monorepo.shared.execute.subprocess.run")
 def test_build_runs_commands(mock_run: MagicMock) -> None:
-    """uvr build runs the pre-computed build commands for a runner."""
+    """uvr build runs the pre-computed build stages for a runner."""
     mock_run.return_value = MagicMock(returncode=0)
     plan_json = _make_plan_json(
         changed=["pkg-a"],
         unchanged=[],
         build_commands={
             '["ubuntu-latest"]': [
-                PlanCommand(args=["mkdir", "-p", "dist"]).model_dump(),
-                PlanCommand(
-                    args=["uv", "build", "packages/pkg-a"], label="Build pkg-a"
+                BuildStage(
+                    commands={"__setup__": [PlanCommand(args=["mkdir", "-p", "dist"])]}
+                ).model_dump(),
+                BuildStage(
+                    commands={
+                        "pkg-a": [
+                            PlanCommand(
+                                args=["uv", "build", "packages/pkg-a"],
+                                label="Build pkg-a",
+                            )
+                        ]
+                    }
                 ).model_dump(),
             ],
         },

@@ -10,24 +10,16 @@ import pytest
 from uv_release_monorepo.shared.models import (
     PackageInfo,
     PlanConfig,
-    PublishedPackage,
     ReleasePlan,
 )
 from uv_release_monorepo.shared.plan import build_plan
-from uv_release_monorepo.shared.build import fetch_unchanged_wheels
-from uv_release_monorepo.shared.changes import (
-    check_for_existing_wheels,
-    detect_changes,
-    get_existing_wheels,
-)
+from uv_release_monorepo.shared.changes import detect_changes
 from uv_release_monorepo.shared.discovery import (
     discover_packages,
     find_release_tags,
     get_baseline_tags,
 )
-from uv_release_monorepo.shared.bumps import bump_versions, collect_published_state
-from uv_release_monorepo.shared.publish import generate_release_notes, publish_release
-from uv_release_monorepo.shared.tags import tag_changed_packages
+from uv_release_monorepo.shared.publish import generate_release_notes
 
 
 class TestFindReleaseTags:
@@ -448,350 +440,6 @@ class TestDetectChangesDiamondDeps:
         assert set(changed) == {"top"}
 
 
-class TestFetchUnchangedWheels:
-    """Tests for fetch_unchanged_wheels()."""
-
-    @patch("uv_release_monorepo.shared.build.run")
-    @patch("uv_release_monorepo.shared.build.step")
-    @patch("uv_release_monorepo.shared.publish.Path")
-    def test_copies_matching_wheels(
-        self,
-        mock_path_cls: MagicMock,
-        mock_step: MagicMock,
-        mock_run: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """Wheels that exist in releases are copied to dist/."""
-        # Setup tmp directories
-        tmp_wheels = tmp_path / "prev-wheels"
-        tmp_wheels.mkdir()
-        dist_dir = tmp_path / "dist"
-        dist_dir.mkdir()
-
-        # Create a wheel file in tmp
-        wheel_file = tmp_wheels / "pkg_a-1.0.0-py3-none-any.whl"
-        wheel_file.write_text("fake wheel content")
-
-        # Mock Path to return our tmp directories
-        mock_path_cls.side_effect = lambda p: (
-            tmp_wheels
-            if p == "/tmp/prev-wheels"
-            else dist_dir
-            if p == "dist"
-            else Path(p)
-        )
-
-        unchanged = {"pkg-a": PackageInfo(path="packages/a", version="1.0.1", deps=[])}
-        release_tags = {"pkg-a": "pkg-a/v1.0.0"}  # Released version
-        fetch_unchanged_wheels(unchanged, release_tags)
-
-        # Verify gh release download was called
-        mock_run.assert_called()
-        assert "download" in mock_run.call_args[0]
-
-    @patch("uv_release_monorepo.shared.build.run")
-    @patch("uv_release_monorepo.shared.build.step")
-    def test_missing_wheel_not_copied(
-        self,
-        mock_step: MagicMock,
-        mock_run: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """If a wheel doesn't exist in releases, it's reported as missing."""
-        # Create real dist directory
-        dist_dir = tmp_path / "dist"
-        dist_dir.mkdir()
-
-        # Patch Path to use real tmp_path for /tmp/prev-wheels
-        tmp_wheels = tmp_path / "prev-wheels"
-        tmp_wheels.mkdir()
-        # Note: we do NOT create pkg_a wheel - it's missing
-
-        # mock_run handles gh release download calls
-        mock_run.return_value = MagicMock(returncode=1)  # simulate download failure
-
-        with patch("uv_release_monorepo.shared.publish.Path") as mock_path_cls:
-            mock_path_cls.side_effect = lambda p: (
-                tmp_wheels
-                if p == "/tmp/prev-wheels"
-                else dist_dir
-                if p == "dist"
-                else Path(p)
-            )
-
-            unchanged = {
-                "pkg-a": PackageInfo(path="packages/a", version="1.0.1", deps=[])
-            }
-            release_tags = {"pkg-a": "pkg-a/v1.0.0"}
-            fetch_unchanged_wheels(unchanged, release_tags)
-
-        # dist should be empty - no wheel was copied
-        assert list(dist_dir.glob("*.whl")) == []
-
-    @patch("uv_release_monorepo.shared.build.step")
-    def test_skips_when_no_unchanged(
-        self,
-        mock_step: MagicMock,
-    ) -> None:
-        """When unchanged dict is empty, does nothing."""
-        fetch_unchanged_wheels({}, {})
-
-
-class TestGetExistingWheels:
-    """Tests for get_existing_wheels()."""
-
-    @patch("uv_release_monorepo.shared.changes.gh")
-    def test_no_releases_returns_empty_set(
-        self,
-        mock_gh: MagicMock,
-    ) -> None:
-        """When gh release list fails, returns empty set."""
-        mock_gh.return_value = ""
-
-        result = get_existing_wheels()
-
-        assert result == set()
-
-    @patch("uv_release_monorepo.shared.changes.gh")
-    def test_parses_wheel_assets(
-        self,
-        mock_gh: MagicMock,
-    ) -> None:
-        """Successfully parses wheel assets from releases."""
-        # First call: gh release list, Second call: gh release view
-        mock_gh.side_effect = [
-            '[{"tagName": "v2024.01.01-abc123"}]',
-            '{"assets": [{"name": "pkg_a-1.0.0-py3-none-any.whl"}, {"name": "notes.txt"}]}',
-        ]
-
-        result = get_existing_wheels()
-
-        assert result == {"pkg_a-1.0.0-py3-none-any.whl"}
-
-    @patch("uv_release_monorepo.shared.changes.gh")
-    def test_aggregates_wheels_from_multiple_releases(
-        self,
-        mock_gh: MagicMock,
-    ) -> None:
-        """Collects wheels from all releases."""
-        mock_gh.side_effect = [
-            '[{"tagName": "v1"}, {"tagName": "v2"}]',
-            '{"assets": [{"name": "pkg_a-1.0.0-py3-none-any.whl"}]}',
-            '{"assets": [{"name": "pkg_b-2.0.0-py3-none-any.whl"}]}',
-        ]
-
-        result = get_existing_wheels()
-
-        assert result == {
-            "pkg_a-1.0.0-py3-none-any.whl",
-            "pkg_b-2.0.0-py3-none-any.whl",
-        }
-
-
-class TestCreatePackageTags:
-    """Tests for create_package_tags()."""
-
-    @pytest.fixture
-    def sample_packages(self) -> dict[str, PackageInfo]:
-        """Create sample packages for testing."""
-        return {
-            "pkg-a": PackageInfo(path="packages/a", version="1.0.0", deps=[]),
-            "pkg-b": PackageInfo(path="packages/b", version="2.0.0", deps=[]),
-        }
-
-    @patch("uv_release_monorepo.shared.tags.git")
-    @patch("uv_release_monorepo.shared.tags.step")
-    def test_creates_tags_for_changed_packages(
-        self,
-        mock_step: MagicMock,
-        mock_git: MagicMock,
-        sample_packages: dict[str, PackageInfo],
-    ) -> None:
-        """Creates a tag for each changed package."""
-        tag_changed_packages(sample_packages)
-
-        # Verify tags were created (2 tag calls, no push - push happens later)
-        assert mock_git.call_count == 2
-        mock_git.assert_any_call("tag", "pkg-a/v1.0.0")
-        mock_git.assert_any_call("tag", "pkg-b/v2.0.0")
-
-    @patch("uv_release_monorepo.shared.tags.git")
-    @patch("uv_release_monorepo.shared.tags.step")
-    def test_no_tags_when_no_changes(
-        self,
-        mock_step: MagicMock,
-        mock_git: MagicMock,
-    ) -> None:
-        """No tags created when no packages changed."""
-        tag_changed_packages({})
-
-        # Only step was called, no git operations
-        mock_git.assert_not_called()
-
-
-class TestCheckForDuplicateVersions:
-    """Tests for check_for_duplicate_versions()."""
-
-    @pytest.fixture
-    def sample_packages(self) -> dict[str, PackageInfo]:
-        """Create sample packages for testing."""
-        return {
-            "pkg-a": PackageInfo(path="packages/a", version="1.0.0", deps=[]),
-            "pkg-b": PackageInfo(path="packages/b", version="2.0.0", deps=[]),
-        }
-
-    @patch("uv_release_monorepo.shared.changes.get_existing_wheels")
-    @patch("uv_release_monorepo.shared.changes.step")
-    def test_no_existing_releases(
-        self,
-        mock_step: MagicMock,
-        mock_get_wheels: MagicMock,
-        sample_packages: dict[str, PackageInfo],
-    ) -> None:
-        """When no releases exist, check passes."""
-        mock_get_wheels.return_value = set()
-
-        # Should not raise
-        check_for_existing_wheels(sample_packages)
-
-    @patch("uv_release_monorepo.shared.changes.fatal")
-    @patch("uv_release_monorepo.shared.changes.get_existing_wheels")
-    @patch("uv_release_monorepo.shared.changes.step")
-    def test_duplicate_version_found(
-        self,
-        mock_step: MagicMock,
-        mock_get_wheels: MagicMock,
-        mock_fatal: MagicMock,
-    ) -> None:
-        """When a duplicate version exists, fatal is called."""
-        mock_get_wheels.return_value = {
-            "pkg_a-1.0.0-py3-none-any.whl",
-            "other_pkg-3.0.0-py3-none-any.whl",
-        }
-
-        changed = {"pkg-a": PackageInfo(path="packages/a", version="1.0.0", deps=[])}
-        check_for_existing_wheels(changed)
-
-        mock_fatal.assert_called_once()
-        assert "pkg-a 1.0.0" in mock_fatal.call_args[0][0]
-
-    @patch("uv_release_monorepo.shared.changes.fatal")
-    @patch("uv_release_monorepo.shared.changes.get_existing_wheels")
-    @patch("uv_release_monorepo.shared.changes.step")
-    def test_no_duplicate_different_versions(
-        self,
-        mock_step: MagicMock,
-        mock_get_wheels: MagicMock,
-        mock_fatal: MagicMock,
-    ) -> None:
-        """When versions differ, check passes."""
-        mock_get_wheels.return_value = {
-            "pkg_a-0.9.0-py3-none-any.whl",  # Different version
-        }
-
-        changed = {"pkg-a": PackageInfo(path="packages/a", version="1.0.0", deps=[])}
-        check_for_existing_wheels(changed)
-
-        mock_fatal.assert_not_called()
-
-    @patch("uv_release_monorepo.shared.changes.fatal")
-    @patch("uv_release_monorepo.shared.changes.get_existing_wheels")
-    @patch("uv_release_monorepo.shared.changes.step")
-    def test_multiple_duplicates_found(
-        self,
-        mock_step: MagicMock,
-        mock_get_wheels: MagicMock,
-        mock_fatal: MagicMock,
-        sample_packages: dict[str, PackageInfo],
-    ) -> None:
-        """When multiple duplicates exist, all are reported."""
-        mock_get_wheels.return_value = {
-            "pkg_a-1.0.0-py3-none-any.whl",
-            "pkg_b-2.0.0-py3-none-any.whl",
-        }
-
-        check_for_existing_wheels(sample_packages)
-
-        mock_fatal.assert_called_once()
-        error_msg = mock_fatal.call_args[0][0]
-        assert "pkg-a 1.0.0" in error_msg
-        assert "pkg-b 2.0.0" in error_msg
-
-
-class TestPublishReleaseChangelog:
-    """Tests for publish_release() changelog generation."""
-
-    @patch("uv_release_monorepo.shared.publish.gh")
-    @patch("uv_release_monorepo.shared.publish.git")
-    @patch("uv_release_monorepo.shared.publish.step")
-    def test_includes_git_log_in_release_notes(
-        self,
-        mock_step: MagicMock,
-        mock_git: MagicMock,
-        mock_gh: MagicMock,
-    ) -> None:
-        """publish_release includes commit history for changed packages."""
-        # Create a real dist dir with a wheel
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as tmp:
-            dist = Path(tmp) / "dist"
-            dist.mkdir()
-            (dist / "pkg_a-1.0.0-py3-none-any.whl").write_bytes(b"")
-
-            with patch("uv_release_monorepo.shared.publish.Path") as mock_path_cls:
-                mock_path_cls.return_value.glob.return_value = [
-                    dist / "pkg_a-1.0.0-py3-none-any.whl"
-                ]
-                mock_git.return_value = "abc1234 Add feature X\ndef5678 Fix bug Y"
-                mock_gh.return_value = ""
-
-                changed = {
-                    "pkg-a": PackageInfo(path="packages/a", version="1.0.0", deps=[])
-                }
-                release_tags = {"pkg-a": "pkg-a/v0.9.0"}
-
-                publish_release(changed, release_tags)
-
-                notes = mock_gh.call_args[0]
-                notes_str = " ".join(notes)
-                assert "Add feature X" in notes_str
-                assert "Fix bug Y" in notes_str
-
-    @patch("uv_release_monorepo.shared.publish.gh")
-    @patch("uv_release_monorepo.shared.publish.git")
-    @patch("uv_release_monorepo.shared.publish.step")
-    def test_skips_log_for_new_packages(
-        self,
-        mock_step: MagicMock,
-        mock_git: MagicMock,
-        mock_gh: MagicMock,
-    ) -> None:
-        """publish_release skips git log when no release tag exists."""
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as tmp:
-            dist = Path(tmp) / "dist"
-            dist.mkdir()
-            (dist / "pkg_a-1.0.0-py3-none-any.whl").write_bytes(b"")
-
-            with patch("uv_release_monorepo.shared.publish.Path") as mock_path_cls:
-                mock_path_cls.return_value.glob.return_value = [
-                    dist / "pkg_a-1.0.0-py3-none-any.whl"
-                ]
-                mock_gh.return_value = ""
-
-                changed = {
-                    "pkg-a": PackageInfo(path="packages/a", version="1.0.0", deps=[])
-                }
-                release_tags: dict[str, str | None] = {"pkg-a": None}
-
-                publish_release(changed, release_tags)
-
-                # git should not be called for commit log (no baseline)
-                mock_git.assert_not_called()
-
-
 class TestDiscoverPackagesRoot:
     """Tests for discover_packages() root parameter."""
 
@@ -812,160 +460,6 @@ class TestDiscoverPackagesRoot:
 
         assert "my-pkg" in result
         assert result["my-pkg"].version == "0.1.0"
-
-
-class TestCollectPublishedState:
-    """Tests for collect_published_state()."""
-
-    def _pkg(
-        self, name: str, version: str, deps: list[str] | None = None
-    ) -> PackageInfo:
-        return PackageInfo(path=f"packages/{name}", version=version, deps=deps or [])
-
-    def test_changed_package_uses_info_version(self) -> None:
-        """Changed packages: published_version == info.version (pre-bump)."""
-        alpha = self._pkg("pkg-alpha", "0.1.5")
-        state = collect_published_state(
-            changed={"pkg-alpha": alpha},
-            unchanged={},
-            release_tags={"pkg-alpha": "pkg-alpha/v0.1.4"},
-        )
-        assert state["pkg-alpha"].published_version == "0.1.5"
-        assert state["pkg-alpha"].changed is True
-
-    def test_unchanged_package_uses_release_tag_version(self) -> None:
-        """Unchanged packages: published_version == version from release tag."""
-        alpha = self._pkg("pkg-alpha", "0.1.6")  # pyproject already bumped to dev
-        state = collect_published_state(
-            changed={},
-            unchanged={"pkg-alpha": alpha},
-            release_tags={"pkg-alpha": "pkg-alpha/v0.1.5"},
-        )
-        assert state["pkg-alpha"].published_version == "0.1.5"
-        assert state["pkg-alpha"].changed is False
-
-    def test_unchanged_package_no_tag_falls_back_to_info_version(self) -> None:
-        """Unchanged packages without a release tag fall back to info.version."""
-        alpha = self._pkg("pkg-alpha", "0.1.0")
-        state = collect_published_state(
-            changed={},
-            unchanged={"pkg-alpha": alpha},
-            release_tags={"pkg-alpha": None},
-        )
-        assert state["pkg-alpha"].published_version == "0.1.0"
-
-    def test_mixed_changed_and_unchanged(self) -> None:
-        """Both changed and unchanged packages appear in state."""
-        alpha = self._pkg("pkg-alpha", "0.1.5")
-        beta = self._pkg("pkg-beta", "0.1.6")
-        state = collect_published_state(
-            changed={"pkg-alpha": alpha},
-            unchanged={"pkg-beta": beta},
-            release_tags={"pkg-beta": "pkg-beta/v0.1.5"},
-        )
-        assert state["pkg-alpha"].published_version == "0.1.5"
-        assert state["pkg-alpha"].changed is True
-        assert state["pkg-beta"].published_version == "0.1.5"
-        assert state["pkg-beta"].changed is False
-
-
-class TestBumpVersions:
-    """Tests for bump_versions()."""
-
-    def _pkg(
-        self, name: str, version: str, deps: list[str] | None = None
-    ) -> PackageInfo:
-        return PackageInfo(path=f"packages/{name}", version=version, deps=deps or [])
-
-    @patch("uv_release_monorepo.shared.bumps.rewrite_pyproject")
-    @patch("uv_release_monorepo.shared.bumps.step")
-    def test_bumps_changed_package_version(
-        self, mock_step: MagicMock, mock_rewrite: MagicMock
-    ) -> None:
-        """Changed packages get their version bumped."""
-        alpha = PublishedPackage(
-            info=self._pkg("pkg-alpha", "0.1.5"),
-            published_version="0.1.5",
-            changed=True,
-        )
-        result = bump_versions({"pkg-alpha": alpha})
-        assert result["pkg-alpha"].old == "0.1.5"
-        assert result["pkg-alpha"].new == "0.1.6"
-
-    @patch("uv_release_monorepo.shared.bumps.rewrite_pyproject")
-    @patch("uv_release_monorepo.shared.bumps.step")
-    def test_unchanged_package_not_bumped(
-        self, mock_step: MagicMock, mock_rewrite: MagicMock
-    ) -> None:
-        """Unchanged packages are not included in returned bumped dict."""
-        alpha = PublishedPackage(
-            info=self._pkg("pkg-alpha", "0.1.5"),
-            published_version="0.1.5",
-            changed=False,
-        )
-        result = bump_versions({"pkg-alpha": alpha})
-        assert "pkg-alpha" not in result
-        mock_rewrite.assert_not_called()
-
-    @patch("uv_release_monorepo.shared.bumps.rewrite_pyproject")
-    @patch("uv_release_monorepo.shared.bumps.step")
-    def test_internal_dep_pinned_to_published_version_not_bumped(
-        self, mock_step: MagicMock, mock_rewrite: MagicMock
-    ) -> None:
-        """Internal deps are pinned to published_version (pre-bump), not next-dev version.
-
-        Scenario: pkg-alpha published at 0.1.5 (changed), pkg-beta depends on
-        pkg-alpha. The bump writes pkg-alpha>=0.1.5 into pkg-beta, NOT >=0.1.6.
-        """
-        alpha = PublishedPackage(
-            info=self._pkg("pkg-alpha", "0.1.5"),
-            published_version="0.1.5",
-            changed=True,
-        )
-        beta = PublishedPackage(
-            info=self._pkg("pkg-beta", "0.1.5", deps=["pkg-alpha"]),
-            published_version="0.1.5",
-            changed=True,
-        )
-        bump_versions({"pkg-alpha": alpha, "pkg-beta": beta})
-
-        beta_rewrite_call = next(
-            call for call in mock_rewrite.call_args_list if "pkg-beta" in str(call)
-        )
-        _, _, internal_dep_versions = beta_rewrite_call.args
-        assert internal_dep_versions["pkg-alpha"] == "0.1.5"
-
-    @patch("uv_release_monorepo.shared.bumps.rewrite_pyproject")
-    @patch("uv_release_monorepo.shared.bumps.step")
-    def test_unchanged_dep_pinned_to_release_tag_version(
-        self, mock_step: MagicMock, mock_rewrite: MagicMock
-    ) -> None:
-        """Deps from unchanged packages use their release-tag version, not pyproject version.
-
-        Scenario: pkg-alpha unchanged (pyproject says 0.1.6 from last bump, but last
-        release was 0.1.5). pkg-beta changed and depends on pkg-alpha. The bump should
-        write pkg-alpha>=0.1.5, not >=0.1.6, so the wheel stays installable when only
-        pkg-beta changes.
-        """
-        alpha = PublishedPackage(
-            info=self._pkg("pkg-alpha", "0.1.6"),  # dev version in pyproject
-            published_version="0.1.5",  # actual last-released version
-            changed=False,
-        )
-        beta = PublishedPackage(
-            info=self._pkg("pkg-beta", "0.1.5", deps=["pkg-alpha"]),
-            published_version="0.1.5",
-            changed=True,
-        )
-        bump_versions({"pkg-alpha": alpha, "pkg-beta": beta})
-
-        beta_rewrite_call = next(
-            call for call in mock_rewrite.call_args_list if "pkg-beta" in str(call)
-        )
-        _, _, internal_dep_versions = beta_rewrite_call.args
-        assert (
-            internal_dep_versions["pkg-alpha"] == "0.1.5"
-        )  # release tag version, not 0.1.6
 
 
 class TestBuildPlan:
@@ -1169,6 +663,100 @@ class TestBuildPlan:
 
         assert plan.matrix[0].path == "packages/a"
         assert plan.matrix[0].version == "1.0.0"
+
+
+class TestBuildCommandStages:
+    """Tests for _generate_build_commands() stage structure."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_tag_checks(self) -> None:  # type: ignore[return]
+        with (
+            patch("uv_release_monorepo.shared.plan.git", return_value=""),
+            patch("uv_release_monorepo.shared.shell.gh", return_value="[]"),
+        ):
+            yield
+
+    @patch("uv_release_monorepo.shared.plan.update_dep_pins", return_value=[])
+    @patch("uv_release_monorepo.shared.plan.detect_changes")
+    @patch("uv_release_monorepo.shared.plan.get_baseline_tags")
+    @patch("uv_release_monorepo.shared.plan.find_release_tags")
+    @patch("uv_release_monorepo.shared.plan.discover_packages")
+    def test_diamond_deps_produce_correct_layers(
+        self,
+        mock_discover: MagicMock,
+        mock_find_release: MagicMock,
+        mock_find_dev: MagicMock,
+        mock_detect: MagicMock,
+        _mock_pins: MagicMock,
+    ) -> None:
+        """Diamond dep graph produces setup + 3 build layers + cleanup stages."""
+        packages = {
+            "alpha": PackageInfo(path="packages/alpha", version="1.0.0", deps=[]),
+            "beta": PackageInfo(path="packages/beta", version="1.0.0", deps=["alpha"]),
+            "delta": PackageInfo(
+                path="packages/delta", version="1.0.0", deps=["alpha"]
+            ),
+            "gamma": PackageInfo(path="packages/gamma", version="1.0.0", deps=["beta"]),
+        }
+        mock_discover.return_value = packages
+        mock_find_release.return_value = {n: None for n in packages}
+        mock_find_dev.return_value = {n: None for n in packages}
+        mock_detect.return_value = list(packages)
+
+        plan, _ = build_plan(
+            PlanConfig(rebuild_all=False, matrix={}, uvr_version="0.3.0")
+        )
+
+        stages = plan.build_commands['["ubuntu-latest"]']
+
+        # Stage 0: __setup__
+        assert "__setup__" in stages[0].commands
+
+        # Stage 1: layer 0 — alpha (no deps)
+        assert "alpha" in stages[1].commands
+        assert len(stages[1].commands) == 1
+
+        # Stage 2: layer 1 — beta and delta (both depend on alpha only)
+        assert set(stages[2].commands.keys()) == {"beta", "delta"}
+
+        # Stage 3: layer 2 — gamma (depends on beta)
+        assert "gamma" in stages[3].commands
+        assert len(stages[3].commands) == 1
+
+        # No cleanup stage (all packages assigned to the same runner)
+        assert len(stages) == 4
+
+    @patch("uv_release_monorepo.shared.plan.detect_changes")
+    @patch("uv_release_monorepo.shared.plan.get_baseline_tags")
+    @patch("uv_release_monorepo.shared.plan.find_release_tags")
+    @patch("uv_release_monorepo.shared.plan.discover_packages")
+    def test_no_deps_single_parallel_layer(
+        self,
+        mock_discover: MagicMock,
+        mock_find_release: MagicMock,
+        mock_find_dev: MagicMock,
+        mock_detect: MagicMock,
+    ) -> None:
+        """Independent packages all land in a single parallel build stage."""
+        packages = {
+            "pkg-a": PackageInfo(path="packages/a", version="1.0.0", deps=[]),
+            "pkg-b": PackageInfo(path="packages/b", version="1.0.0", deps=[]),
+            "pkg-c": PackageInfo(path="packages/c", version="1.0.0", deps=[]),
+        }
+        mock_discover.return_value = packages
+        mock_find_release.return_value = {n: None for n in packages}
+        mock_find_dev.return_value = {n: None for n in packages}
+        mock_detect.return_value = list(packages)
+
+        plan, _ = build_plan(
+            PlanConfig(rebuild_all=False, matrix={}, uvr_version="0.3.0")
+        )
+
+        stages = plan.build_commands['["ubuntu-latest"]']
+        # setup + one layer with all 3 packages
+        assert len(stages) == 2
+        assert "__setup__" in stages[0].commands
+        assert set(stages[1].commands.keys()) == {"pkg-a", "pkg-b", "pkg-c"}
 
 
 class TestGenerateReleaseNotes:

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from .models import PlanCommand, ReleasePlan
+from .models import BuildStage, PlanCommand, ReleasePlan
 
 
 class ReleaseExecutor:
@@ -19,7 +20,7 @@ class ReleaseExecutor:
         self.plan = plan
 
     def build(self, *, runner: str | None = None) -> None:
-        """Run build commands."""
+        """Run build stages."""
         if runner:
             import json
 
@@ -29,10 +30,16 @@ class ReleaseExecutor:
             except (json.JSONDecodeError, TypeError):
                 parsed = [runner]
             key = json.dumps(parsed if isinstance(parsed, list) else [parsed])
-            self._run_commands(self.plan.build_commands.get(key, []))
+            stages = self.plan.build_commands.get(key, [])
         else:
-            for key in self.plan.build_commands:
-                self._run_commands(self.plan.build_commands[key])
+            stages = [
+                stage
+                for key in self.plan.build_commands
+                for stage in self.plan.build_commands[key]
+            ]
+
+        for stage in stages:
+            self._run_stage(stage)
 
     def publish(self) -> None:
         """Run publish commands."""
@@ -47,6 +54,47 @@ class ReleaseExecutor:
         self.build()
         self.publish()
         self.finalize()
+
+    @staticmethod
+    def _run_stage(stage: BuildStage) -> None:
+        """Run all packages in a stage, parallelising across packages."""
+        if len(stage.commands) <= 1:
+            # Single package (or setup/cleanup) — run sequentially, no overhead.
+            for cmds in stage.commands.values():
+                ReleaseExecutor._run_commands(cmds)
+            return
+
+        failures: list[str] = []
+
+        def _run_pkg(pkg: str, cmds: list[PlanCommand]) -> str | None:
+            for cmd in cmds:
+                if cmd.label:
+                    print(f"  [{pkg}] {cmd.label}")
+                result = subprocess.run(cmd.args)
+                if cmd.check and result.returncode != 0:
+                    print(
+                        f"  [{pkg}] Command failed: {' '.join(cmd.args)}",
+                        file=sys.stderr,
+                    )
+                    return pkg
+            return None
+
+        with ThreadPoolExecutor(max_workers=len(stage.commands)) as pool:
+            futures = {
+                pool.submit(_run_pkg, pkg, cmds): pkg
+                for pkg, cmds in stage.commands.items()
+            }
+            for future in as_completed(futures):
+                failed = future.result()
+                if failed is not None:
+                    failures.append(failed)
+
+        if failures:
+            print(
+                f"Stage failed for: {', '.join(sorted(failures))}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     @staticmethod
     def _run_commands(commands: list[PlanCommand]) -> None:
