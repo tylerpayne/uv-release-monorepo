@@ -6,7 +6,6 @@ import argparse
 import json
 from pathlib import Path
 
-from ..shared.graph import topo_layers
 from ..shared.models import JOB_ORDER, ReleasePlan
 from ._common import __version__, _fatal, _read_matrix
 
@@ -102,41 +101,51 @@ def _print_plan(
         if job == "build":
             if plan.reuse_run_id:
                 print(f"{_D}artifacts from run {plan.reuse_run_id}")
-            elif plan.matrix:
-                layers = topo_layers(plan.changed)
-                max_layer = max(layers.values()) if layers else 0
+            elif plan.build_commands:
                 import json as _json
 
-                by_runner: dict[str, list] = {}
+                # Collect assigned packages per runner for marking transitive deps
+                assigned_by_runner: dict[str, set[str]] = {}
                 for me in plan.matrix:
                     key = _json.dumps(me.runner)
-                    by_runner.setdefault(key, []).append(me)
-                all_build_pkgs = [e.package for e in plan.matrix]
+                    assigned_by_runner.setdefault(key, set()).add(me.package)
+
+                all_build_pkgs: list[str] = []
+                for stages in plan.build_commands.values():
+                    for stage in stages:
+                        for key in stage.commands:
+                            if key not in ("__setup__", "__cleanup__"):
+                                all_build_pkgs.append(key)
                 bw = max(len(p) for p in all_build_pkgs) if all_build_pkgs else 0
-                for runner_key, runner_entries in sorted(by_runner.items()):
+
+                for runner_key in sorted(plan.build_commands):
                     labels = _json.loads(runner_key)
+                    assigned = assigned_by_runner.get(runner_key, set())
                     print(f"{_D}[{', '.join(labels)}]")
                     local_layer = 0
-                    for layer in range(max_layer + 1):
-                        pkgs = [
-                            e
-                            for e in runner_entries
-                            if layers.get(e.package, 0) == layer
-                        ]
+                    for stage in plan.build_commands[runner_key]:
+                        pkgs = sorted(
+                            k
+                            for k in stage.commands
+                            if k not in ("__setup__", "__cleanup__")
+                        )
                         if not pkgs:
                             continue
-                        if max_layer > 0:
-                            print(f"{_D}  layer {local_layer}")
+                        print(f"{_D}  layer {local_layer}")
                         local_layer += 1
-                        for e in pkgs:
-                            cur = plan.current_versions.get(e.package, e.version)
-                            if cur != e.version:
+                        for pkg in pkgs:
+                            cur = plan.current_versions.get(pkg, "")
+                            ver = (
+                                plan.changed[pkg].version if pkg in plan.changed else ""
+                            )
+                            dep_marker = "" if pkg in assigned else " (dep)"
+                            if cur and ver and cur != ver:
                                 print(
-                                    f"{_D}    {e.package.ljust(bw)}  "
-                                    f"{cur} -> {e.version}"
+                                    f"{_D}    {pkg.ljust(bw)}  "
+                                    f"{cur} -> {ver}{dep_marker}"
                                 )
                             else:
-                                print(f"{_D}    {e.package.ljust(bw)}  {e.version}")
+                                print(f"{_D}    {pkg.ljust(bw)}  {ver}{dep_marker}")
 
         if job == "publish" and plan.publish_matrix:
             for entry in plan.publish_matrix:
