@@ -15,12 +15,14 @@ from ._common import (
     _print_dependencies,
     _print_matrix_status,
     _read_matrix,
+    _resolve_plan_json,
 )
 from ._yaml import _MISSING, _yaml_delete, _yaml_get, _yaml_set
 from .init import cmd_init, cmd_validate
 from .install import _find_latest_release_tag, _parse_install_spec, cmd_install
 from .release import cmd_release
 from .runners import cmd_runners
+from .skill import cmd_skill_init
 
 __all__ = [
     "_MISSING",
@@ -45,6 +47,7 @@ __all__ = [
     "cmd_install",
     "cmd_release",
     "cmd_runners",
+    "cmd_skill_init",
     "cmd_validate",
 ]
 
@@ -63,6 +66,7 @@ Commands:
   install       Install a package from GitHub releases (org/repo/pkg)
   init          Scaffold the GitHub Actions workflow
   validate      Validate an existing release.yml
+  skill init    Copy Claude Code skills into your project
 
 CI steps (used by the release workflow):
   build         Build packages for a runner
@@ -288,23 +292,53 @@ Run 'uvr <command> --help' for details on a specific command.
     )
     validate_parser.set_defaults(func=cmd_validate)
 
+    # skill (subcommand group)
+    skill_parser = subparsers.add_parser(
+        "skill",
+        help=_H,
+        description="Manage Claude Code skills bundled with uvr.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    skill_sub = skill_parser.add_subparsers(
+        dest="skill_command", required=True, title=argparse.SUPPRESS, metavar=""
+    )
+    skill_init_parser = skill_sub.add_parser(
+        "init",
+        help="Copy Claude skills to .claude/skills/",
+        description="Copy bundled Claude Code skills into your project.",
+    )
+    skill_init_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing skill files.",
+    )
+    skill_init_parser.set_defaults(func=cmd_skill_init)
+
     # -- CI steps ------------------------------------------------------
 
     def _cmd_build(a: argparse.Namespace) -> None:
-        plan = ReleasePlan.model_validate_json(a.plan)
+        plan = ReleasePlan.model_validate_json(_resolve_plan_json(a.plan))
         ReleaseExecutor(plan).build(runner=a.runner)
 
     build_parser = subparsers.add_parser("build", help=_H)
-    build_parser.add_argument("--plan", required=True)
+    build_parser.add_argument(
+        "--plan",
+        default=None,
+        help="Plan JSON, @file path, or omit to use UVR_PLAN env var.",
+    )
     build_parser.add_argument("--runner", required=True)
     build_parser.set_defaults(func=_cmd_build)
 
     def _cmd_finalize(a: argparse.Namespace) -> None:
-        plan = ReleasePlan.model_validate_json(a.plan)
+        plan = ReleasePlan.model_validate_json(_resolve_plan_json(a.plan))
         ReleaseExecutor(plan).finalize()
 
     finalize_parser = subparsers.add_parser("finalize", help=_H)
-    finalize_parser.add_argument("--plan", required=True)
+    finalize_parser.add_argument(
+        "--plan",
+        default=None,
+        help="Plan JSON, @file path, or omit to use UVR_PLAN env var.",
+    )
     finalize_parser.set_defaults(func=_cmd_finalize)
 
     # -- Low-level -----------------------------------------------------

@@ -162,6 +162,18 @@ def _discover_package_names() -> list[str]:
     return sorted(_discover_packages().keys())
 
 
+def _resolve_plan_json(raw: str | None) -> str:
+    """Resolve plan JSON from a --plan arg, @file path, or UVR_PLAN env var."""
+    import os
+
+    value = raw or os.environ.get("UVR_PLAN", "")
+    if value.startswith("@"):
+        value = Path(value[1:]).read_text()
+    if not value:
+        _fatal("No plan provided. Pass --plan JSON, --plan @file, or set UVR_PLAN.")
+    return value
+
+
 def _fatal(msg: str) -> NoReturn:
     """Print error and exit."""
     print(f"Error: {msg}", file=sys.stderr)

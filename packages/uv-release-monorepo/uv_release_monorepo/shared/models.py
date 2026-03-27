@@ -231,7 +231,7 @@ _BUILD_STEPS: list[dict] = [
     {
         "name": "Build packages",
         "env": {"GH_TOKEN": "${{ github.token }}", "UVR_PLAN": "${{ inputs.plan }}"},
-        "run": "uvr build --plan \"$UVR_PLAN\" --runner '${{ toJSON(matrix.runner) }}'",
+        "run": "uvr build --runner '${{ toJSON(matrix.runner) }}'",
     },
     {
         "uses": "actions/upload-artifact@v4",
@@ -272,7 +272,7 @@ _FINALIZE_STEPS: list[dict] = [
     {
         "name": "Finalize release",
         "env": {"UVR_PLAN": "${{ inputs.plan }}"},
-        "run": 'uvr finalize --plan "$UVR_PLAN"',
+        "run": "uvr finalize",
     },
 ]
 

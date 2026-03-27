@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from ..shared.models import JOB_ORDER, ReleasePlan
-from ._common import __version__, _fatal, _read_matrix
+from ._common import __version__, _fatal, _read_matrix, _resolve_plan_json
 
 
 def _compute_skipped(args: argparse.Namespace) -> set[str]:
@@ -168,8 +168,10 @@ def cmd_release(args: argparse.Namespace) -> None:
     where = getattr(args, "where", "ci")
 
     # --plan: execute a pre-computed plan locally
-    if getattr(args, "plan", None):
-        plan = ReleasePlan.model_validate_json(args.plan)
+    raw_plan = getattr(args, "plan", None)
+    if raw_plan:
+        plan_json = _resolve_plan_json(raw_plan)
+        plan = ReleasePlan.model_validate_json(plan_json)
         _cli.ReleaseExecutor(plan).run()
         return
 
