@@ -78,48 +78,60 @@ def cmd_validate(args: argparse.Namespace) -> None:
         try:
             ReleaseWorkflow.model_validate(existing)
         except ValidationError as e:
-            print(f"\u2717 {dest.relative_to(root)} is invalid:\n{e}")
+            print(f"Invalid: {dest.relative_to(root)}\n{e}")
             raise SystemExit(1) from None
 
+    rel = dest.relative_to(root)
     if caught:
-        print(f"\u26a0 {dest.relative_to(root)} has warnings:")
+        print(f"Valid: {rel} (0 errors, {len(caught)} warnings)\n")
+        print("Warnings:")
         for w in caught:
             print(f"  {w.message}")
     else:
-        print(f"\u2713 {dest.relative_to(root)} is valid.")
+        print(f"Valid: {rel} (0 errors, 0 warnings)")
 
 
-def _step_key(step: dict) -> str | None:
-    """Return a stable identity for a workflow step, or None if unidentifiable.
+def _step_keys(step: dict) -> list[str]:
+    """Return all candidate identity keys for a workflow step.
 
-    Checks ``id`` first, then ``name``, then ``uses``.
+    A step can be identified by ``id``, ``name``, or ``uses``.  We return
+    all that are present so matching works even when the fresh template adds
+    an ``id`` to a step the user only has ``uses`` for.
     """
+    keys: list[str] = []
     if "id" in step:
-        return f"id:{step['id']}"
+        keys.append(f"id:{step['id']}")
     if "name" in step:
-        return f"name:{step['name']}"
+        keys.append(f"name:{step['name']}")
     if "uses" in step:
-        return f"uses:{step['uses']}"
-    return None
+        keys.append(f"uses:{step['uses']}")
+    return keys
 
 
 def _merge_steps(existing_steps: list[dict], fresh_steps: list[dict]) -> list[dict]:
     """Merge fresh template steps into existing steps.
 
-    For each fresh step, if a matching step exists (by name or uses), update
-    it in place.  If no match, insert it at the position it appears in the
-    fresh template.  Existing steps not in the fresh template are preserved.
+    For each fresh step, if a matching step exists (by id, name, or uses),
+    update it in place.  If no match, insert it at the position it appears
+    in the fresh template.  Existing steps not in the fresh template are
+    preserved.
     """
     merged = copy.deepcopy(existing_steps)
-    existing_keys = {_step_key(s): i for i, s in enumerate(merged) if _step_key(s)}
+    # Map every candidate key to its index in merged
+    existing_keys: dict[str, int] = {}
+    for i, s in enumerate(merged):
+        for k in _step_keys(s):
+            existing_keys[k] = i
 
     insert_offset = 0
+    matched_indices: set[int] = set()
     for fresh_idx, fresh_step in enumerate(fresh_steps):
-        key = _step_key(fresh_step)
-        if key and key in existing_keys:
-            idx = existing_keys[key]
+        keys = _step_keys(fresh_step)
+        idx = next((existing_keys[k] for k in keys if k in existing_keys), None)
+        if idx is not None and idx not in matched_indices:
             merged[idx] = copy.deepcopy(fresh_step)
-        elif key:
+            matched_indices.add(idx)
+        elif keys:
             # New step from template — insert at the corresponding position
             pos = min(fresh_idx + insert_offset, len(merged))
             merged.insert(pos, copy.deepcopy(fresh_step))
@@ -216,17 +228,27 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
 
     if not getattr(args, "yes", False):
         # Interactive: let user revert hunks they don't want
-        result = subprocess.run(["git", "checkout", "-p", "--", str(dest)])
-        if result.returncode != 0:
-            # User quit — restore original
+        try:
+            subprocess.run(["git", "checkout", "-p", "--", str(dest)])
+        except KeyboardInterrupt:
             dest.write_text(existing_text)
-            print("Aborted. No changes applied.")
+            print("\nAborted. No changes applied.")
             return
 
-    final_text = dest.read_text()
-    if final_text.rstrip() == existing_text.rstrip():
-        print("No changes applied.")
-        return
+        final_text = dest.read_text()
+        if final_text.rstrip() == existing_text.rstrip():
+            print("No changes applied.")
+            return
+
+        # Confirm the result (handles quit-early leaving partial state)
+        try:
+            answer = input("\nKeep these changes? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
+        if answer != "y":
+            dest.write_text(existing_text)
+            print("Reverted. No changes applied.")
+            return
 
     print(f"\u2713 Upgraded {rel_dest}")
 
