@@ -113,6 +113,8 @@ class TestCmdRelease:
         mock_planner_cls.return_value.plan.return_value = (plan, [])
 
         def _fake_run(cmd, **kwargs):
+            if cmd[0] == "git" and "branch" in cmd:
+                return MagicMock(returncode=0, stdout="main\n")
             if cmd[0] == "git":
                 return MagicMock(returncode=0, stdout="")
             return MagicMock(returncode=0, stdout="[]")
@@ -131,4 +133,5 @@ class TestCmdRelease:
                 break
         assert trigger_call is not None
         joined = " ".join(str(a) for a in trigger_call)
+        assert "--ref" in joined
         assert "plan=" in joined

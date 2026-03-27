@@ -299,11 +299,19 @@ def cmd_release(args: argparse.Namespace) -> None:
     import time
 
     plan_json = plan.model_dump_json()
+    ref_result = subprocess.run(
+        ["git", "branch", "--show-current"],
+        capture_output=True,
+        text=True,
+    )
+    ref = ref_result.stdout.strip() if ref_result.returncode == 0 else "main"
     cmd = [
         "gh",
         "workflow",
         "run",
         "release.yml",
+        "--ref",
+        ref,
         "-f",
         f"plan={plan_json}",
     ]
@@ -312,7 +320,9 @@ def cmd_release(args: argparse.Namespace) -> None:
         print()
         print("Dispatch release")
         print("----------------")
-        print(f"  gh workflow run release.yml -f plan=<{len(plan_json)} bytes>")
+        print(
+            f"  gh workflow run release.yml --ref {ref} -f plan=<{len(plan_json)} bytes>"
+        )
         if plan.skip:
             print(f"  skip: {', '.join(plan.skip)}")
         print()
