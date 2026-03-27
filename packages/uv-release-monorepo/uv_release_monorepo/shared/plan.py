@@ -288,12 +288,11 @@ class ReleasePlanner:
                 cmds.append(
                     PlanCommand(
                         args=[
-                            "uvr",
-                            "set-version",
-                            "--path",
-                            f"{info.path}/pyproject.toml",
-                            "--version",
+                            "uv",
+                            "version",
                             release_ver,
+                            "--directory",
+                            info.path,
                         ],
                         label=f"Set {pkg} version to {release_ver}",
                     )
@@ -418,12 +417,11 @@ class ReleasePlanner:
             cmds.append(
                 PlanCommand(
                     args=[
-                        "uvr",
-                        "set-version",
-                        "--path",
-                        pyproject,
-                        "--version",
+                        "uv",
+                        "version",
                         next_version,
+                        "--directory",
+                        info.path,
                     ],
                     label=f"Bump {name} to {next_version}",
                 )

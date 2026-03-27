@@ -1,4 +1,4 @@
-"""Tests for CI workflow subcommands (uvr build, finalize, set-version, pin-deps)."""
+"""Tests for CI workflow subcommands (uvr build, finalize, pin-deps)."""
 
 from __future__ import annotations
 
@@ -104,18 +104,6 @@ def test_build_no_commands_for_runner(mock_run: MagicMock) -> None:
     ):
         cli()
     mock_run.assert_not_called()
-
-
-@patch("uv_release_monorepo.shared.deps.set_version")
-def test_set_version_writes(mock_sv: MagicMock) -> None:
-    """uvr set-version calls set_version."""
-    with patch.object(
-        sys,
-        "argv",
-        ["uvr", "set-version", "--path", "foo/pyproject.toml", "--version", "1.2.3"],
-    ):
-        cli()
-    mock_sv.assert_called_once()
 
 
 @patch("uv_release_monorepo.shared.deps.pin_dependencies")

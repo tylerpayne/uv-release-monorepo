@@ -69,7 +69,6 @@ CI steps (used by the release workflow):
   finalize      Tag, bump versions, commit, and push
 
 Low-level:
-  set-version   Set a package version in pyproject.toml
   pin-deps      Pin internal dependency versions in pyproject.toml
 
 Options:
@@ -305,17 +304,6 @@ Run 'uvr <command> --help' for details on a specific command.
     finalize_parser.set_defaults(func=_cmd_finalize)
 
     # -- Low-level -----------------------------------------------------
-
-    def _cmd_set_version(a: argparse.Namespace) -> None:
-        from pathlib import Path
-        from ..shared.deps import set_version
-
-        set_version(Path(a.path), a.version)
-
-    sv_parser = subparsers.add_parser("set-version", help=_H)
-    sv_parser.add_argument("--path", required=True)
-    sv_parser.add_argument("--version", required=True)
-    sv_parser.set_defaults(func=_cmd_set_version)
 
     def _cmd_pin_deps(a: argparse.Namespace) -> None:
         from pathlib import Path

@@ -12,7 +12,6 @@ uv-release-monorepo = { workspace = true }
 [tool.uvr.config]
 latest = "uv-release-monorepo"
 
-[tool.uvr.matrix]
 [dependency-groups]
 dev = [
     "uv-release-monorepo",
