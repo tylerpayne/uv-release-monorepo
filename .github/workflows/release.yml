@@ -54,16 +54,16 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        runner: ${{ fromJSON(inputs.plan).runners }}
+        runner: ${{ fromJSON(inputs.plan).build_matrix }}
   release:
     runs-on: ubuntu-latest
-    if: ${{ always() && !failure() && !contains(fromJSON(inputs.plan).skip, 'publish') }}
+    if: ${{ always() && !failure() && !contains(fromJSON(inputs.plan).skip, 'release') }}
     needs:
     - build
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.plan).publish_matrix }}
+        include: ${{ fromJSON(inputs.plan).release_matrix }}
     steps:
     - id: download
       uses: actions/download-artifact@v4
