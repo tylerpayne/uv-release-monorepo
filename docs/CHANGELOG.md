@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING**: Bump `ReleasePlan` schema version to 9 — consolidate per-package data into `ChangedPackage` model replacing `BumpPlan`, `MatrixEntry`, `PublishEntry`, `current_versions`, `release_tags`, and `bumps` fields
+- **BREAKING**: Rename release pipeline phase from "publish" to "release" — affects `--skip` flag values, workflow job names, and plan field names (`publish_commands` → `release_commands`, `publish_matrix` → `release_matrix`, `runners` → `build_matrix`)
+- **BREAKING**: Rename all shared module functions to verb-first convention — `load_pyproject` → `read_pyproject`, `save_pyproject` → `write_pyproject`, `step` → `print_step`, `fatal` → `exit_fatal`, `discover_packages` → `find_packages`, `get_baseline_tags` → `find_baseline_tags`, `base_version` → `get_base_version`, `get_uvr_config` → `get_config`, `get_uvr_matrix` → `get_matrix`
+- **BREAKING**: Restructure `shared/` modules by topological dependency layer — `planner/` subpackage absorbs `versions.py`, `deps.py`, `graph.py`, `changes.py`; `context/` subpackage replaces `discovery.py` with `RepositoryContext` model; `execute.py` → `executor.py`
+- Change `ReleasePlanner` to accept a pre-built `RepositoryContext` instead of calling discovery functions internally
+- Change `uvr init --upgrade` to use editor prompt with `--wait` for GUI editors instead of `git checkout -p` for conflict resolution
+
+### Added
+- Add `RepositoryContext` model that pre-fetches all repository state (repo handle, git tags, GitHub releases, packages, release tags, baselines) in a single `build_context()` call
+- Add `ChangedPackage` model extending `PackageInfo` with `current_version`, `release_version`, `next_version`, `last_release_tag`, `release_notes`, `make_latest`, and `runners` fields
+- Add `get_path()` helper in `toml.py` for navigating nested TOML dicts without chained `.get()` calls
+- Add `--editor` CLI flag and `[tool.uvr.config].editor` setting for configuring conflict resolution editor in `uvr init --upgrade`
+- Add `@computed_field` properties on `ReleasePlan` for `build_matrix` and `release_matrix` — derived from `changed` packages, serialized into JSON for CI workflow consumption
+
+### Removed
+- Remove `BumpPlan`, `MatrixEntry`, `PublishEntry`, `PinChange`, `DepPinChange` models — data consolidated into `ChangedPackage`
+- Remove `git()`, `gh()`, `run()` subprocess wrappers from `shell.py` — replaced by pygit2 and httpx in earlier versions
+- Remove unused functions: `dev_number`, `is_final`, `is_prerelease`, `is_postrelease`, `tag_for_package`, `topo_sort`, `rewrite_pyproject`, `update_dep_pins`
+
+### Fixed
+- Fix `git merge-file` exit code check in `uvr init --upgrade` — was treating conflict count > 1 as fatal error instead of only negative exit codes
+- Fix multiline `run:` steps in generated workflow YAML rendering as quoted strings instead of block scalars (`|`)
+- Fix `strategy` field rendering after `steps` in workflow YAML job definitions
+
 ## [v0.17.0] - 2026-03-27
 
 ### Added
