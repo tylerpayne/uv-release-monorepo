@@ -10,7 +10,7 @@ uv-release-monorepo = { workspace = true }
 
 [tool.uvr.config]
 latest = "uv-release-monorepo"
-init_commit = "2ced581"
+init_commit = "ef2ee7e"
 
 [dependency-groups]
 dev = [
