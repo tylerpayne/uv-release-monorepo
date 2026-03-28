@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from uv_release_monorepo.shared.packages import _canonicalize_dependency
+from uv_release_monorepo.shared.context._packages import _canonicalize_dependency
 from uv_release_monorepo.shared.planner._dependencies import (
     _pin,
     pin_dependencies,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
 import pygit2
 
@@ -11,6 +12,9 @@ from ..models import PackageInfo
 from ..shell import print_step
 
 from ._graph import _build_graph_maps
+
+if TYPE_CHECKING:
+    from ..context import RepositoryContext
 
 
 def _check_package(
@@ -38,6 +42,7 @@ def detect_changes(
     baselines: Mapping[str, str | None],
     rebuild_all: bool,
     *,
+    ctx: RepositoryContext | None = None,
     repo: pygit2.Repository | None = None,
 ) -> list[str]:
     """Determine which packages need to be rebuilt.
@@ -59,6 +64,7 @@ def detect_changes(
         packages: Map of package name -> PackageInfo.
         baselines: Map of package name -> baseline tag (or None).
         rebuild_all: If True, mark all packages as dirty.
+        ctx: RepositoryContext providing the repo. Preferred over *repo*.
         repo: Pre-opened pygit2 Repository. Opened automatically if None.
 
     Returns:
@@ -66,7 +72,9 @@ def detect_changes(
     """
     print_step("Detecting changes")
 
-    if repo is None:
+    if ctx is not None:
+        repo = ctx.repo
+    elif repo is None:
         from ..git.local import open_repo
 
         repo = open_repo()

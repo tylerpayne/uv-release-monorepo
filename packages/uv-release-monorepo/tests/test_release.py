@@ -38,8 +38,10 @@ class TestCmdRelease:
     """Tests for cmd_release()."""
 
     @patch("uv_release_monorepo.cli.ReleasePlanner")
+    @patch("uv_release_monorepo.shared.context.build_context")
     def test_release_exits_early_when_nothing_changed(
         self,
+        mock_build_ctx: MagicMock,
         mock_planner_cls: MagicMock,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
@@ -63,8 +65,10 @@ class TestCmdRelease:
         assert "Nothing changed" in output
 
     @patch("uv_release_monorepo.cli.ReleasePlanner")
+    @patch("uv_release_monorepo.shared.context.build_context")
     def test_release_prints_human_summary(
         self,
+        mock_build_ctx: MagicMock,
         mock_planner_cls: MagicMock,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
@@ -91,8 +95,10 @@ class TestCmdRelease:
 
     @patch("subprocess.run")
     @patch("uv_release_monorepo.cli.ReleasePlanner")
+    @patch("uv_release_monorepo.shared.context.build_context")
     def test_release_dispatches_with_yes_flag(
         self,
+        mock_build_ctx: MagicMock,
         mock_planner_cls: MagicMock,
         mock_subprocess_run: MagicMock,
         tmp_path: Path,

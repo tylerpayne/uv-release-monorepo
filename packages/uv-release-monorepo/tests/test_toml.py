@@ -14,7 +14,7 @@ from uv_release_monorepo.shared.config import (
 )
 from packaging.utils import canonicalize_name
 
-from uv_release_monorepo.shared.packages import _get_dependencies
+from uv_release_monorepo.shared.context._packages import _get_dependencies
 from uv_release_monorepo.shared.toml import read_pyproject, write_pyproject
 
 

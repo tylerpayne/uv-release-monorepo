@@ -243,6 +243,8 @@ def cmd_release(args: argparse.Namespace) -> None:
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()
     try:
+        from ..shared.context import build_context
+
         dry_run = getattr(args, "dry_run", False) or json_only
         config = _cli.PlanConfig(
             rebuild_all=args.rebuild_all,
@@ -256,7 +258,8 @@ def cmd_release(args: argparse.Namespace) -> None:
         )
         if hook:
             config = hook.pre_plan(config)
-        plan = _cli.ReleasePlanner(config).plan()
+        ctx = build_context()
+        plan = _cli.ReleasePlanner(config, ctx).plan()
     finally:
         sys.stdout = old_stdout
 

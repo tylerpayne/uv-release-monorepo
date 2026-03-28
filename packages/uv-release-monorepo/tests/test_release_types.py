@@ -7,9 +7,13 @@ baseline tag.
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
+import pygit2
 import pytest
 from packaging.version import Version
 
+from uv_release_monorepo.shared.context import RepositoryContext
 from uv_release_monorepo.shared.models import PackageInfo, PlanConfig
 from uv_release_monorepo.shared.planner import ReleasePlanner
 
@@ -17,6 +21,18 @@ from uv_release_monorepo.shared.planner import ReleasePlanner
 def _pep440(v: str) -> Version:
     """Parse a version string and assert it is PEP 440 compliant."""
     return Version(v)
+
+
+def _make_ctx() -> RepositoryContext:
+    """Build a minimal fake RepositoryContext for unit tests."""
+    return RepositoryContext(
+        repo=MagicMock(spec=pygit2.Repository),
+        git_tags=set(),
+        github_releases=set(),
+        packages={},
+        release_tags={},
+        baselines={},
+    )
 
 
 def _planner(
@@ -32,7 +48,8 @@ def _planner(
             release_type=release_type,
             pre_kind=pre_kind,
             dry_run=True,
-        )
+        ),
+        _make_ctx(),
     )
 
 

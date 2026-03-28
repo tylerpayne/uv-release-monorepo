@@ -1,28 +1,18 @@
-"""Package discovery: scan workspace and find release/baseline tags."""
+"""Package discovery: scan workspace and find packages."""
 
 from __future__ import annotations
 
 import glob as _glob
-from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import tomlkit
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
-if TYPE_CHECKING:
-    import semver
-
-from .config import get_config
-from .models import PackageInfo
-from .shell import exit_fatal, print_step
-from .toml import get_path, read_pyproject
-
-
-# ---------------------------------------------------------------------------
-# Private helpers (absorbed from deps.py and discovery.py)
-# ---------------------------------------------------------------------------
+from ..config import get_config
+from ..models import PackageInfo
+from ..shell import exit_fatal, print_step
+from ..toml import get_path, read_pyproject
 
 
 def _canonicalize_dependency(dep_str: str) -> str:
@@ -38,22 +28,24 @@ def _canonicalize_dependency(dep_str: str) -> str:
     return canonicalize_name(Requirement(dep_str).name)
 
 
-def _get_dependency_sections(doc: tomlkit.TOMLDocument) -> Iterator[list]:
-    """Yield every mutable dependency list from a pyproject.toml.
+def _get_dependency_sections(doc: tomlkit.TOMLDocument) -> list[list]:
+    """Return every mutable dependency list from a pyproject.toml.
 
     Covers [project].dependencies, [project].optional-dependencies.*,
     and [dependency-groups].*.  Does NOT include [build-system].requires.
     """
+    result: list[list] = []
     project = doc.get("project", {})
     deps = project.get("dependencies")
     if isinstance(deps, list):
-        yield deps
+        result.append(deps)
     for group in project.get("optional-dependencies", {}).values():
         if isinstance(group, list):
-            yield group
+            result.append(group)
     for group in doc.get("dependency-groups", {}).values():
         if isinstance(group, list):
-            yield group
+            result.append(group)
+    return result
 
 
 def _get_dependencies(doc: tomlkit.TOMLDocument) -> list[str]:
@@ -73,29 +65,7 @@ def _get_dependencies(doc: tomlkit.TOMLDocument) -> list[str]:
     return deps
 
 
-def _parse_version(version_str: str) -> semver.Version:
-    """Parse a version string into a semver.Version object.
-
-    Strips all dev/pre/post suffixes first, then handles incomplete versions
-    by padding with zeros.
-    """
-    import semver as _semver
-
-    from .planner._versions import get_base_version
-
-    cleaned = get_base_version(version_str)
-    parts = cleaned.split(".")
-    while len(parts) < 3:
-        parts.append("0")
-    return _semver.Version.parse(".".join(parts[:3]))
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-
-def find_packages(root: Path | None = None) -> dict[str, PackageInfo]:
+def _find_packages(root: Path | None = None) -> dict[str, PackageInfo]:
     """Scan the workspace and discover all packages.
 
     Reads [tool.uv.workspace].members from root pyproject.toml to find
@@ -175,74 +145,3 @@ def find_packages(root: Path | None = None) -> dict[str, PackageInfo]:
         print(f"  {name} {info.version} ({info.path}){deps}")
 
     return packages
-
-
-def find_release_tags(
-    packages: dict[str, PackageInfo],
-    gh_releases: set[str],
-) -> dict[str, str | None]:
-    """Find the most recent GitHub release tag for each package.
-
-    Queries actual GitHub releases (not git tags) to find the most recent
-    release whose version is less than the package's current base version.
-    This ensures baseline tags and unreleased tags are never matched.
-
-    Args:
-        packages: Map of package name -> PackageInfo.
-        gh_releases: Set of GitHub release tag names (from :func:`git.remote.list_release_tag_names`).
-
-    Returns:
-        Map of package name to its last release tag, or None if no release exists.
-    """
-    print_step("Finding last release tags")
-
-    release_tag_names = gh_releases
-    release_tags: dict[str, str | None] = {}
-    for name, info in packages.items():
-        current_base = _parse_version(info.version)
-        # Filter to this package's releases, sorted by version descending
-        pkg_releases = []
-        prefix = f"{name}/v"
-        for tag in release_tag_names:
-            if not tag.startswith(prefix):
-                continue
-            tag_ver_str = tag[len(prefix) :]
-            try:
-                tag_ver = _parse_version(tag_ver_str)
-            except (ValueError, TypeError):
-                continue
-            if tag_ver < current_base:
-                pkg_releases.append((tag_ver, tag))
-        # Pick the highest version
-        pkg_releases.sort(reverse=True)
-        release_tags[name] = pkg_releases[0][1] if pkg_releases else None
-        print(f"  {name}: {release_tags[name] or '<none>'}")
-
-    return release_tags
-
-
-def find_baseline_tags(
-    packages: dict[str, PackageInfo],
-    all_tags: set[str],
-) -> dict[str, str | None]:
-    """Derive baseline tags from each package's pyproject.toml version.
-
-    The baseline tag is ``{name}/v{version}-base`` where *version* comes from
-    pyproject.toml. If the tag does not exist, returns None for that package.
-
-    Args:
-        packages: Map of package name -> PackageInfo.
-        all_tags: Set of all git tag names (from :func:`git.local.list_tags`).
-
-    Returns:
-        Map of package name to its baseline tag, or None if no tag exists.
-    """
-    print_step("Finding baselines")
-
-    baselines: dict[str, str | None] = {}
-    for name, info in packages.items():
-        base_tag = f"{name}/v{info.version}-base"
-        baselines[name] = base_tag if base_tag in all_tags else None
-        print(f"  {name}: {baselines[name] or '<none>'}")
-
-    return baselines

@@ -8,6 +8,7 @@ from pathlib import Path
 from packaging.utils import canonicalize_name
 
 from ..config import get_config
+from ..context import RepositoryContext, build_context
 from ..models import (
     BuildStage,
     ChangedPackage,
@@ -33,9 +34,7 @@ from ._versions import (
     next_pre_number,
     parse_tag_version,
 )
-from ..packages import find_baseline_tags, find_packages, find_release_tags
-from ..git.local import generate_release_notes, list_tags, open_repo
-from ..git.remote import list_release_tag_names
+from ..git.local import generate_release_notes, list_tags
 
 
 def _dist_name(name: str) -> str:
@@ -50,21 +49,19 @@ class ReleasePlanner:
     every phase (build, publish, finalize). The executor is a dumb runner.
     """
 
-    def __init__(self, config: PlanConfig) -> None:
+    def __init__(self, config: PlanConfig, ctx: RepositoryContext) -> None:
         self.config = config
+        self.ctx = ctx
 
     def plan(self) -> ReleasePlan:
-        """Discover packages, detect changes, return a ReleasePlan."""
-        repo = open_repo()
-        all_git_tags = list_tags(repo)
-        all_git_tags_set = set(all_git_tags)
-        all_gh_releases = list_release_tag_names()
+        """Detect changes and return a ReleasePlan."""
+        all_git_tags = list_tags(self.ctx.repo)
 
-        packages = find_packages()
-        release_tags = find_release_tags(packages, gh_releases=all_gh_releases)
-        baselines = find_baseline_tags(packages, all_tags=all_git_tags_set)
+        packages = self.ctx.packages
+        release_tags = self.ctx.release_tags
+        baselines = self.ctx.baselines
         changed_names = detect_changes(
-            packages, baselines, self.config.rebuild_all, repo=repo
+            packages, baselines, self.config.rebuild_all, ctx=self.ctx
         )
 
         raw_changed = {name: packages[name] for name in changed_names}
@@ -102,7 +99,9 @@ class ReleasePlanner:
         for name in changed_names:
             info = versioned[name]
             baseline = release_tags.get(name)
-            notes[name] = generate_release_notes(name, info, baseline, repo=repo)
+            notes[name] = generate_release_notes(
+                name, info, baseline, repo=self.ctx.repo
+            )
 
         # Determine which package gets "Latest" on GitHub
         root_doc = read_pyproject(Path.cwd() / "pyproject.toml")
@@ -133,7 +132,7 @@ class ReleasePlanner:
         )
 
         # Validate no tag conflicts
-        self._check_tag_conflicts(changed, all_git_tags_set, all_gh_releases)
+        self._check_tag_conflicts(changed, self.ctx.git_tags, self.ctx.github_releases)
 
         return ReleasePlan(
             uvr_version=self.config.uvr_version,
@@ -584,4 +583,5 @@ class ReleasePlanner:
 
 def build_plan(config: PlanConfig) -> ReleasePlan:
     """Run discovery locally and return a ReleasePlan."""
-    return ReleasePlanner(config).plan()
+    ctx = build_context()
+    return ReleasePlanner(config, ctx).plan()
