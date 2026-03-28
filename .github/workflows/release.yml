@@ -126,7 +126,7 @@ jobs:
         run: uvr finalize
   publish:
     runs-on: ubuntu-latest
-    if: ${{ always() && !failure() && !contains(fromJSON(inputs.plan).skip, 'publish') && contains(fromJSON(inputs.plan).changed, 'uv-release-monorepo') }}
+    if: ${{ always() && !failure() && !contains(fromJSON(inputs.plan).skip, 'publish') && fromJSON(inputs.plan).changed['uv-release-monorepo'] != null }}
     needs:
       - finalize
     environment: pypi
@@ -134,7 +134,7 @@ jobs:
       - name: Download wheel for PyPI
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ fromJSON(inputs.plan).uvr_install }}
+          VERSION: ${{ fromJSON(inputs.plan).changed['uv-release-monorepo'].release_version }}
         run: |
           mkdir -p dist
           gh release download "uv-release-monorepo/v${VERSION}" --repo "${{ github.repository }}" --pattern "uv_release_monorepo-*.whl" --dir dist
