@@ -196,24 +196,11 @@ class ReleasePlanner:
         result: dict[str, str] = {}
 
         if rt == "dev":
-            bad = {
-                n: changed[n] for n in sorted(changed) if not is_dev(changed[n].version)
-            }
-            if bad:
-                from ..utils.shell import exit_fatal
-
-                lines = "\n".join(
-                    f"  uv version {make_dev(info.version)} --directory {info.path}"
-                    for info in bad.values()
-                )
-                names = ", ".join(bad)
-                exit_fatal(
-                    f"--dev release requires a .devN version in pyproject.toml, "
-                    f"but these packages have clean versions: {names}\n"
-                    f"Fix with:\n{lines}"
-                )
             for name, info in changed.items():
-                result[name] = info.version
+                # If already dev, publish as-is; otherwise append .dev0
+                result[name] = (
+                    info.version if is_dev(info.version) else make_dev(info.version)
+                )
         elif rt == "pre":
             kind = self.config.pre_kind
             for name, info in changed.items():

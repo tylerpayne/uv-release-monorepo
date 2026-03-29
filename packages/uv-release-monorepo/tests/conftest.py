@@ -9,6 +9,7 @@ import tomlkit
 
 from tests._helpers import (  # noqa: F401 — re-export for convenience
     _init_workflow,
+    _make_ctx,
     _make_plan,
     _runners_args,
     _write_workspace_repo,

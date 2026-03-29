@@ -154,12 +154,11 @@ class TestDevRelease:
         release, next_ver = _release_and_bump(_planner("dev"), "1.0.1.dev2")
         assert _pep440(next_ver) > _pep440(release)
 
-    def test_rejects_clean_version(self) -> None:
-        """--dev on a non-.dev version errors with instructions."""
-        planner = _planner("dev")
-        changed = {"alpha": _pkg("1.0.1")}
-        with pytest.raises(SystemExit):
-            planner._compute_release_versions(changed)
+    def test_auto_appends_dev0_to_clean(self) -> None:
+        """--dev on a clean version auto-appends .dev0."""
+        release, nxt = _release_and_bump(_planner("dev"), "1.0.1")
+        assert release == "1.0.1.dev0"
+        assert nxt == "1.0.1.dev1"
 
 
 # ---------------------------------------------------------------------------
@@ -337,7 +336,7 @@ _DEV_VERSIONS = [
     "1.0.1.post2.dev3",  # post2 + dev3
 ]
 
-# Clean versions (no .dev suffix) — dev release should reject these
+# Clean versions (no .dev suffix) — dev auto-appends .dev0
 _CLEAN_VERSIONS = [
     "1.0.1",  # final
     "1.0.1a0",  # alpha0
@@ -369,11 +368,13 @@ def _pep440_bump_patch(base: str) -> str:
 
 
 def _expected_dev(v: str) -> tuple[str, str]:
-    # Release as-is, bump dev number
     m = _re.search(r"\.dev(\d+)$", v)
-    assert m
-    n = int(m.group(1))
-    return v, v[: m.start()] + f".dev{n + 1}"
+    if m:
+        # Already dev — release as-is, bump dev number
+        n = int(m.group(1))
+        return v, v[: m.start()] + f".dev{n + 1}"
+    # Clean version — append .dev0, next is .dev1
+    return f"{v}.dev0", f"{v}.dev1"
 
 
 def _expected_pre(kind: str, v: str) -> tuple[str, str]:
@@ -425,19 +426,13 @@ class TestVersionMatrix:
         assert release == exp_release
         assert nxt == exp_nxt
 
-    # dev only works with dev versions
-    @pytest.mark.parametrize("version", _DEV_VERSIONS)
+    # dev works with all versions — auto-appends .dev0 for clean
+    @pytest.mark.parametrize("version", _ALL_VERSIONS)
     def test_dev(self, version: str) -> None:
         release, nxt = _release_and_bump(_planner("dev"), version)
         exp_release, exp_nxt = _expected_dev(version)
         assert release == exp_release
         assert nxt == exp_nxt
-
-    # dev rejects clean versions
-    @pytest.mark.parametrize("version", _CLEAN_VERSIONS)
-    def test_dev_rejects_clean(self, version: str) -> None:
-        with pytest.raises(SystemExit):
-            _release_and_bump(_planner("dev"), version)
 
     # pre-alpha works with both dev and clean
     @pytest.mark.parametrize("version", _ALL_VERSIONS)
