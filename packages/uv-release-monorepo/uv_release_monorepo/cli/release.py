@@ -266,10 +266,8 @@ def cmd_release(args: argparse.Namespace) -> None:
     if hook:
         config = hook.pre_plan(config)
 
-    # Steps: discover + baselines + [tags] + release_tags + detect + [conflicts] + plan
-    step_count = 6 if not config.rebuild_all else 5
-    if config.release_type in ("pre", "post"):
-        step_count += 1  # tag scan
+    # Steps: discover + baselines + release_tags + detect + plan
+    step_count = 5 if not config.rebuild_all else 4
     progress = Progress(total_steps=step_count)
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()  # suppress discovery print_step output

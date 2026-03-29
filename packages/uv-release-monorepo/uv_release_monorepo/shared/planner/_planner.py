@@ -27,14 +27,14 @@ from ..utils.dependencies import pin_dependencies, set_version
 from ..utils.versions import (
     bump_dev,
     bump_patch,
+    find_previous_release,
     get_base_version,
     is_dev,
     make_dev,
     make_post,
     make_pre,
-    next_post_number,
-    next_pre_number,
     parse_tag_version,
+    strip_dev,
 )
 
 
@@ -63,8 +63,6 @@ class ReleasePlanner:
 
     def plan(self) -> ReleasePlan:
         """Detect changes and return a ReleasePlan."""
-        all_git_tags = sorted(self.ctx.git_tags)
-
         packages = self.ctx.packages
         baselines = self.ctx.baselines
         changed_names = detect_changes(
@@ -76,19 +74,19 @@ class ReleasePlanner:
             name: info for name, info in packages.items() if name not in changed_names
         }
 
-        # Find release tags from local git tags (no network needed).
-        # If ctx is already a ReleaseContext (e.g., from tests), use its data.
+        # Find previous release per package via inverse version bump (O(1) per package)
         if isinstance(self.ctx, ReleaseContext):
             release_tags = self.ctx.release_tags
         else:
-            from ..utils.tags import find_release_tags
-
             if self.progress:
                 self.progress.update("Finding release tags")
-            local_release_tags = {
-                t for t in self.ctx.git_tags if not t.endswith("-base")
-            }
-            release_tags = find_release_tags(packages, gh_releases=local_release_tags)
+            release_tags: dict[str, str | None] = {}
+            for name, info in packages.items():
+                try:
+                    prev = find_previous_release(info.version, name, self.ctx.repo)
+                    release_tags[name] = f"{name}/v{prev}" if prev else None
+                except ValueError:
+                    release_tags[name] = None
             tagged = sum(1 for t in release_tags.values() if t)
             if self.progress:
                 self.progress.complete(f"Found {tagged} release tags")
@@ -97,7 +95,7 @@ class ReleasePlanner:
         current_versions = {name: info.version for name, info in raw_changed.items()}
 
         # Compute release versions
-        release_versions = self._compute_release_versions(raw_changed, all_git_tags)
+        release_versions = self._compute_release_versions(raw_changed)
 
         # Build a working dict with release versions applied (for dep pinning, commands)
         versioned: dict[str, PackageInfo] = {}
@@ -191,7 +189,6 @@ class ReleasePlanner:
     def _compute_release_versions(
         self,
         changed: dict[str, PackageInfo],
-        all_git_tags: list[str],
     ) -> dict[str, str]:
         """Compute the release version string for each changed package."""
         rt = self.config.release_type
@@ -218,14 +215,14 @@ class ReleasePlanner:
                 result[name] = info.version
         elif rt == "pre":
             for name, info in changed.items():
-                bv = get_base_version(info.version)
-                n = next_pre_number(all_git_tags, name, self.config.pre_kind)
-                result[name] = make_pre(bv, self.config.pre_kind, n)
+                # Strip .devN → release the pre-release version as-is
+                # e.g. 1.0.1a1.dev0 → 1.0.1a1
+                result[name] = strip_dev(info.version)
         elif rt == "post":
             for name, info in changed.items():
-                bv = get_base_version(info.version)
-                n = next_post_number(all_git_tags, name)
-                result[name] = make_post(bv, n)
+                # Strip .devN → release the post-release version as-is
+                # e.g. 1.0.1.post0.dev0 → 1.0.1.post0
+                result[name] = strip_dev(info.version)
         else:
             for name, info in changed.items():
                 result[name] = get_base_version(info.version)

@@ -131,28 +131,127 @@ def make_post(version_str: str, n: int = 0) -> str:
     return f"{get_base_version(version_str)}.post{n}"
 
 
-def next_pre_number(existing_tags: list[str], name: str, kind: str) -> int:
-    """Find the next pre-release number by scanning existing tags.
+def find_previous_release(
+    version_str: str,
+    name: str,
+    repo: object,
+) -> str | None:
+    """Derive the previous release version from a dev version string.
+
+    Uses O(1) ref lookups for the common cases, falling back to a narrow
+    glob only for minor/major bumps.
+
+    Args:
+        version_str: Current version (e.g. "1.0.1.dev0").
+        name: Package name for tag prefix.
+        repo: pygit2.Repository for ref lookups.
+
+    Returns:
+        The previous release version string, or None if no previous release.
+
+    Raises:
+        ValueError: If version is 0.0.0.dev0 (no possible previous release).
 
     Examples:
-        next_pre_number(["pkg/v1.0.0a0", "pkg/v1.0.0a1"], "pkg", "a") -> 2
-        next_pre_number([], "pkg", "a") -> 0
+        "1.0.1.dev3"       → "1.0.1.dev2"
+        "1.0.1.dev0"       → "1.0.0"
+        "1.0.1a1.dev0"     → "1.0.1a0"
+        "1.0.1a0.dev0"     → "1.0.0"
+        "1.0.1.post1.dev0" → "1.0.1.post0"
+        "1.0.1.post0.dev0" → "1.0.1"
+        "1.1.0.dev0"       → glob pkg/v1.0.* → highest
+        "2.0.0.dev0"       → glob pkg/v1.* → highest
     """
-    pattern = re.compile(rf"^{re.escape(name)}/v\d+\.\d+\.\d+{re.escape(kind)}(\d+)$")
-    numbers = [int(m.group(1)) for t in existing_tags if (m := pattern.match(t))]
-    return max(numbers) + 1 if numbers else 0
 
+    def _tag_exists(ver: str) -> bool:
+        return repo.references.get(f"refs/tags/{name}/v{ver}") is not None  # type: ignore[union-attr]
 
-def next_post_number(existing_tags: list[str], name: str) -> int:
-    """Find the next post-release number by scanning existing tags.
+    def _glob_highest(prefix: str) -> str | None:
+        """Find highest version matching a tag prefix via ref scan."""
+        ref_prefix = f"refs/tags/{name}/v{prefix}"
+        candidates = []
+        for ref in repo.listall_references():  # type: ignore[union-attr]
+            if ref.startswith(ref_prefix) and not ref.endswith("-base"):
+                ver_str = ref.split("/v")[-1]
+                try:
+                    candidates.append((parse_version(ver_str), ver_str))
+                except (ValueError, TypeError):
+                    continue
+        if not candidates:
+            return None
+        candidates.sort(reverse=True)
+        return candidates[0][1]
 
-    Examples:
-        next_post_number(["pkg/v1.0.0.post0"], "pkg") -> 1
-        next_post_number([], "pkg") -> 0
-    """
-    pattern = re.compile(rf"^{re.escape(name)}/v\d+\.\d+\.\d+\.post(\d+)$")
-    numbers = [int(m.group(1)) for t in existing_tags if (m := pattern.match(t))]
-    return max(numbers) + 1 if numbers else 0
+    # Extract dev number
+    dev_m = _DEV_NUM_RE.search(version_str)
+    if not dev_m:
+        # Not a dev version — can't determine previous
+        return None
+
+    dev_n = int(dev_m.group(1))
+    without_dev = strip_dev(version_str)
+
+    # Case 1: dev N > 0 → previous dev
+    if dev_n > 0:
+        prev = f"{without_dev[: dev_m.start()]}.dev{dev_n - 1}"
+        if _tag_exists(prev):
+            return prev
+
+    # Case 2: pre N > 0 → decrement pre
+    pre_m = re.search(r"(a|b|rc)(\d+)$", without_dev)
+    if pre_m:
+        pre_n = int(pre_m.group(2))
+        if pre_n > 0:
+            prev = f"{without_dev[: pre_m.start()]}{pre_m.group(1)}{pre_n - 1}"
+            if _tag_exists(prev):
+                return prev
+        # Case 4: pre 0 → previous final (strip pre, find last final)
+        base = get_base_version(without_dev)
+        sv = parse_version(base)
+        if sv.patch > 0:
+            prev = f"{sv.major}.{sv.minor}.{sv.patch - 1}"
+            if _tag_exists(prev):
+                return prev
+        if sv.minor > 0:
+            return _glob_highest(f"{sv.major}.{sv.minor - 1}.")
+        if sv.major > 0:
+            return _glob_highest(f"{sv.major - 1}.")
+        return None
+
+    # Case 3: post N > 0 → decrement post
+    post_m = re.search(r"\.post(\d+)$", without_dev)
+    if post_m:
+        post_n = int(post_m.group(1))
+        if post_n > 0:
+            prev = f"{without_dev[: post_m.start()]}.post{post_n - 1}"
+            if _tag_exists(prev):
+                return prev
+        # Case 5: post 0 → the final it patches
+        prev = without_dev[: post_m.start()]
+        if _tag_exists(prev):
+            return prev
+        return None
+
+    # Plain X.Y.Z.dev0 — find previous final
+    sv = parse_version(without_dev)
+
+    # Case 6: patch > 0 → decrement patch
+    if sv.patch > 0:
+        prev = f"{sv.major}.{sv.minor}.{sv.patch - 1}"
+        if _tag_exists(prev):
+            return prev
+
+    # Case 7: minor > 0 → glob X.(Y-1).*
+    if sv.minor > 0:
+        return _glob_highest(f"{sv.major}.{sv.minor - 1}.")
+
+    # Case 8: major > 0 → glob (X-1).*
+    if sv.major > 0:
+        return _glob_highest(f"{sv.major - 1}.")
+
+    # Case 9: 0.0.0 — no previous release possible
+    msg = f"Cannot determine previous release for {version_str} — version is 0.0.0"
+    raise ValueError(msg)
 
 
 def parse_tag_version(tag: str) -> str:

@@ -24,8 +24,6 @@ def _make_ctx(
     packages: dict[str, PackageInfo],
     release_tags: dict[str, str | None] | None = None,
     baselines: dict[str, str | None] | None = None,
-    git_tags: set[str] | None = None,
-    github_releases: set[str] | None = None,
 ) -> ReleaseContext:
     """Build a fake ReleaseContext for tests."""
     if release_tags is None:
@@ -36,8 +34,6 @@ def _make_ctx(
     mock_repo.references.get.return_value = None  # no tag conflicts by default
     return ReleaseContext(
         repo=mock_repo,
-        git_tags=git_tags or set(),
-        github_releases=github_releases or set(),
         packages=packages,
         release_tags=release_tags,
         baselines=baselines,

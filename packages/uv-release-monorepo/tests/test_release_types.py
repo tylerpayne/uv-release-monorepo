@@ -27,7 +27,6 @@ def _make_ctx() -> RepositoryContext:
     """Build a minimal fake RepositoryContext for unit tests."""
     return RepositoryContext(
         repo=MagicMock(spec=pygit2.Repository),
-        git_tags=set(),
         packages={},
         baselines={},
     )
@@ -58,8 +57,6 @@ def _pkg(version: str, deps: list[str] | None = None) -> PackageInfo:
 def _release_and_bump(
     planner: ReleasePlanner,
     pyproject_version: str,
-    *,
-    existing_tags: str = "",
 ) -> tuple[str, str]:
     """Run the planner's version computation and return (release_ver, next_dev_ver).
 
@@ -67,8 +64,7 @@ def _release_and_bump(
     """
     changed = {"alpha": _pkg(pyproject_version)}
 
-    tag_lines = existing_tags.splitlines() if existing_tags else []
-    release_versions = planner._compute_release_versions(changed, tag_lines)
+    release_versions = planner._compute_release_versions(changed)
 
     # Build versioned PackageInfo dict with release versions applied
     versioned: dict[str, PackageInfo] = {}
@@ -162,7 +158,7 @@ class TestDevRelease:
         planner = _planner("dev")
         changed = {"alpha": _pkg("1.0.1")}
         with pytest.raises(SystemExit):
-            planner._compute_release_versions(changed, [])
+            planner._compute_release_versions(changed)
 
 
 # ---------------------------------------------------------------------------
@@ -174,60 +170,58 @@ class TestPreRelease:
     """uvr release --pre {a,b,rc} — PEP 440 pre-release."""
 
     def test_alpha_first(self) -> None:
-        release, _ = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1.dev2")
+        release, _ = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1a0.dev0")
         assert _pep440(release) == Version("1.0.1a0")
 
     def test_alpha_is_prerelease(self) -> None:
-        release, _ = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1.dev0")
+        release, _ = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1a0.dev0")
         assert _pep440(release).is_prerelease
 
-    def test_alpha_increments_from_tags(self) -> None:
+    def test_alpha_increments(self) -> None:
         release, _ = _release_and_bump(
             _planner("pre", pre_kind="a"),
-            "1.0.1.dev3",
-            existing_tags="alpha/v1.0.1a0",
+            "1.0.1a1.dev0",
         )
         assert _pep440(release) == Version("1.0.1a1")
 
     def test_beta(self) -> None:
-        release, _ = _release_and_bump(_planner("pre", pre_kind="b"), "1.0.1.dev0")
+        release, _ = _release_and_bump(_planner("pre", pre_kind="b"), "1.0.1b0.dev0")
         assert _pep440(release) == Version("1.0.1b0")
 
     def test_rc(self) -> None:
-        release, _ = _release_and_bump(_planner("pre", pre_kind="rc"), "1.0.1.dev0")
+        release, _ = _release_and_bump(_planner("pre", pre_kind="rc"), "1.0.1rc0.dev0")
         assert _pep440(release) == Version("1.0.1rc0")
 
     def test_rc_increments(self) -> None:
         release, _ = _release_and_bump(
             _planner("pre", pre_kind="rc"),
-            "1.0.1.dev5",
-            existing_tags="alpha/v1.0.1rc0\nalpha/v1.0.1rc1",
+            "1.0.1rc2.dev0",
         )
         assert _pep440(release) == Version("1.0.1rc2")
 
     def test_bumps_to_next_dev(self) -> None:
-        _, next_ver = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1.dev2")
+        _, next_ver = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1a0.dev0")
         v = _pep440(next_ver)
         assert v.is_devrelease
         # After 1.0.1a0 → dev toward next alpha → 1.0.1a1.dev0
         assert v == Version("1.0.1a1.dev0")
 
     def test_alpha_sorts_before_final(self) -> None:
-        release, _ = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1.dev0")
+        release, _ = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1a0.dev0")
         assert _pep440(release) < Version("1.0.1")
 
     def test_rc_sorts_before_final(self) -> None:
-        release, _ = _release_and_bump(_planner("pre", pre_kind="rc"), "1.0.1.dev0")
+        release, _ = _release_and_bump(_planner("pre", pre_kind="rc"), "1.0.1rc0.dev0")
         assert _pep440(release) < Version("1.0.1")
 
     def test_alpha_sorts_before_beta(self) -> None:
-        a, _ = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1.dev0")
-        b, _ = _release_and_bump(_planner("pre", pre_kind="b"), "1.0.1.dev0")
+        a, _ = _release_and_bump(_planner("pre", pre_kind="a"), "1.0.1a0.dev0")
+        b, _ = _release_and_bump(_planner("pre", pre_kind="b"), "1.0.1b0.dev0")
         assert _pep440(a) < _pep440(b)
 
     def test_beta_sorts_before_rc(self) -> None:
-        b, _ = _release_and_bump(_planner("pre", pre_kind="b"), "1.0.1.dev0")
-        rc, _ = _release_and_bump(_planner("pre", pre_kind="rc"), "1.0.1.dev0")
+        b, _ = _release_and_bump(_planner("pre", pre_kind="b"), "1.0.1b0.dev0")
+        rc, _ = _release_and_bump(_planner("pre", pre_kind="rc"), "1.0.1rc0.dev0")
         assert _pep440(b) < _pep440(rc)
 
 
@@ -240,34 +234,33 @@ class TestPostRelease:
     """uvr release --post — PEP 440 post-release."""
 
     def test_post_first(self) -> None:
-        release, _ = _release_and_bump(_planner("post"), "1.0.0")
+        release, _ = _release_and_bump(_planner("post"), "1.0.0.post0.dev0")
         assert _pep440(release) == Version("1.0.0.post0")
 
     def test_is_post_release(self) -> None:
-        release, _ = _release_and_bump(_planner("post"), "1.0.0")
+        release, _ = _release_and_bump(_planner("post"), "1.0.0.post0.dev0")
         assert _pep440(release).is_postrelease
 
     def test_post_increments(self) -> None:
         release, _ = _release_and_bump(
             _planner("post"),
-            "1.0.0",
-            existing_tags="alpha/v1.0.0.post0",
+            "1.0.0.post1.dev0",
         )
         assert _pep440(release) == Version("1.0.0.post1")
 
     def test_bumps_to_next_post_dev(self) -> None:
-        _, next_ver = _release_and_bump(_planner("post"), "1.0.0")
+        _, next_ver = _release_and_bump(_planner("post"), "1.0.0.post0.dev0")
         v = _pep440(next_ver)
         assert v.is_devrelease
         # After 1.0.0.post0 → dev toward next post → 1.0.0.post1.dev0
         assert v == Version("1.0.0.post1.dev0")
 
     def test_post_sorts_after_final(self) -> None:
-        release, _ = _release_and_bump(_planner("post"), "1.0.0")
+        release, _ = _release_and_bump(_planner("post"), "1.0.0.post0.dev0")
         assert _pep440(release) > Version("1.0.0")
 
     def test_post_sorts_before_next_final(self) -> None:
-        release, _ = _release_and_bump(_planner("post"), "1.0.0")
+        release, _ = _release_and_bump(_planner("post"), "1.0.0.post0.dev0")
         assert _pep440(release) < Version("1.0.1")
 
 
@@ -338,7 +331,6 @@ class TestTagConflicts:
                     get=lambda ref: True if ref in existing_refs else None
                 ),
             ),
-            git_tags=set(),
             packages={},
             baselines={},
         )
@@ -366,7 +358,6 @@ class TestTagConflicts:
                 spec=pygit2.Repository,
                 references=MagicMock(get=lambda ref: None),
             ),
-            git_tags=set(),
             packages={},
             baselines={},
         )

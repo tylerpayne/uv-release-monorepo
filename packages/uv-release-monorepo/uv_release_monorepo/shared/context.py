@@ -6,7 +6,7 @@ from dataclasses import dataclass, field as dataclass_field
 
 import pygit2
 
-from .utils.git import list_tags, open_repo
+from .utils.git import open_repo
 from .models import PackageInfo, PlanConfig
 from .utils.packages import find_packages
 from .utils.shell import Progress
@@ -17,24 +17,22 @@ from .utils.tags import find_baseline_tags
 class RepositoryContext:
     """Pre-fetched local repository state.
 
-    Contains only data from the local repo — no network calls.
+    Contains only data from the local repo — no network calls, no tag scans.
+    Release tags are derived per-package via inverse version bump in the planner.
     """
 
     repo: pygit2.Repository
-    git_tags: set[str]
     packages: dict[str, PackageInfo]
     baselines: dict[str, str | None]
 
 
 @dataclass
 class ReleaseContext(RepositoryContext):
-    """Repository state enriched with GitHub release data.
+    """Repository state with pre-computed release tags.
 
-    Built by the planner after change detection — defers the network
-    call until we know packages actually changed.
+    Used by tests to inject release tag data directly.
     """
 
-    github_releases: set[str] = dataclass_field(default_factory=set)
     release_tags: dict[str, str | None] = dataclass_field(default_factory=dict)
 
 
@@ -43,18 +41,17 @@ def build_context(
     *,
     progress: Progress | None = None,
 ) -> RepositoryContext:
-    """Fetch local repository state — no network calls.
+    """Fetch local repository state — no network calls, no tag scans.
 
     Uses *config* to skip unnecessary work:
     - ``rebuild_all``: skip baseline lookup (all packages are dirty)
-    - ``final``/``dev``: skip full tag scan (only pre/post need it)
-    - Baselines use direct pygit2 ref lookup — no tag scan needed
+    - Baselines use direct pygit2 ref lookup — O(1) per package
     """
     if progress:
         progress.update("Opening repository")
     repo = open_repo()
 
-    # Discover packages first — determines what else to scan
+    # Discover packages first
     if progress:
         progress.update("Discovering packages")
     packages = find_packages()
@@ -64,12 +61,11 @@ def build_context(
     if not packages:
         return RepositoryContext(
             repo=repo,
-            git_tags=set(),
             packages=packages,
             baselines={},
         )
 
-    # Baselines: direct ref lookup per package (O(1) each, no scan)
+    # Baselines: direct ref lookup per package (O(1) each)
     # Skip entirely if rebuild_all (everything is dirty anyway)
     if config.rebuild_all:
         baselines: dict[str, str | None] = {name: None for name in packages}
@@ -83,19 +79,8 @@ def build_context(
         if progress:
             progress.complete(f"Found {baselined} baselines")
 
-    # Scan git tags filtered to package prefixes — needed for:
-    # - Release tag detection (all release types)
-    # - Pre/post version numbering (pre/post only)
-    if progress:
-        progress.update("Scanning git tags")
-    tag_prefixes = [f"{name}/v" for name in packages]
-    git_tags = set(list_tags(repo, prefixes=tag_prefixes))
-    if progress:
-        progress.complete(f"Scanned {len(git_tags)} git tags")
-
     return RepositoryContext(
         repo=repo,
-        git_tags=git_tags,
         packages=packages,
         baselines=baselines,
     )

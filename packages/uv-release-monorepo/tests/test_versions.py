@@ -10,8 +10,6 @@ from uv_release_monorepo.shared.utils.versions import (
     make_dev,
     make_post,
     make_pre,
-    next_post_number,
-    next_pre_number,
     parse_tag_version,
     parse_version,
     strip_dev,
@@ -197,36 +195,6 @@ class TestMakePost:
 
     def test_post1(self) -> None:
         assert make_post("1.2.3", 1) == "1.2.3.post1"
-
-
-class TestNextPreNumber:
-    def test_no_existing(self) -> None:
-        assert next_pre_number([], "pkg", "a") == 0
-
-    def test_increments(self) -> None:
-        tags = ["pkg/v1.0.0a0", "pkg/v1.0.0a1"]
-        assert next_pre_number(tags, "pkg", "a") == 2
-
-    def test_different_kind_ignored(self) -> None:
-        tags = ["pkg/v1.0.0a0", "pkg/v1.0.0b0"]
-        assert next_pre_number(tags, "pkg", "a") == 1
-
-    def test_different_pkg_ignored(self) -> None:
-        tags = ["other/v1.0.0a0", "other/v1.0.0a1"]
-        assert next_pre_number(tags, "pkg", "a") == 0
-
-
-class TestNextPostNumber:
-    def test_no_existing(self) -> None:
-        assert next_post_number([], "pkg") == 0
-
-    def test_increments(self) -> None:
-        tags = ["pkg/v1.0.0.post0"]
-        assert next_post_number(tags, "pkg") == 1
-
-    def test_different_pkg_ignored(self) -> None:
-        tags = ["other/v1.0.0.post0"]
-        assert next_post_number(tags, "pkg") == 0
 
 
 class TestParseTagVersion:
