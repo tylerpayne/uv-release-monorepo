@@ -510,7 +510,6 @@ class ReleasePlanner:
         Checks local git refs first (free), then makes targeted GitHub API
         calls only for the specific release tags being created.
         """
-        from ..git.remote import check_release_exists
         from ..utils.shell import exit_fatal
 
         # Check local git tags (direct ref lookup — O(1) each)
@@ -524,22 +523,14 @@ class ReleasePlanner:
                 if repo.references.get(f"refs/tags/{tag}") is not None:
                     conflicts.append(tag)
 
-        # Check GitHub releases — only for tags that exist locally
-        # (releases are created from tags, so no local tag = no release)
-        if self.progress:
-            self.progress.update("Checking for release conflicts")
-        api_checks = 0
+        # Release conflicts: if the release tag exists locally,
+        # a GitHub release almost certainly exists too (finalize pushes both).
+        # No need for remote API calls — local refs are the source of truth.
         for name, pkg in changed.items():
             tag = f"{name}/v{pkg.release_version}"
-            if tag in conflicts:
-                continue
-            # Only hit GitHub API if the tag exists locally
-            if repo.references.get(f"refs/tags/{tag}") is not None:
-                api_checks += 1
-                if check_release_exists(tag):
+            if tag not in conflicts:
+                if repo.references.get(f"refs/tags/{tag}") is not None:
                     conflicts.append(tag)
-        if self.progress:
-            self.progress.complete(f"Checked {api_checks} release conflicts")
 
         if not conflicts:
             return

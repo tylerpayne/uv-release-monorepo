@@ -324,17 +324,7 @@ class TestVersionOrdering:
 class TestTagConflicts:
     """Planner rejects plans when tags already exist."""
 
-    @pytest.fixture
-    def _mock_github(self) -> None:  # type: ignore[return]
-        from unittest.mock import patch
-
-        with patch(
-            "uv_release_monorepo.shared.git.remote.check_release_exists",
-            return_value=False,
-        ):
-            yield
-
-    def test_errors_on_existing_baseline_tag(self, _mock_github: None) -> None:
+    def test_errors_on_existing_baseline_tag(self) -> None:
         """Planner errors when a baseline tag already exists."""
         from uv_release_monorepo.shared.models import ChangedPackage
 
@@ -365,7 +355,7 @@ class TestTagConflicts:
         with pytest.raises(SystemExit):
             planner._check_tag_conflicts(changed)
 
-    def test_passes_when_no_conflicts(self, _mock_github: None) -> None:
+    def test_passes_when_no_conflicts(self) -> None:
         """Planner proceeds when no tags conflict."""
         from uv_release_monorepo.shared.models import ChangedPackage
 
