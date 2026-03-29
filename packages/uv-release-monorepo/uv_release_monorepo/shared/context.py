@@ -31,19 +31,16 @@ def build_context(*, progress: Progress | None = None) -> RepositoryContext:
     """Fetch all repository state in one pass.
 
     Optimizations:
-    - Discovers packages first — skips GitHub API if no packages found
+    - Discovers packages first — only scans relevant tags, skips API if empty
+    - Filters git tags to package prefixes (avoids scanning 1000+ unrelated tags)
     - Fetches GitHub releases in parallel with baseline scanning
     - GitHub releases use ETag caching (304 on unchanged)
     """
     if progress:
         progress.update("Opening repository")
     repo = open_repo()
-    all_git_tags = list_tags(repo)
-    git_tags = set(all_git_tags)
-    if progress:
-        progress.complete(f"Scanned {len(git_tags)} git tags")
 
-    # Discover packages first — skip GitHub API if none found
+    # Discover packages first — determines which tags matter
     if progress:
         progress.update("Discovering packages")
     packages = find_packages()
@@ -53,12 +50,21 @@ def build_context(*, progress: Progress | None = None) -> RepositoryContext:
     if not packages:
         return RepositoryContext(
             repo=repo,
-            git_tags=git_tags,
+            git_tags=set(),
             github_releases=set(),
             packages=packages,
             release_tags={},
             baselines={},
         )
+
+    # Only scan tags matching known package prefixes
+    if progress:
+        progress.update("Scanning git tags")
+    tag_prefixes = [f"{name}/v" for name in packages]
+    all_git_tags = list_tags(repo, prefixes=tag_prefixes)
+    git_tags = set(all_git_tags)
+    if progress:
+        progress.complete(f"Scanned {len(git_tags)} git tags")
 
     # Fetch GitHub releases and find baselines in parallel
     # (network I/O overlaps with local git tag operations)

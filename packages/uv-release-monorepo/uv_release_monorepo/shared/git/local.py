@@ -15,11 +15,20 @@ def open_repo(path: str = ".") -> pygit2.Repository:
     return pygit2.Repository(path)
 
 
-def list_tags(repo: pygit2.Repository) -> list[str]:
-    """Return all tag names (without ``refs/tags/`` prefix)."""
-    prefix = "refs/tags/"
-    plen = len(prefix)
-    return [r[plen:] for r in repo.listall_references() if r.startswith(prefix)]
+def list_tags(
+    repo: pygit2.Repository, *, prefixes: list[str] | None = None
+) -> list[str]:
+    """Return tag names (without ``refs/tags/`` prefix).
+
+    If *prefixes* is given, only return tags starting with one of
+    the prefixes (e.g. ``["pkg-alpha/v", "pkg-beta/v"]``).
+    """
+    ref_prefix = "refs/tags/"
+    plen = len(ref_prefix)
+    tags = [r[plen:] for r in repo.listall_references() if r.startswith(ref_prefix)]
+    if prefixes:
+        tags = [t for t in tags if any(t.startswith(p) for p in prefixes)]
+    return tags
 
 
 def diff_files(repo: pygit2.Repository, tag_name: str) -> set[str]:
