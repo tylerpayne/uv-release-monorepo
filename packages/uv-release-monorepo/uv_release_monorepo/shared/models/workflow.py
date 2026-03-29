@@ -69,22 +69,24 @@ class Job(BaseModel):
         return d
 
 
-# Shorthand for plan access in GitHub Actions expressions
-_P = "fromJSON(inputs.plan)"
+# Shorthand for GitHub Actions expressions referencing the release plan.
+_PLAN = "fromJSON(inputs.plan)"
+
+
+def _gha(expr: str) -> str:
+    """Wrap *expr* in GitHub Actions ``${{ }}`` interpolation."""
+    return "${{ " + expr + " }}"
+
 
 _CHECKOUT = {
     "id": "checkout",
     "uses": "actions/checkout@v4",
     "with": {"fetch-depth": 0},
 }
-_SETUP_UV = {"id": "setup-uv", "uses": "astral-sh/setup-uv@v5"}
-_SETUP_PY = {
-    "id": "setup-python",
-    "name": "Set up Python",
-    "run": (
-        f"uv python install ${{{{ {_P}.python_version }}}}\n"
-        f"uv tool install ${{{{ {_P}.uvr_install }}}}"
-    ),
+_SETUP_UV = {
+    "id": "setup-uv",
+    "uses": "astral-sh/setup-uv@v5",
+    "with": {"python-version": _gha(f"{_PLAN}.python_version")},
 }
 
 
@@ -101,44 +103,45 @@ def _needs_validator(*required: str):
     return _check
 
 
-def _warn_if_changed(default: Any, msg: str) -> AfterValidator:
-    """AfterValidator that warns when a value differs from *default*."""
-    import warnings
-
-    def _check(v: Any) -> Any:
-        if v != default:
-            warnings.warn(msg, UserWarning, stacklevel=2)
-        return v
-
-    return AfterValidator(_check)
+_UNSET: Any = object()
 
 
-def WarnIfChanged(tp: Any, expected: Any, *, msg: str = "", **field_kwargs: Any) -> Any:  # noqa: N802
+def WarnIfChanged(  # noqa: N802
+    tp: Any,
+    *,
+    default: Any = _UNSET,
+    default_factory: Any = _UNSET,
+    msg: str = "",
+    **field_kwargs: Any,
+) -> Any:
     """Return an ``Annotated`` type that warns when a field is modified.
 
-    Bundles the type, ``Field(...)`` and an ``AfterValidator`` into one
-    annotation so that frozen job fields collapse to a single declaration.
-
-    *expected* is the value checked by the validator. Pass ``default`` or
-    ``default_factory`` in **field_kwargs** to control how pydantic
-    initialises the field — just like ``Field()``.
+    Bundles the type, ``Field(default=…)`` or ``Field(default_factory=…)``
+    and an ``AfterValidator`` into one annotation.
     """
-    validator = _warn_if_changed(
-        expected, msg or "frozen field was modified from its default"
+    import warnings
+
+    assert not (default is _UNSET and default_factory is _UNSET), (
+        "WarnIfChanged requires default or default_factory"
     )
-    return Annotated[tp, Field(**field_kwargs), validator]
 
+    if default is not _UNSET:
+        expected = default
+        field_kwargs["default"] = default
+    else:
+        expected = default_factory()
+        field_kwargs["default_factory"] = default_factory
 
-_VALIDATE_PLAN_STEPS: list[dict] = [
-    _SETUP_UV,
-    _SETUP_PY,
-    {
-        "id": "validate-plan",
-        "name": "Validate release plan",
-        "env": {"UVR_PLAN": "${{ inputs.plan }}"},
-        "run": "uvr validate-plan",
-    },
-]
+    def _check(v: Any) -> Any:
+        if v != expected:
+            warnings.warn(
+                msg or "frozen field was modified from its default",
+                UserWarning,
+                stacklevel=2,
+            )
+        return v
+
+    return Annotated[tp, Field(**field_kwargs), AfterValidator(_check)]
 
 
 class ValidatePlanJob(Job):
@@ -146,41 +149,17 @@ class ValidatePlanJob(Job):
 
     steps: WarnIfChanged(  # ty: ignore[invalid-type-form]
         list[dict],
-        _VALIDATE_PLAN_STEPS,
-        default_factory=lambda: list(_VALIDATE_PLAN_STEPS),
+        default_factory=lambda: [
+            _SETUP_UV,
+            {
+                "id": "validate-plan",
+                "name": "Validate release plan",
+                "env": {"UVR_PLAN": "${{ inputs.plan }}"},
+                "run": "uv run uvr validate-plan",
+            },
+        ],
         msg="validate-plan.steps was modified",
     )
-
-
-_BUILD_IF = f"${{{{ !contains({_P}.skip, 'build') }}}}"
-_BUILD_RUNS_ON = "${{ matrix.runner }}"
-_BUILD_STRATEGY: dict = {
-    "fail-fast": True,
-    "matrix": {"runner": f"${{{{ {_P}.build_matrix }}}}"},
-}
-_BUILD_STEPS: list[dict] = [
-    _CHECKOUT,
-    _SETUP_UV,
-    _SETUP_PY,
-    {
-        "id": "build",
-        "name": "Build packages",
-        "env": {
-            "GH_TOKEN": "${{ github.token }}",
-            "UVR_PLAN": "${{ inputs.plan }}",
-        },
-        "run": "uvr build --runner '${{ toJSON(matrix.runner) }}'",
-    },
-    {
-        "id": "upload",
-        "uses": "actions/upload-artifact@v4",
-        "with": {
-            "name": "wheels-${{ join(matrix.runner, '-') }}",
-            "path": "dist/*.whl",
-            "if-no-files-found": "error",
-        },
-    },
-]
 
 
 class BuildJob(Job):
@@ -188,61 +167,51 @@ class BuildJob(Job):
 
     if_condition: WarnIfChanged(  # ty: ignore[invalid-type-form]
         str | None,
-        _BUILD_IF,
-        default=_BUILD_IF,
+        default=_gha(f"!contains({_PLAN}.skip, 'build')"),
         msg="build.if was modified",
         alias="if",
     )
     strategy: WarnIfChanged(  # ty: ignore[invalid-type-form]
         dict,
-        _BUILD_STRATEGY,
-        default_factory=lambda: dict(_BUILD_STRATEGY),
+        default_factory=lambda: {
+            "fail-fast": True,
+            "matrix": {"runner": _gha(f"{_PLAN}.build_matrix")},
+        },
         msg="build.strategy was modified",
     )
     runs_on: WarnIfChanged(  # ty: ignore[invalid-type-form]
         str,
-        _BUILD_RUNS_ON,
-        default=_BUILD_RUNS_ON,
+        default=_gha("matrix.runner"),
         msg="build.runs-on was modified",
         alias="runs-on",
     )
     steps: WarnIfChanged(  # ty: ignore[invalid-type-form]
         list[dict],
-        _BUILD_STEPS,
-        default_factory=lambda: list(_BUILD_STEPS),
+        default_factory=lambda: [
+            _CHECKOUT,
+            _SETUP_UV,
+            {
+                "id": "build",
+                "name": "Build packages",
+                "env": {
+                    "GH_TOKEN": "${{ github.token }}",
+                    "UVR_PLAN": "${{ inputs.plan }}",
+                },
+                "run": "uv run uvr build --runner '${{ toJSON(matrix.runner) }}'",
+            },
+            {
+                "id": "upload",
+                "uses": "actions/upload-artifact@v4",
+                "with": {
+                    "name": "wheels-${{ join(matrix.runner, '-') }}",
+                    "path": "dist/*.whl",
+                    "if-no-files-found": "error",
+                },
+            },
+        ],
         msg="build.steps was modified",
     )
     _ensure_needs = _needs_validator("validate_plan")
-
-
-_RELEASE_IF = f"${{{{ always() && !failure() && !contains({_P}.skip, 'release') }}}}"
-_RELEASE_STRATEGY: dict = {
-    "fail-fast": False,
-    "matrix": {"include": f"${{{{ {_P}.release_matrix }}}}"},
-}
-_RELEASE_STEPS: list[dict] = [
-    {
-        "id": "download",
-        "uses": "actions/download-artifact@v4",
-        "with": {
-            "pattern": "wheels-*",
-            "merge-multiple": True,
-            "path": "dist",
-            "run-id": f"${{{{ {_P}.reuse_run_id != '' && {_P}.reuse_run_id || github.run_id }}}}",
-        },
-    },
-    {
-        "id": "publish",
-        "uses": "softprops/action-gh-release@v2",
-        "with": {
-            "tag_name": "${{ matrix.tag }}",
-            "name": "${{ matrix.title }}",
-            "body": "${{ matrix.body }}",
-            "files": "dist/${{ matrix.dist_name }}-${{ matrix.version }}*.whl",
-            "make_latest": "${{ matrix.make_latest }}",
-        },
-    },
-]
 
 
 class ReleaseJob(Job):
@@ -250,38 +219,48 @@ class ReleaseJob(Job):
 
     if_condition: WarnIfChanged(  # ty: ignore[invalid-type-form]
         str | None,
-        _RELEASE_IF,
-        default=_RELEASE_IF,
+        default=_gha(f"always() && !failure() && !contains({_PLAN}.skip, 'release')"),
         msg="release.if was modified",
         alias="if",
     )
     strategy: WarnIfChanged(  # ty: ignore[invalid-type-form]
         dict,
-        _RELEASE_STRATEGY,
-        default_factory=lambda: dict(_RELEASE_STRATEGY),
+        default_factory=lambda: {
+            "fail-fast": False,
+            "matrix": {"include": _gha(f"{_PLAN}.release_matrix")},
+        },
         msg="release.strategy was modified",
     )
     steps: WarnIfChanged(  # ty: ignore[invalid-type-form]
         list[dict],
-        _RELEASE_STEPS,
-        default_factory=lambda: list(_RELEASE_STEPS),
+        default_factory=lambda: [
+            {
+                "id": "download",
+                "uses": "actions/download-artifact@v4",
+                "with": {
+                    "pattern": "wheels-*",
+                    "merge-multiple": True,
+                    "path": "dist",
+                    "run-id": _gha(
+                        f"{_PLAN}.reuse_run_id != '' && {_PLAN}.reuse_run_id || github.run_id"
+                    ),
+                },
+            },
+            {
+                "id": "publish",
+                "uses": "softprops/action-gh-release@v2",
+                "with": {
+                    "tag_name": "${{ matrix.tag }}",
+                    "name": "${{ matrix.title }}",
+                    "body": "${{ matrix.body }}",
+                    "files": "dist/${{ matrix.dist_name }}-${{ matrix.version }}*.whl",
+                    "make_latest": "${{ matrix.make_latest }}",
+                },
+            },
+        ],
         msg="release.steps was modified",
     )
     _ensure_needs = _needs_validator("build")
-
-
-_FINALIZE_IF = f"${{{{ always() && !failure() && !contains({_P}.skip, 'finalize') }}}}"
-_FINALIZE_STEPS: list[dict] = [
-    _CHECKOUT,
-    _SETUP_UV,
-    _SETUP_PY,
-    {
-        "id": "finalize",
-        "name": "Finalize release",
-        "env": {"UVR_PLAN": "${{ inputs.plan }}"},
-        "run": "uvr finalize",
-    },
-]
 
 
 class FinalizeJob(Job):
@@ -289,15 +268,22 @@ class FinalizeJob(Job):
 
     if_condition: WarnIfChanged(  # ty: ignore[invalid-type-form]
         str | None,
-        _FINALIZE_IF,
-        default=_FINALIZE_IF,
+        default=_gha(f"always() && !failure() && !contains({_PLAN}.skip, 'finalize')"),
         msg="finalize.if was modified",
         alias="if",
     )
     steps: WarnIfChanged(  # ty: ignore[invalid-type-form]
         list[dict],
-        _FINALIZE_STEPS,
-        default_factory=lambda: list(_FINALIZE_STEPS),
+        default_factory=lambda: [
+            _CHECKOUT,
+            _SETUP_UV,
+            {
+                "id": "finalize",
+                "name": "Finalize release",
+                "env": {"UVR_PLAN": "${{ inputs.plan }}"},
+                "run": "uv run uvr finalize",
+            },
+        ],
         msg="finalize.steps was modified",
     )
     _ensure_needs = _needs_validator("release")
