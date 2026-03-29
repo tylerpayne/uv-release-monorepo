@@ -12,7 +12,6 @@ import pytest
 from uv_release_monorepo.cli import cli, cmd_skill_init
 from uv_release_monorepo.cli.skill import (
     _SKILL_FILES,
-    _latest_skill_version,
     _load_skill_file,
 )
 
@@ -80,10 +79,9 @@ class TestSkillInit:
 
     def test_manifest_matches_package(self) -> None:
         """Every file listed in _SKILL_FILES exists in the bundled package."""
-        version = _latest_skill_version()
         for name, file_list in _SKILL_FILES.items():
             for rel in file_list:
-                content = _load_skill_file(version, name, rel)
+                content = _load_skill_file(name, rel)
                 assert content.strip(), f"Manifest lists {name}/{rel} but file is empty"
 
 

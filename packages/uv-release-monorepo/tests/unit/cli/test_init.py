@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from uv_release_monorepo.cli import cmd_init, cmd_upgrade
-from uv_release_monorepo.cli.init import _latest_template_version
 
 from tests._helpers import _write_workspace_repo
 
@@ -51,6 +50,7 @@ def _init_and_get_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Scaffold a workspace, init the workflow, and set up template_version."""
     import subprocess as _sp
 
+    from uv_release_monorepo.cli._common import __version__
     from uv_release_monorepo.cli.init import _load_template
 
     _write_workspace_repo(tmp_path, ["pkg-alpha"])
@@ -65,16 +65,15 @@ def _init_and_get_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
 
     # Write template and store version
-    version = _latest_template_version()
     wf_dir = tmp_path / ".github" / "workflows"
     wf_dir.mkdir(parents=True, exist_ok=True)
     wf = wf_dir / "release.yml"
-    wf.write_text(_load_template(version))
+    wf.write_text(_load_template())
 
     # Store template_version in pyproject.toml
     pyproject = tmp_path / "pyproject.toml"
     text = pyproject.read_text()
-    text += f'\n[tool.uvr.config]\ntemplate_version = "{version}"\n'
+    text += f'\n[tool.uvr.config]\ntemplate_version = "{__version__}"\n'
     pyproject.write_text(text)
 
     _sp.run(["git", "add", "-A"], capture_output=True, check=True)

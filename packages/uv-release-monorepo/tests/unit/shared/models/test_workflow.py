@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from uv_release_monorepo.cli.init import _latest_template_version, _load_template_yaml
+from uv_release_monorepo.cli.init import _load_template_yaml
 from uv_release_monorepo.shared.models.workflow import ReleaseWorkflow
 
 
 def _template_workflow() -> dict:
-    version = _latest_template_version()
-    return _load_template_yaml(version)
+    return _load_template_yaml()
 
 
 def test_template_has_name() -> None:

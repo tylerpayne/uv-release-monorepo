@@ -27,40 +27,19 @@ _WAIT_EDITORS = {"code", "codium", "subl", "atom", "zed"}
 # Template helpers
 # ---------------------------------------------------------------------------
 
-_TEMPLATE_DIR = files("uv_release_monorepo").joinpath("templates/release")
+_TEMPLATE_PATH = files("uv_release_monorepo").joinpath("templates/release/release.yml")
 
 
-def _template_versions() -> list[str]:
-    """Return sorted list of available template versions (e.g. ['0.18.0'])."""
-    from packaging.version import Version
-
-    versions: list[str] = []
-    for item in _TEMPLATE_DIR.iterdir():
-        name = item.name if hasattr(item, "name") else str(item).rsplit("/", 1)[-1]
-        if name.startswith("v") and name.endswith(".yml"):
-            versions.append(name[1:-4])  # strip v prefix and .yml suffix
-    return sorted(versions, key=Version)
+def _load_template() -> str:
+    """Load the bundled release workflow template."""
+    return _TEMPLATE_PATH.read_text(encoding="utf-8")
 
 
-def _latest_template_version() -> str:
-    """Return the latest bundled template version string."""
-    versions = _template_versions()
-    if not versions:
-        _fatal("No bundled release templates found.")
-    return versions[-1]
-
-
-def _load_template(version: str) -> str:
-    """Load a bundled template by version string (e.g. '0.18.0')."""
-    resource = _TEMPLATE_DIR.joinpath(f"v{version}.yml")
-    return resource.read_text(encoding="utf-8")
-
-
-def _load_template_yaml(version: str) -> dict:
-    """Load and parse a bundled template as a dict."""
+def _load_template_yaml() -> dict:
+    """Load and parse the bundled template as a dict."""
     import tempfile as _tmp
 
-    text = _load_template(version)
+    text = _load_template()
     with _tmp.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
         f.write(text)
         tmp = Path(f.name)
@@ -68,6 +47,29 @@ def _load_template_yaml(version: str) -> dict:
         return _load_yaml(tmp)
     finally:
         tmp.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# .uvr/bases/ — local merge base storage
+# ---------------------------------------------------------------------------
+
+_UVR_DIR = ".uvr"
+_BASES_DIR = f"{_UVR_DIR}/bases"
+
+
+def _write_base(root: Path, rel_path: str, content: str) -> None:
+    """Save a merge base to .uvr/bases/<rel_path>."""
+    base_file = root / _BASES_DIR / rel_path
+    base_file.parent.mkdir(parents=True, exist_ok=True)
+    base_file.write_text(content)
+
+
+def _read_base(root: Path, rel_path: str) -> str:
+    """Read a merge base from .uvr/bases/<rel_path>, or empty string if absent."""
+    base_file = root / _BASES_DIR / rel_path
+    if base_file.exists():
+        return base_file.read_text()
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -135,8 +137,10 @@ def _resolve_editor(args: argparse.Namespace, root: Path) -> str | None:
     return None
 
 
-def _store_template_version(root: Path, version: str) -> None:
-    """Store the workflow template version in [tool.uvr.config]."""
+def _store_template_version(root: Path) -> None:
+    """Store the current uvr package version as template_version in [tool.uvr.config]."""
+    from ._common import __version__
+
     pyproject = root / "pyproject.toml"
     if not pyproject.exists():
         return
@@ -144,8 +148,8 @@ def _store_template_version(root: Path, version: str) -> None:
     tool = doc.setdefault("tool", {})
     uvr = tool.setdefault("uvr", {})
     config = uvr.setdefault("config", {})
-    config["template_version"] = version
-    # Remove legacy init_commit if present
+    config["template_version"] = __version__
+    # Remove legacy keys if present
     config.pop("init_commit", None)
     write_pyproject(pyproject, doc)
 
@@ -189,12 +193,17 @@ def cmd_init(args: argparse.Namespace) -> None:
             "  Use --force to overwrite, or `uvr validate` to check the existing file."
         )
 
-    version = _latest_template_version()
-    dest.write_text(_load_template(version))
+    template_text = _load_template()
+    dest.write_text(template_text)
 
-    _store_template_version(root, version)
+    # Save merge base and store version
+    rel_dest = str(dest.relative_to(root))
+    _write_base(root, rel_dest, template_text)
+    _store_template_version(root)
 
-    print(f"OK: Wrote workflow to {dest.relative_to(root)} (template v{version})")
+    from ._common import __version__
+
+    print(f"OK: Wrote workflow to {rel_dest} (uvr v{__version__})")
     print()
     print("Next steps:")
     print("  1. Review and commit the workflow file")
@@ -220,8 +229,9 @@ def cmd_validate(args: argparse.Namespace) -> None:
     existing = _load_yaml(dest)
     rel = dest.relative_to(root)
 
+    from ._common import __version__
+
     # Resolve versions
-    template_version = _latest_template_version()
     stored_version = (root / "pyproject.toml").exists() and get_config(
         read_pyproject(root / "pyproject.toml")
     ).get("template_version", "")
@@ -230,7 +240,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
     # Header
     print(
         f"Validating worktree workflow {rel} ({local_label}) "
-        f"against uvr template (v{template_version})."
+        f"against uvr template (v{__version__})."
     )
     print()
 
@@ -244,15 +254,15 @@ def cmd_validate(args: argparse.Namespace) -> None:
             raise SystemExit(1) from None
 
     # Phase 2: Frozen-path diffing against bundled template
-    template = _load_template_yaml(template_version)
+    template = _load_template_yaml()
     frozen_warnings = _check_frozen_paths(existing, template)
     all_warnings = [str(w.message) for w in caught] + frozen_warnings
 
     # Check if template content differs
-    fresh_text = _load_template(template_version)
+    fresh_text = _load_template()
     existing_text = dest.read_text()
     has_diff = fresh_text.rstrip() != existing_text.rstrip()
-    version_diff = stored_version and stored_version != template_version
+    version_diff = stored_version and stored_version != __version__
 
     # Result
     if all_warnings:
@@ -271,7 +281,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
     if version_diff:
         print(
             f"  Run `uvr init --upgrade` to update from "
-            f"v{stored_version} to v{template_version}."
+            f"v{stored_version} to v{__version__}."
         )
     elif not stored_version:
         print("  Run `uvr init --upgrade` to track your workflow version.")
@@ -283,7 +293,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
             existing_text.splitlines(keepends=True),
             fresh_text.splitlines(keepends=True),
             fromfile=str(rel),
-            tofile=f"template (v{template_version})",
+            tofile=f"template (v{__version__})",
         )
         for line in diff:
             print(line, end="")
@@ -355,32 +365,29 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
             "  Commit or stash them before upgrading."
         )
 
-    # Resolve base template version from config (empty string → two-way merge)
-    pyproject = root / "pyproject.toml"
-    doc = read_pyproject(pyproject) if pyproject.exists() else {}
-    stored_version = (
-        doc.get("tool", {}).get("uvr", {}).get("config", {}).get("template_version", "")
-    )
+    from ._common import __version__
 
-    latest_version = _latest_template_version()
+    rel_dest = str(dest.relative_to(root))
     existing_text = dest.read_text()
 
-    base_text = _load_template(stored_version) if stored_version else ""
-    fresh_text = _load_template(latest_version)
+    # Read merge base from .uvr/bases/ (empty string → two-way merge)
+    base_text = _read_base(root, rel_dest)
+    fresh_text = _load_template()
 
     merged_text, has_conflicts = _three_way_merge(dest, base_text, fresh_text)
 
     if merged_text.rstrip() == existing_text.rstrip():
-        _store_template_version(root, latest_version)
+        _write_base(root, rel_dest, fresh_text)
+        _store_template_version(root)
         print("Already up to date.")
         return
 
-    rel_dest = str(dest.relative_to(root))
     dest.write_text(merged_text)
 
     if not (has_conflicts or "<<<<<<" in merged_text):
-        _store_template_version(root, latest_version)
-        print(f"OK: Upgraded {rel_dest} to v{latest_version}")
+        _write_base(root, rel_dest, fresh_text)
+        _store_template_version(root)
+        print(f"OK: Upgraded {rel_dest} (uvr v{__version__})")
         return
 
     # Conflicts — offer editor
@@ -413,9 +420,11 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
             dest.write_text(existing_text)
             print("Reverted. No changes applied.")
             return
-        _store_template_version(root, latest_version)
+        _write_base(root, rel_dest, fresh_text)
+        _store_template_version(root)
         print(f"  Resolve markers in {rel_dest}, then commit.")
         return
 
-    _store_template_version(root, latest_version)
-    print(f"OK: Upgraded {rel_dest} to v{latest_version}")
+    _write_base(root, rel_dest, fresh_text)
+    _store_template_version(root)
+    print(f"OK: Upgraded {rel_dest} (uvr v{__version__})")

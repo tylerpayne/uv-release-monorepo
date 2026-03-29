@@ -8,12 +8,9 @@ import tempfile
 from importlib.resources import files
 from pathlib import Path
 
-from packaging.version import Version
-
-from ..shared.utils.config import get_config
 from ..shared.utils.toml import read_pyproject, write_pyproject
 from ._common import _fatal
-from .init import _editor_cmd, _resolve_editor
+from .init import _editor_cmd, _read_base, _resolve_editor, _write_base
 
 
 _SKILL_FILES: dict[str, list[str]] = {
@@ -39,33 +36,17 @@ _SKILL_FILES: dict[str, list[str]] = {
 _SKILLS_TEMPLATE_DIR = files("uv_release_monorepo").joinpath("templates/skills")
 
 
-def _skill_versions() -> list[str]:
-    """Return sorted list of available skill template versions."""
+def _load_skill_file(skill_name: str, rel_path: str) -> str:
+    """Load a skill file from the bundled template directory."""
     base = Path(str(_SKILLS_TEMPLATE_DIR))
-    versions = []
-    for d in base.iterdir():
-        if d.is_dir() and d.name.startswith("v"):
-            versions.append(d.name[1:])  # strip "v" prefix
-    return [str(v) for v in sorted(Version(v) for v in versions)]
-
-
-def _latest_skill_version() -> str:
-    """Return the highest available skill template version."""
-    versions = _skill_versions()
-    if not versions:
-        _fatal("No skill templates found in package.")
-    return versions[-1]
-
-
-def _load_skill_file(version: str, skill_name: str, rel_path: str) -> str:
-    """Load a skill file from the versioned template directory."""
-    base = Path(str(_SKILLS_TEMPLATE_DIR))
-    path = base / f"v{version}" / skill_name / rel_path
+    path = base / skill_name / rel_path
     return path.read_text(encoding="utf-8")
 
 
-def _store_skill_version(root: Path, version: str) -> None:
-    """Store the skill template version in [tool.uvr.config]."""
+def _store_skill_version(root: Path) -> None:
+    """Store the current uvr package version as skill_version in [tool.uvr.config]."""
+    from ._common import __version__
+
     pyproject = root / "pyproject.toml"
     if not pyproject.exists():
         return
@@ -73,7 +54,7 @@ def _store_skill_version(root: Path, version: str) -> None:
     tool = doc.setdefault("tool", {})
     uvr = tool.setdefault("uvr", {})
     config = uvr.setdefault("config", {})
-    config["skill_version"] = version
+    config["skill_version"] = __version__
     # Remove legacy key if present
     config.pop("skill_init_commit", None)
     write_pyproject(pyproject, doc)
@@ -88,7 +69,6 @@ def cmd_skill_init(args: argparse.Namespace) -> None:
 
     dest_base = root / ".claude" / "skills"
     force = getattr(args, "force", False)
-    version = _latest_skill_version()
 
     written = 0
     skipped = 0
@@ -100,16 +80,20 @@ def cmd_skill_init(args: argparse.Namespace) -> None:
                 skipped += 1
                 continue
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(
-                _load_skill_file(version, skill_name, rel_path), encoding="utf-8"
-            )
+            content = _load_skill_file(skill_name, rel_path)
+            dest.write_text(content, encoding="utf-8")
+            # Save merge base
+            rel_dest = f".claude/skills/{skill_name}/{rel_path}"
+            _write_base(root, rel_dest, content)
             print(f"  write {skill_name}/{rel_path}")
             written += 1
 
     print()
     if written:
-        _store_skill_version(root, version)
-        print(f"OK: Wrote {written} file(s) to .claude/skills/ (template v{version})")
+        _store_skill_version(root)
+        from ._common import __version__
+
+        print(f"OK: Wrote {written} file(s) to .claude/skills/ (uvr v{__version__})")
     if skipped:
         print(f"  Skipped {skipped} existing file(s). Use --force to overwrite.")
     if not written and not skipped:
@@ -124,22 +108,13 @@ def cmd_skill_init(args: argparse.Namespace) -> None:
 
 
 def cmd_skill_upgrade(args: argparse.Namespace) -> None:
-    """Upgrade skill files using three-way merge from versioned templates."""
+    """Upgrade skill files using three-way merge from bundled templates."""
     root = Path.cwd()
 
     if not (root / ".git").exists():
         _fatal("Not a git repository. Run from the repo root.")
 
     dest_base = root / ".claude" / "skills"
-    latest = _latest_skill_version()
-
-    # Read previously installed version from config
-    pyproject = root / "pyproject.toml"
-    if pyproject.exists():
-        config = get_config(read_pyproject(pyproject))
-        base_version = config.get("skill_version", "")
-    else:
-        base_version = ""
 
     # Check for uncommitted changes in skill files
     skill_paths = [
@@ -168,12 +143,13 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
     for skill_name in _SKILL_FILES:
         for rel_path in _SKILL_FILES[skill_name]:
             dest = dest_base / skill_name / rel_path
-            fresh_text = _load_skill_file(latest, skill_name, rel_path)
+            fresh_text = _load_skill_file(skill_name, rel_path)
             rel_dest = f".claude/skills/{skill_name}/{rel_path}"
 
             if not dest.exists():
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_text(fresh_text, encoding="utf-8")
+                _write_base(root, rel_dest, fresh_text)
                 print(f"  new   {rel_dest}")
                 new_files += 1
                 written_files.append(str(dest))
@@ -184,13 +160,8 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
                 up_to_date += 1
                 continue
 
-            # Load base from the previously installed version
-            base_text = ""
-            if base_version:
-                try:
-                    base_text = _load_skill_file(base_version, skill_name, rel_path)
-                except FileNotFoundError:
-                    pass  # file didn't exist in base version — two-way merge
+            # Read merge base from .uvr/bases/ (empty string → two-way merge)
+            base_text = _read_base(root, rel_dest)
 
             # Three-way merge (falls back to two-way if base is empty)
             with (
@@ -243,6 +214,7 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
                 continue
 
             dest.write_text(merged_text)
+            _write_base(root, rel_dest, fresh_text)
             marker = " (conflicts)" if has_conflicts else ""
             print(f"  merge {rel_dest}{marker}")
             upgraded += 1
@@ -253,7 +225,7 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
     print()
     total = upgraded + new_files
     if total == 0:
-        _store_skill_version(root, latest)
+        _store_skill_version(root)
         print("Already up to date.")
         return
 
@@ -304,10 +276,13 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
                 print("Reverted. No changes applied.")
                 return
             else:
+                _store_skill_version(root)
                 for f in still_conflicted:
                     rel = str(Path(f).relative_to(root))
                     print(f"  Resolve markers in {rel}")
                 return
 
-    _store_skill_version(root, latest)
-    print(f"\nUpgraded to skill template v{latest}. Review and commit the changes.")
+    _store_skill_version(root)
+    from ._common import __version__
+
+    print(f"\nUpgraded skills (uvr v{__version__}). Review and commit the changes.")
