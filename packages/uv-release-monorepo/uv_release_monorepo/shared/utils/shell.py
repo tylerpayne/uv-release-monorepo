@@ -88,7 +88,7 @@ class Progress:
         print(header)
         print("-" * len(header))
         for summary, secs in self._completed:
-            filled = max(int(_CHART_WIDTH * secs / max_secs), 1) if secs > 0 else 0
+            filled = round(_CHART_WIDTH * secs / max_secs)
             bar = "#" * filled + "-" * (_CHART_WIDTH - filled)
             print(f"  |{bar}| {summary} ({_format_duration(secs)})")
         print(f"  Resolved in {_format_duration(total)}")
