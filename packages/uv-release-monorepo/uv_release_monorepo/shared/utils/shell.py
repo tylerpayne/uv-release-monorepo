@@ -61,11 +61,12 @@ class Progress:
         sys.stderr.flush()
         self._step_start = time.monotonic()
 
-    def finish(self) -> None:
+    def finish(self, *, header: str = "Planning") -> None:
         """Clear the progress bar and print the detailed summary."""
         total_ms = int((time.monotonic() - self._start) * 1000)
         sys.stderr.write("\r" + " " * 70 + "\r")
         sys.stderr.flush()
+        print(header)
         for summary, ms in self._completed:
             print(f"  {summary} ({ms}ms)")
         print(f"  Resolved in {total_ms}ms")
