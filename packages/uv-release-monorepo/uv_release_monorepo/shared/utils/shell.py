@@ -78,7 +78,9 @@ class Progress:
 
     def finish(self, *, header: str = "Planning") -> None:
         """Clear the progress bar and print a bar chart summary."""
-        total = time.monotonic() - self._start
+        # Total from sum of completed steps (not wall clock)
+        # so reported total matches the sum of individual steps
+        total = sum(s for _, s in self._completed)
         sys.stderr.write("\r" + " " * 70 + "\r")
         sys.stderr.flush()
 
