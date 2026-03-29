@@ -184,6 +184,16 @@ def _print_plan(
                 for name, pkg in sorted(changed_with_bumps.items()):
                     print(f"{_D}{name.ljust(fw)}  -> {pkg.next_version}")
 
+    # -- Release Notes --
+    notes_packages = {n: p for n, p in plan.changed.items() if p.release_notes.strip()}
+    if notes_packages:
+        _section("Release Notes")
+        for name, pkg in sorted(notes_packages.items()):
+            print(f"  {name}")
+            for line in pkg.release_notes.strip().splitlines():
+                print(f"    {line}")
+            print()
+
     print()
 
 
