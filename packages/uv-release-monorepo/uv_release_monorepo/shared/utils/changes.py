@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 import pygit2
 
-from .git import diff_files
 from ..models import PackageInfo
 from .shell import print_step
 
@@ -17,21 +16,58 @@ if TYPE_CHECKING:
     from ..context import RepositoryContext
 
 
-def _check_package(
-    repo: pygit2.Repository, name: str, info: PackageInfo, baseline: str
-) -> tuple[str, str | None]:
-    """Check a single package for changes since its baseline.
+def _resolve_commit(repo: pygit2.Repository, tag_name: str) -> pygit2.Commit | None:
+    """Resolve a tag name to its underlying commit object."""
+    tag_ref = repo.references.get(f"refs/tags/{tag_name}")
+    if tag_ref is None:
+        return None
+    target = repo.get(tag_ref.target)
+    if isinstance(target, pygit2.Tag):
+        target = repo.get(target.target)
+    return target  # type: ignore[return-value]
 
-    Returns ``(name, reason)`` where *reason* is a human-readable string
-    if the package is dirty, or ``None`` if it is clean.
+
+def _path_changed(
+    repo: pygit2.Repository,
+    old_commit: pygit2.Commit,
+    new_commit: pygit2.Commit,
+    path: str,
+) -> bool:
+    """Check if any files under *path* differ between two commits.
+
+    Compares subtrees directly — O(files in path), not O(files in repo).
     """
-    changed_files = diff_files(repo, baseline)
+    prefix = path.rstrip("/") + "/"
+    parts = prefix.rstrip("/").split("/")
 
-    prefix = info.path.rstrip("/") + "/"
-    if any(f.startswith(prefix) for f in changed_files):
-        return name, f"changed since {baseline}"
+    # Walk the tree path to find the subtree entry
+    old_tree = old_commit.peel(pygit2.Tree)
+    new_tree = new_commit.peel(pygit2.Tree)
 
-    return name, None
+    for part in parts:
+        try:
+            old_entry = old_tree[part] if old_tree else None  # type: ignore[index]
+        except KeyError:
+            old_entry = None
+        try:
+            new_entry = new_tree[part] if new_tree else None  # type: ignore[index]
+        except KeyError:
+            new_entry = None
+
+        if old_entry is None and new_entry is None:
+            return False  # path doesn't exist in either
+        if old_entry is None or new_entry is None:
+            return True  # path exists in one but not the other
+
+        # Same OID → identical subtree, no changes
+        if old_entry.id == new_entry.id:
+            return False
+
+        old_tree = repo.get(old_entry.id)
+        new_tree = repo.get(new_entry.id)
+
+    # Subtrees differ — something changed under this path
+    return True
 
 
 def detect_changes(
@@ -50,9 +86,9 @@ def detect_changes(
     3. Any file in the package directory changed since its baseline
     4. Any of its dependencies are dirty (transitive dirtiness)
 
-    The baseline tag ({pkg}/v{version}-base) is placed on the version
-    bump commit after each release, so only real work after the bump
-    shows up in the diff.
+    Uses subtree comparison for O(depth) per package instead of full repo
+    diffs. Caches baseline commit resolution to avoid redundant work when
+    multiple packages share the same baseline tag.
 
     Args:
         packages: Map of package name -> PackageInfo.
@@ -89,12 +125,23 @@ def detect_changes(
             else:
                 to_check.append((name, info, baseline))
 
-        # Check remaining packages (pygit2 is not thread-safe, so run sequentially)
+        # Cache baseline commit lookups — multiple packages may share a baseline
+        commit_cache: dict[str, pygit2.Commit | None] = {}
+        head = repo.revparse_single("HEAD")
+
         for name, info, baseline in to_check:
-            name, reason = _check_package(repo, name, info, baseline)
-            if reason:
+            if baseline not in commit_cache:
+                commit_cache[baseline] = _resolve_commit(repo, baseline)
+
+            base_commit = commit_cache[baseline]
+            if base_commit is None:
                 dirty.add(name)
-                print(f"  {name}: {reason}")
+                print(f"  {name}: baseline tag missing ({baseline})")
+                continue
+
+            if _path_changed(repo, base_commit, head, info.path):  # type: ignore[arg-type]
+                dirty.add(name)
+                print(f"  {name}: changed since {baseline}")
 
     # Build reverse dependency map
     _, reverse_deps = build_graph_maps(packages)
