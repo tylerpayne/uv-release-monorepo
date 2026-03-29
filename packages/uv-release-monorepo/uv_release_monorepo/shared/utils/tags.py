@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pygit2
+
 from ..models import PackageInfo
 from .shell import print_step
 
@@ -10,26 +12,28 @@ from .versions import parse_version
 
 def find_baseline_tags(
     packages: dict[str, PackageInfo],
-    all_tags: set[str],
+    *,
+    repo: pygit2.Repository | None = None,
+    all_tags: set[str] | None = None,
 ) -> dict[str, str | None]:
     """Derive baseline tags from each package's pyproject.toml version.
 
     The baseline tag is ``{name}/v{version}-base`` where *version* comes from
-    pyproject.toml. If the tag does not exist, returns None for that package.
-
-    Args:
-        packages: Map of package name -> PackageInfo.
-        all_tags: Set of all git tag names.
-
-    Returns:
-        Map of package name to its baseline tag, or None if no tag exists.
+    pyproject.toml. Uses direct ref lookup via pygit2 if *repo* is provided
+    (O(1) per package), otherwise falls back to *all_tags* set membership.
     """
     print_step("Finding baselines")
 
     baselines: dict[str, str | None] = {}
     for name, info in packages.items():
         base_tag = f"{name}/v{info.version}-base"
-        baselines[name] = base_tag if base_tag in all_tags else None
+        if repo is not None:
+            exists = repo.references.get(f"refs/tags/{base_tag}") is not None
+        elif all_tags is not None:
+            exists = base_tag in all_tags
+        else:
+            exists = False
+        baselines[name] = base_tag if exists else None
         print(f"  {name}: {baselines[name] or '<none>'}")
 
     return baselines

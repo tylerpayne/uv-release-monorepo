@@ -115,6 +115,7 @@ def list_release_tag_names() -> set[str]:
         return set(cached_tags) if cached_tags else set()
 
     # Full fetch (200) — collect all pages
+    first_etag = resp.headers.get("etag", "")
     tag_names: set[str] = set()
     for release in resp.json():
         tag_names.add(release["tag_name"])
@@ -130,9 +131,8 @@ def list_release_tag_names() -> set[str]:
         except (httpx.HTTPError, KeyError):
             break
 
-    # Save cache with ETag from the first response
-    new_etag = resp.headers.get("etag", "")
-    _save_cache({"etag": new_etag, "tags": sorted(tag_names)})
+    # Save cache with ETag from the first page
+    _save_cache({"etag": first_etag, "tags": sorted(tag_names)})
 
     return tag_names
 

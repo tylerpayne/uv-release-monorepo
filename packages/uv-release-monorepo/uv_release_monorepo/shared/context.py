@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import pygit2
@@ -35,11 +34,11 @@ def build_context(
     """Fetch repository state, skipping work the planner won't need.
 
     Uses *config* to decide what to scan:
-    - ``rebuild_all``: skip baseline scanning (all packages are dirty)
+    - ``rebuild_all``: skip baseline lookup (all packages are dirty)
     - ``release_type == "final" | "dev"``: skip full tag scan
-      (only pre/post need ``next_pre_number``/``next_post_number``)
-    - No packages: skip everything after discovery
-    - GitHub releases: fetched in parallel with baselines, ETag-cached
+      (only pre/post need tag scanning for version numbering)
+    - Baselines use direct pygit2 ref lookup — no tag scan needed
+    - GitHub releases fetched in parallel, ETag-cached
     """
     if progress:
         progress.update("Opening repository")
@@ -62,54 +61,41 @@ def build_context(
             baselines={},
         )
 
-    tag_prefixes = [f"{name}/v" for name in packages]
-
-    # Baselines: skip if rebuild_all (everything is dirty anyway)
+    # Baselines: direct ref lookup per package (O(1) each, no scan)
+    # Skip entirely if rebuild_all (everything is dirty anyway)
     if config.rebuild_all:
         baselines: dict[str, str | None] = {name: None for name in packages}
         if progress:
             progress.complete("Skipped baselines (--rebuild-all)")
     else:
-        # Scan tags for baseline checking
-        if progress:
-            progress.update("Scanning git tags")
-        all_git_tags = list_tags(repo, prefixes=tag_prefixes)
-        git_tags_for_baselines = set(all_git_tags)
-        if progress:
-            progress.complete(f"Scanned {len(git_tags_for_baselines)} git tags")
-
         if progress:
             progress.update("Finding baselines")
-        baselines = find_baseline_tags(packages, all_tags=git_tags_for_baselines)
+        baselines = find_baseline_tags(packages, repo=repo)
         baselined = sum(1 for b in baselines.values() if b)
         if progress:
             progress.complete(f"Found {baselined} baselines")
 
-    # GitHub releases: fetch (cached via ETag) in parallel with
-    # full tag scan if needed for pre/post version numbering
-    needs_full_tags = config.release_type in ("pre", "post")
+    # Git tags: only needed for pre/post releases (next_pre_number/next_post_number)
+    # and tag conflict checking. For final/dev, an empty set is fine —
+    # conflict checking also uses github_releases.
+    needs_tag_scan = config.release_type in ("pre", "post")
 
+    if needs_tag_scan:
+        if progress:
+            progress.update("Scanning git tags")
+        tag_prefixes = [f"{name}/v" for name in packages]
+        git_tags = set(list_tags(repo, prefixes=tag_prefixes))
+        if progress:
+            progress.complete(f"Scanned {len(git_tags)} git tags")
+    else:
+        git_tags: set[str] = set()
+
+    # GitHub releases: ETag-cached, fetched in parallel with tag scan if needed
     if progress:
         progress.update("Scanning GitHub releases")
-
-    if needs_full_tags:
-        # Pre/post releases need all package tags for next_pre_number/next_post_number
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            releases_future = pool.submit(list_release_tag_names)
-            tags_future = pool.submit(list_tags, repo, prefixes=tag_prefixes)
-            github_releases = releases_future.result()
-            git_tags = set(tags_future.result())
-        if progress:
-            progress.complete(
-                f"Scanned {len(github_releases)} releases, {len(git_tags)} tags"
-            )
-    else:
-        # Final/dev releases only need GitHub releases for release tag matching
-        github_releases = list_release_tag_names()
-        # Use baseline tags if we already scanned them, otherwise minimal scan
-        git_tags = git_tags_for_baselines if not config.rebuild_all else set()
-        if progress:
-            progress.complete(f"Scanned {len(github_releases)} GitHub releases")
+    github_releases = list_release_tag_names()
+    if progress:
+        progress.complete(f"Scanned {len(github_releases)} GitHub releases")
 
     # Find release tags (needs GitHub releases)
     if progress:
