@@ -24,19 +24,32 @@ def exit_fatal(msg: str) -> None:
 
 
 _BAR_WIDTH = 20
+_CHART_WIDTH = 10
+
+
+def _format_duration(secs: float) -> str:
+    """Format a duration with appropriate precision."""
+    ms = secs * 1000
+    if ms >= 1:
+        return f"{int(ms)}ms"
+    us = secs * 1_000_000
+    if us >= 1:
+        return f"{us:.0f}us"
+    ns = secs * 1_000_000_000
+    return f"{ns:.0f}ns"
 
 
 class Progress:
     """ASCII progress bar reporter.
 
-    Shows ``STEP [###-----] message...`` on stderr during execution.
-    On finish, prints a detailed summary with per-phase timing to stdout.
+    Shows ``[###-----] message...`` on stderr during execution.
+    On finish, prints a bar chart summary with per-phase timing to stdout.
     """
 
     def __init__(self, total_steps: int) -> None:
         self._start = time.monotonic()
         self._step_start = self._start
-        self._completed: list[tuple[str, int]] = []
+        self._completed: list[tuple[str, float]] = []  # (summary, seconds)
         self._total = total_steps
         self._current = 0
 
@@ -53,28 +66,29 @@ class Progress:
 
     def complete(self, summary: str) -> None:
         """Record a completed step and advance the bar."""
-        elapsed_ms = int((time.monotonic() - self._step_start) * 1000)
-        self._completed.append((summary, elapsed_ms))
+        elapsed = time.monotonic() - self._step_start
+        self._completed.append((summary, elapsed))
         self._current += 1
         bar = self._render_bar()
-        sys.stderr.write(f"\r  [{bar}] {summary} ({elapsed_ms}ms)".ljust(70))
+        sys.stderr.write(
+            f"\r  [{bar}] {summary} ({_format_duration(elapsed)})".ljust(70)
+        )
         sys.stderr.flush()
         self._step_start = time.monotonic()
 
     def finish(self, *, header: str = "Planning") -> None:
         """Clear the progress bar and print a bar chart summary."""
-        total_ms = int((time.monotonic() - self._start) * 1000)
+        total = time.monotonic() - self._start
         sys.stderr.write("\r" + " " * 70 + "\r")
         sys.stderr.flush()
 
-        max_ms = max((ms for _, ms in self._completed), default=1) or 1
-        bar_width = 10
+        max_secs = max((s for _, s in self._completed), default=0.001) or 0.001
 
         print()
         print(header)
         print("-" * len(header))
-        for summary, ms in self._completed:
-            filled = max(int(bar_width * ms / max_ms), 1) if ms > 0 else 0
-            bar = "#" * filled + "-" * (bar_width - filled)
-            print(f"  |{bar}| {summary} ({ms}ms)")
-        print(f"  Resolved in {total_ms}ms")
+        for summary, secs in self._completed:
+            filled = max(int(_CHART_WIDTH * secs / max_secs), 1) if secs > 0 else 0
+            bar = "#" * filled + "-" * (_CHART_WIDTH - filled)
+            print(f"  |{bar}| {summary} ({_format_duration(secs)})")
+        print(f"  Resolved in {_format_duration(total)}")
