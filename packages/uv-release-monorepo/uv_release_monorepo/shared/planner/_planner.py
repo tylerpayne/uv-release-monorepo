@@ -524,15 +524,22 @@ class ReleasePlanner:
                 if repo.references.get(f"refs/tags/{tag}") is not None:
                     conflicts.append(tag)
 
-        # Check GitHub releases (targeted API call per release tag)
+        # Check GitHub releases — only for tags that exist locally
+        # (releases are created from tags, so no local tag = no release)
         if self.progress:
-            self.progress.update("Checking for conflicts")
+            self.progress.update("Checking for release conflicts")
+        api_checks = 0
         for name, pkg in changed.items():
             tag = f"{name}/v{pkg.release_version}"
-            if tag not in conflicts and check_release_exists(tag):
-                conflicts.append(tag)
+            if tag in conflicts:
+                continue
+            # Only hit GitHub API if the tag exists locally
+            if repo.references.get(f"refs/tags/{tag}") is not None:
+                api_checks += 1
+                if check_release_exists(tag):
+                    conflicts.append(tag)
         if self.progress:
-            self.progress.complete(f"Checked {len(changed)} release tags")
+            self.progress.complete(f"Checked {api_checks} release conflicts")
 
         if not conflicts:
             return
