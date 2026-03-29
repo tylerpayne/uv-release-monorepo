@@ -50,6 +50,8 @@ def build_context(
     if progress:
         progress.update("Opening repository")
     repo = open_repo()
+    if progress:
+        progress.complete("Opened repository")
 
     # Discover packages first
     if progress:
