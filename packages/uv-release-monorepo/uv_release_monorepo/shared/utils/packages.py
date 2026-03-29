@@ -9,10 +9,10 @@ import tomlkit
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
-from ..config import get_config
+from .config import get_config
 from ..models import PackageInfo
-from ..shell import exit_fatal, print_step
-from ..toml import get_path, read_pyproject
+from .shell import exit_fatal, print_step
+from .toml import get_path, read_pyproject
 
 from .dependencies import _get_dependency_sections
 

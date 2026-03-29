@@ -9,7 +9,7 @@ import pygit2
 
 from ..git.local import diff_files
 from ..models import PackageInfo
-from ..shell import print_step
+from .shell import print_step
 
 from ..planner._graph import build_graph_maps
 

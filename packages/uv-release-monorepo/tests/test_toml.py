@@ -6,7 +6,7 @@ from pathlib import Path
 
 import tomlkit
 
-from uv_release_monorepo.shared.config import (
+from uv_release_monorepo.shared.utils.config import (
     get_hooks,
     get_matrix,
     get_workspace_member_globs,
@@ -15,7 +15,7 @@ from uv_release_monorepo.shared.config import (
 from packaging.utils import canonicalize_name
 
 from uv_release_monorepo.shared.utils.packages import get_dependencies
-from uv_release_monorepo.shared.toml import read_pyproject, write_pyproject
+from uv_release_monorepo.shared.utils.toml import read_pyproject, write_pyproject
 
 
 def _get_project_name(doc: tomlkit.TOMLDocument, fallback: str) -> str:

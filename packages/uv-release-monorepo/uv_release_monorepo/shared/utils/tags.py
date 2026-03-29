@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..models import PackageInfo
-from ..shell import print_step
+from .shell import print_step
 
 from .versions import parse_version
 

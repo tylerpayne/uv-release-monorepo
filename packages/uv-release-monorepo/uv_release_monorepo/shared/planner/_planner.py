@@ -7,7 +7,7 @@ from pathlib import Path
 
 from packaging.utils import canonicalize_name
 
-from ..config import get_config
+from ..utils.config import get_config
 from ..context import RepositoryContext, build_context
 from ..models import (
     BuildStage,
@@ -17,7 +17,7 @@ from ..models import (
     PlanConfig,
     ReleasePlan,
 )
-from ..toml import read_pyproject
+from ..utils.toml import read_pyproject
 
 from ._graph import topo_layers
 from ..git.local import generate_release_notes, list_tags
@@ -178,7 +178,7 @@ class ReleasePlanner:
                 n: changed[n] for n in sorted(changed) if not is_dev(changed[n].version)
             }
             if bad:
-                from ..shell import exit_fatal
+                from ..utils.shell import exit_fatal
 
                 lines = "\n".join(
                     f"  uv version {make_dev(info.version)} --directory {info.path}"
@@ -484,7 +484,7 @@ class ReleasePlanner:
         all_gh_releases: set[str],
     ) -> None:
         """Verify that no tags or releases the plan will create already exist."""
-        from ..shell import exit_fatal
+        from ..utils.shell import exit_fatal
 
         planned_tags: list[str] = []
         for name, pkg in changed.items():

@@ -147,8 +147,8 @@ def load_hook(
         the config is read from the root ``pyproject.toml``.
     """
     if hooks_config is None:
-        from .config import get_hooks
-        from .toml import read_pyproject
+        from .utils.config import get_hooks
+        from .utils.toml import read_pyproject
 
         pyproject = root / "pyproject.toml"
         if pyproject.exists():

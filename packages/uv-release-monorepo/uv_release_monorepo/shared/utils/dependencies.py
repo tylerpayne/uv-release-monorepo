@@ -14,7 +14,7 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from tomlkit.items import Table
 
-from ..toml import read_pyproject, write_pyproject
+from .toml import read_pyproject, write_pyproject
 
 
 def _get_dependency_sections(doc: tomlkit.TOMLDocument) -> Iterator[list]:

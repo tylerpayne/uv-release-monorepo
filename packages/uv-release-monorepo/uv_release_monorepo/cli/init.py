@@ -10,9 +10,9 @@ from pathlib import Path
 
 import shutil
 
-from ..shared.config import get_config
+from ..shared.utils.config import get_config
 from ..shared.models.workflow import ReleaseWorkflow
-from ..shared.toml import read_pyproject, write_pyproject
+from ..shared.utils.toml import read_pyproject, write_pyproject
 from ._common import _fatal
 from ._yaml import _dump_yaml, _load_yaml, _write_yaml
 
