@@ -440,16 +440,10 @@ class TestBuildPlan:
 
     @pytest.fixture(autouse=True)
     def _mock_planner_io(self) -> None:  # type: ignore[return]
-        """Mock list_tags and generate_release_notes used by the planner."""
-        with (
-            patch(
-                "uv_release_monorepo.shared.planner._planner.list_tags",
-                return_value=[],
-            ),
-            patch(
-                "uv_release_monorepo.shared.planner._planner.generate_release_notes",
-                return_value="",
-            ),
+        """Mock generate_release_notes used by the planner."""
+        with patch(
+            "uv_release_monorepo.shared.planner._planner.generate_release_notes",
+            return_value="",
         ):
             yield
 
@@ -623,16 +617,10 @@ class TestBuildCommandStages:
 
     @pytest.fixture(autouse=True)
     def _mock_planner_io(self) -> None:  # type: ignore[return]
-        """Mock list_tags and generate_release_notes used by the planner."""
-        with (
-            patch(
-                "uv_release_monorepo.shared.planner._planner.list_tags",
-                return_value=[],
-            ),
-            patch(
-                "uv_release_monorepo.shared.planner._planner.generate_release_notes",
-                return_value="",
-            ),
+        """Mock generate_release_notes used by the planner."""
+        with patch(
+            "uv_release_monorepo.shared.planner._planner.generate_release_notes",
+            return_value="",
         ):
             yield
 

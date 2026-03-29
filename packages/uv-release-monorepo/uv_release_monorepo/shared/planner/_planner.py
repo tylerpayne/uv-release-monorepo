@@ -20,7 +20,7 @@ from ..models import (
 from ..utils.toml import read_pyproject
 
 from ._graph import topo_layers
-from ..git.local import generate_release_notes, list_tags
+from ..git.local import generate_release_notes
 from ..utils.changes import detect_changes
 from ..utils.dependencies import pin_dependencies, set_version
 from ..utils.versions import (
@@ -55,7 +55,7 @@ class ReleasePlanner:
 
     def plan(self) -> ReleasePlan:
         """Detect changes and return a ReleasePlan."""
-        all_git_tags = list_tags(self.ctx.repo)
+        all_git_tags = sorted(self.ctx.git_tags)
 
         packages = self.ctx.packages
         release_tags = self.ctx.release_tags
@@ -583,5 +583,5 @@ class ReleasePlanner:
 
 def build_plan(config: PlanConfig) -> ReleasePlan:
     """Run discovery locally and return a ReleasePlan."""
-    ctx = build_context()
+    ctx = build_context(config)
     return ReleasePlanner(config, ctx).plan()

@@ -266,11 +266,13 @@ def cmd_release(args: argparse.Namespace) -> None:
     if hook:
         config = hook.pre_plan(config)
 
-    progress = Progress(total_steps=7)
+    # Step count: discover + tags + baselines + releases + release_tags + detect + plan
+    step_count = 7 if not config.rebuild_all else 6
+    progress = Progress(total_steps=step_count)
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()  # suppress discovery print_step output
     try:
-        ctx = build_context(progress=progress)
+        ctx = build_context(config, progress=progress)
         progress.update("Detecting changes")
         plan = _cli.ReleasePlanner(config, ctx).plan()
         progress.complete(
