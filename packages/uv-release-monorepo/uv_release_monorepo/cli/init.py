@@ -285,7 +285,8 @@ def cmd_validate(args: argparse.Namespace) -> None:
         try:
             ReleaseWorkflow.model_validate(existing)
         except ValidationError as e:
-            print(f"FAIL: {rel}\n{e}")
+            print(f"Validating: {rel}")
+            print(f"FAIL: {e}")
             raise SystemExit(1) from None
 
     # Phase 2: Frozen-path diffing against bundled template
@@ -301,10 +302,11 @@ def cmd_validate(args: argparse.Namespace) -> None:
     has_diff = fresh_text.rstrip() != existing_text.rstrip()
 
     # Status line first
+    print(f"Validating: {rel}")
     if all_warnings:
-        print(f"SUCCESS: {rel} (0 errors, {len(all_warnings)} warnings)")
+        print(f"SUCCESS: 0 errors, {len(all_warnings)} warnings")
     else:
-        print(f"SUCCESS: {rel} (0 errors, 0 warnings)")
+        print("SUCCESS: 0 errors, 0 warnings")
     print()
 
     # Version info
