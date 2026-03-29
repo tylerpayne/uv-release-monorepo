@@ -311,6 +311,11 @@ Run 'uvr <command> --help' for details on a specific command.
         action="store_true",
         help="Upgrade frozen template fields in an existing release.yml.",
     )
+    _init_mut.add_argument(
+        "--base-only",
+        action="store_true",
+        help="Write merge bases to .uvr/bases/ without touching actual files.",
+    )
     init_parser.add_argument(
         "--editor",
         help="Editor to use for conflict resolution (e.g. 'code', 'vim').",
@@ -363,6 +368,11 @@ Run 'uvr <command> --help' for details on a specific command.
         "--upgrade",
         action="store_true",
         help="Three-way merge bundled skills into existing files.",
+    )
+    _skill_mut.add_argument(
+        "--base-only",
+        action="store_true",
+        help="Write merge bases to .uvr/bases/ without touching actual files.",
     )
     skill_init_parser.add_argument(
         "--editor",

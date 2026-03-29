@@ -161,7 +161,18 @@ def _store_template_version(root: Path) -> None:
 
 def cmd_init(args: argparse.Namespace) -> None:
     """Scaffold the GitHub Actions workflow into your repo."""
+    from ._common import __version__
+
     root = Path.cwd()
+    base_only = getattr(args, "base_only", False)
+
+    if base_only:
+        # --base-only: write merge bases without touching actual files
+        workflow_dir = getattr(args, "workflow_dir", ".github/workflows")
+        rel_dest = f"{workflow_dir}/release.yml"
+        _write_base(root, rel_dest, _load_template())
+        print(f"OK: Wrote merge base for {rel_dest} (uvr v{__version__})")
+        return
 
     # Sanity checks
     if not (root / ".git").exists():
@@ -200,8 +211,6 @@ def cmd_init(args: argparse.Namespace) -> None:
     rel_dest = str(dest.relative_to(root))
     _write_base(root, rel_dest, template_text)
     _store_template_version(root)
-
-    from ._common import __version__
 
     print(f"OK: Wrote workflow to {rel_dest} (uvr v{__version__})")
     print()
@@ -372,6 +381,17 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
 
     # Read merge base from .uvr/bases/ (empty string → two-way merge)
     base_text = _read_base(root, rel_dest)
+    if not base_text:
+        stored_version = get_config(read_pyproject(root / "pyproject.toml")).get(
+            "template_version", ""
+        )
+        if stored_version:
+            print(
+                f"No merge base found. For a cleaner upgrade, recover the base first:\n"
+                f"  uvx --from uv-release-monorepo=={stored_version} uvr init --base-only\n"
+                f"  uvr init --upgrade\n"
+                f"Continuing with two-way merge...\n"
+            )
     fresh_text = _load_template()
 
     merged_text, has_conflicts = _three_way_merge(dest, base_text, fresh_text)

@@ -62,7 +62,21 @@ def _store_skill_version(root: Path) -> None:
 
 def cmd_skill_init(args: argparse.Namespace) -> None:
     """Copy bundled Claude Code skills into the current project."""
+    from ._common import __version__
+
     root = Path.cwd()
+    base_only = getattr(args, "base_only", False)
+
+    if base_only:
+        # --base-only: write merge bases without touching actual files
+        count = 0
+        for skill_name in _SKILL_FILES:
+            for rel_path in _SKILL_FILES[skill_name]:
+                rel_dest = f".claude/skills/{skill_name}/{rel_path}"
+                _write_base(root, rel_dest, _load_skill_file(skill_name, rel_path))
+                count += 1
+        print(f"OK: Wrote {count} merge bases for skills (uvr v{__version__})")
+        return
 
     if not (root / ".git").exists():
         _fatal("Not a git repository. Run from the repo root.")
