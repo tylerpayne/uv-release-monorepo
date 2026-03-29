@@ -62,13 +62,19 @@ class Progress:
         self._step_start = time.monotonic()
 
     def finish(self, *, header: str = "Planning") -> None:
-        """Clear the progress bar and print the detailed summary."""
+        """Clear the progress bar and print a bar chart summary."""
         total_ms = int((time.monotonic() - self._start) * 1000)
         sys.stderr.write("\r" + " " * 70 + "\r")
         sys.stderr.flush()
+
+        max_ms = max((ms for _, ms in self._completed), default=1) or 1
+        bar_width = 10
+
         print()
         print(header)
         print("-" * len(header))
         for summary, ms in self._completed:
-            print(f"  {summary} ({ms}ms)")
+            filled = max(int(bar_width * ms / max_ms), 1) if ms > 0 else 0
+            bar = "#" * filled + "-" * (bar_width - filled)
+            print(f"  |{bar}| {summary} ({ms}ms)")
         print(f"  Resolved in {total_ms}ms")
