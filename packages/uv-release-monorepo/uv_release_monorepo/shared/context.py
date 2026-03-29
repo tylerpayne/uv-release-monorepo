@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import pygit2
-from pydantic import BaseModel, ConfigDict
 
 from .git.local import list_tags, open_repo
 from .git.remote import list_release_tag_names
@@ -12,10 +13,9 @@ from .utils.packages import find_packages
 from .utils.tags import find_baseline_tags, find_release_tags
 
 
-class RepositoryContext(BaseModel):
+@dataclass
+class RepositoryContext:
     """Pre-fetched repository state."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     repo: pygit2.Repository
     git_tags: set[str]
