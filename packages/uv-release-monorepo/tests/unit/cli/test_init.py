@@ -64,7 +64,7 @@ def _init_and_get_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         env=_GIT_ENV,
     )
 
-    # Write template and store version (bypass _git_commit_and_record)
+    # Write template and store version
     version = _latest_template_version()
     wf_dir = tmp_path / ".github" / "workflows"
     wf_dir.mkdir(parents=True, exist_ok=True)

@@ -135,69 +135,19 @@ def _resolve_editor(args: argparse.Namespace, root: Path) -> str | None:
     return None
 
 
-# ---------------------------------------------------------------------------
-# Git helpers
-# ---------------------------------------------------------------------------
-
-
-def _git_commit_and_record(
-    root: Path,
-    files_to_commit: list[str],
-    message: str,
-    *,
-    template_version: str | None = None,
-) -> None:
-    """Stage *files*, commit, and store the template version in [tool.uvr.config].
-
-    Prompts the user for confirmation before committing.
-    """
-    from ..shared.utils.git import open_repo
-
-    rel_files = [str(Path(f).relative_to(root)) for f in files_to_commit]
-    print()
-    print("The following will be committed:")
-    for f in rel_files:
-        print(f"  git add {f}")
-    print(f'  git commit -m "{message}"')
-    print()
-    try:
-        answer = input("Commit? [Y/n] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print("\nSkipped commit.")
+def _store_template_version(root: Path, version: str) -> None:
+    """Store the workflow template version in [tool.uvr.config]."""
+    pyproject = root / "pyproject.toml"
+    if not pyproject.exists():
         return
-    if answer and answer != "y":
-        print("Skipped commit.")
-        return
-
-    repo = open_repo(str(root))
-    for f in rel_files:
-        repo.index.add(f)
-    repo.index.write()
-
-    sig = repo.default_signature
-    tree = repo.index.write_tree()
-    parent = repo.head.peel().id
-    repo.create_commit("HEAD", sig, sig, message, tree, [parent])
-
-    # Store the template version in [tool.uvr.config]
-    if template_version:
-        pyproject = root / "pyproject.toml"
-        doc = read_pyproject(pyproject)
-        tool = doc.setdefault("tool", {})
-        uvr = tool.setdefault("uvr", {})
-        config = uvr.setdefault("config", {})
-        config["template_version"] = template_version
-        # Remove legacy init_commit if present
-        config.pop("init_commit", None)
-        write_pyproject(pyproject, doc)
-
-        # Amend the commit to include the pyproject.toml change
-        repo.index.add("pyproject.toml")
-        repo.index.write()
-        tree = repo.index.write_tree()
-        repo.create_commit("HEAD", sig, sig, message, tree, [repo.head.peel().id])
-
-    print(f"OK: Committed {len(rel_files)} file(s)")
+    doc = read_pyproject(pyproject)
+    tool = doc.setdefault("tool", {})
+    uvr = tool.setdefault("uvr", {})
+    config = uvr.setdefault("config", {})
+    config["template_version"] = version
+    # Remove legacy init_commit if present
+    config.pop("init_commit", None)
+    write_pyproject(pyproject, doc)
 
 
 # ---------------------------------------------------------------------------
@@ -242,21 +192,14 @@ def cmd_init(args: argparse.Namespace) -> None:
     version = _latest_template_version()
     dest.write_text(_load_template(version))
 
-    print(f"OK: Wrote workflow to {dest.relative_to(root)}")
+    _store_template_version(root, version)
 
-    _git_commit_and_record(
-        root,
-        [str(dest)],
-        "chore: uvr init",
-        template_version=version,
-    )
-
+    print(f"OK: Wrote workflow to {dest.relative_to(root)} (template v{version})")
     print()
     print("Next steps:")
-    print("  1. Edit the workflow to add your hook steps")
+    print("  1. Review and commit the workflow file")
     print("  2. Run `uvr validate` to check your changes")
-    print("  3. Commit and push the workflow file")
-    print("  4. Trigger a release:")
+    print("  3. Trigger a release:")
     print("       uvr release")
 
 
@@ -412,22 +355,17 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
             "  Commit or stash them before upgrading."
         )
 
-    # Resolve base template version from config
+    # Resolve base template version from config (empty string → two-way merge)
     pyproject = root / "pyproject.toml"
     doc = read_pyproject(pyproject) if pyproject.exists() else {}
     stored_version = (
-        doc.get("tool", {}).get("uvr", {}).get("config", {}).get("template_version")
+        doc.get("tool", {}).get("uvr", {}).get("config", {}).get("template_version", "")
     )
-    if not stored_version:
-        _fatal(
-            "No template_version found in [tool.uvr.config].\n"
-            "  Run `uvr init --force` to re-initialize."
-        )
 
     latest_version = _latest_template_version()
     existing_text = dest.read_text()
 
-    base_text = _load_template(stored_version)
+    base_text = _load_template(stored_version) if stored_version else ""
     fresh_text = _load_template(latest_version)
 
     merged_text, has_conflicts = _three_way_merge(dest, base_text, fresh_text)
@@ -440,13 +378,8 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
     dest.write_text(merged_text)
 
     if not (has_conflicts or "<<<<<<" in merged_text):
-        print(f"OK: Upgraded {rel_dest}")
-        _git_commit_and_record(
-            root,
-            [str(dest)],
-            "chore: uvr init --upgrade",
-            template_version=latest_version,
-        )
+        _store_template_version(root, latest_version)
+        print(f"OK: Upgraded {rel_dest} to v{latest_version}")
         return
 
     # Conflicts — offer editor
@@ -478,5 +411,10 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
         if answer not in ("n", "no"):
             dest.write_text(existing_text)
             print("Reverted. No changes applied.")
-        else:
-            print(f"  Resolve markers in {rel_dest}, then commit.")
+            return
+        _store_template_version(root, latest_version)
+        print(f"  Resolve markers in {rel_dest}, then commit.")
+        return
+
+    _store_template_version(root, latest_version)
+    print(f"OK: Upgraded {rel_dest} to v{latest_version}")

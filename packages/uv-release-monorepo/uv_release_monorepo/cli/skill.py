@@ -13,7 +13,7 @@ from packaging.version import Version
 from ..shared.utils.config import get_config
 from ..shared.utils.toml import read_pyproject, write_pyproject
 from ._common import _fatal
-from .init import _editor_cmd, _git_commit_and_record, _resolve_editor
+from .init import _editor_cmd, _resolve_editor
 
 
 _SKILL_FILES: dict[str, list[str]] = {
@@ -108,27 +108,19 @@ def cmd_skill_init(args: argparse.Namespace) -> None:
 
     print()
     if written:
-        print(f"OK: Wrote {written} file(s) to .claude/skills/")
+        _store_skill_version(root, version)
+        print(f"OK: Wrote {written} file(s) to .claude/skills/ (template v{version})")
     if skipped:
         print(f"  Skipped {skipped} existing file(s). Use --force to overwrite.")
     if not written and not skipped:
         print("Nothing to do.")
         return
 
-    # Commit and store version
-    all_files = [
-        str(dest_base / name / rel_path)
-        for name in _SKILL_FILES
-        for rel_path in _SKILL_FILES[name]
-        if (dest_base / name / rel_path).exists()
-    ]
-    _git_commit_and_record(root, all_files, "chore: uvr skill init")
-    _store_skill_version(root, version)
-
     print()
     print("Next steps:")
     print("  1. Review .claude/skills/release/SKILL.md and tailor to your project")
-    print("  2. Use /release in Claude Code to start a release")
+    print("  2. Commit the skill files")
+    print("  3. Use /release in Claude Code to start a release")
 
 
 def cmd_skill_upgrade(args: argparse.Namespace) -> None:
@@ -316,5 +308,5 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
                     print(f"  Resolve markers in {rel}")
                 return
 
-    _git_commit_and_record(root, written_files, "chore: uvr skill init --upgrade")
     _store_skill_version(root, latest)
+    print(f"\nUpgraded to skill template v{latest}. Review and commit the changes.")
