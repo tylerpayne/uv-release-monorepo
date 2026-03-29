@@ -1,17 +1,72 @@
-"""Release workflow models -- represents the full .github/workflows/release.yml."""
+"""Release workflow models -- validation schema for .github/workflows/release.yml.
+
+The bundled YAML template (``templates/release/``) is the source of truth for
+workflow content.  These models validate structure and types when a user runs
+``uvr validate``.  Fields annotated with ``Frozen`` are template-controlled and
+should not be user-edited; the annotation drives frozen-path diffing at
+validation time.
+"""
 
 from __future__ import annotations
 
 from typing import Annotated, Any
 
 from pydantic import (
-    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
     model_serializer,
     model_validator,
 )
+
+
+# ---------------------------------------------------------------------------
+# Frozen marker
+# ---------------------------------------------------------------------------
+
+
+class _FrozenMeta:
+    """Marker metadata for template-controlled fields.
+
+    Attach via ``Annotated[T, Frozen]`` on Job subclass fields.  At validation
+    time ``frozen_paths()`` introspects the model tree to collect these paths
+    and compares them against the bundled template.
+    """
+
+
+Frozen = _FrozenMeta()
+"""Singleton instance used in ``Annotated`` metadata."""
+
+
+def frozen_paths(model: type[BaseModel], prefix: str = "") -> list[str]:
+    """Collect dot-separated YAML paths for all ``Frozen``-annotated fields.
+
+    Recurses into nested ``BaseModel`` fields so that
+    ``frozen_paths(ReleaseWorkflow)`` returns paths like
+    ``"jobs.build.steps"`` ready for comparison with ``_yaml_get()``.
+    """
+    paths: list[str] = []
+    for name, info in model.model_fields.items():
+        key = info.alias or name
+        full = f"{prefix}.{key}" if prefix else key
+
+        # Check for Frozen in Annotated metadata
+        for meta in info.metadata:
+            if isinstance(meta, _FrozenMeta):
+                paths.append(full)
+                break
+
+        # Recurse into nested BaseModel fields
+        ann = info.annotation
+        if isinstance(ann, type) and issubclass(ann, BaseModel):
+            paths.extend(frozen_paths(ann, full))
+
+    return paths
+
+
+# ---------------------------------------------------------------------------
+# Trigger models
+# ---------------------------------------------------------------------------
 
 
 class WorkflowInput(BaseModel):
@@ -44,6 +99,11 @@ class WorkflowTrigger(BaseModel):
     workflow_dispatch: WorkflowDispatch = Field(default_factory=WorkflowDispatch)
 
 
+# ---------------------------------------------------------------------------
+# Job models
+# ---------------------------------------------------------------------------
+
+
 class Job(BaseModel):
     """Base for all jobs. Common overridable fields."""
 
@@ -69,27 +129,6 @@ class Job(BaseModel):
         return d
 
 
-# Shorthand for GitHub Actions expressions referencing the release plan.
-_PLAN = "fromJSON(inputs.plan)"
-
-
-def _gha(expr: str) -> str:
-    """Wrap *expr* in GitHub Actions ``${{ }}`` interpolation."""
-    return "${{ " + expr + " }}"
-
-
-_CHECKOUT = {
-    "id": "checkout",
-    "uses": "actions/checkout@v4",
-    "with": {"fetch-depth": 0},
-}
-_SETUP_UV = {
-    "id": "setup-uv",
-    "uses": "astral-sh/setup-uv@v5",
-    "with": {"python-version": _gha(f"{_PLAN}.python_version")},
-}
-
-
 def _needs_validator(*required: str):
     """Create a model_validator that ensures needs contains the required jobs."""
 
@@ -103,190 +142,42 @@ def _needs_validator(*required: str):
     return _check
 
 
-_UNSET: Any = object()
-
-
-def WarnIfChanged(  # noqa: N802
-    tp: Any,
-    *,
-    default: Any = _UNSET,
-    default_factory: Any = _UNSET,
-    msg: str = "",
-    **field_kwargs: Any,
-) -> Any:
-    """Return an ``Annotated`` type that warns when a field is modified.
-
-    Bundles the type, ``Field(default=…)`` or ``Field(default_factory=…)``
-    and an ``AfterValidator`` into one annotation.
-    """
-    import warnings
-
-    assert not (default is _UNSET and default_factory is _UNSET), (
-        "WarnIfChanged requires default or default_factory"
-    )
-
-    if default is not _UNSET:
-        expected = default
-        field_kwargs["default"] = default
-    else:
-        expected = default_factory()
-        field_kwargs["default_factory"] = default_factory
-
-    def _check(v: Any) -> Any:
-        if v != expected:
-            warnings.warn(
-                msg or "frozen field was modified from its default",
-                UserWarning,
-                stacklevel=2,
-            )
-        return v
-
-    return Annotated[tp, Field(**field_kwargs), AfterValidator(_check)]
-
-
 class ValidatePlanJob(Job):
-    """The validate-plan job. Frozen -- runs first to validate plan JSON."""
+    """The validate-plan job."""
 
-    steps: WarnIfChanged(  # ty: ignore[invalid-type-form]
-        list[dict],
-        default_factory=lambda: [
-            _SETUP_UV,
-            {
-                "id": "validate-plan",
-                "name": "Validate release plan",
-                "env": {"UVR_PLAN": "${{ inputs.plan }}"},
-                "run": "uv run uvr validate-plan",
-            },
-        ],
-        msg="validate-plan.steps was modified",
-    )
+    steps: Annotated[list[dict], Frozen] = Field(default_factory=list)
 
 
 class BuildJob(Job):
-    """The build job. Frozen -- immutable fields enforced per-field."""
+    """The build job."""
 
-    if_condition: WarnIfChanged(  # ty: ignore[invalid-type-form]
-        str | None,
-        default=_gha(f"!contains({_PLAN}.skip, 'build')"),
-        msg="build.if was modified",
-        alias="if",
-    )
-    strategy: WarnIfChanged(  # ty: ignore[invalid-type-form]
-        dict,
-        default_factory=lambda: {
-            "fail-fast": True,
-            "matrix": {"runner": _gha(f"{_PLAN}.build_matrix")},
-        },
-        msg="build.strategy was modified",
-    )
-    runs_on: WarnIfChanged(  # ty: ignore[invalid-type-form]
-        str,
-        default=_gha("matrix.runner"),
-        msg="build.runs-on was modified",
-        alias="runs-on",
-    )
-    steps: WarnIfChanged(  # ty: ignore[invalid-type-form]
-        list[dict],
-        default_factory=lambda: [
-            _CHECKOUT,
-            _SETUP_UV,
-            {
-                "id": "build",
-                "name": "Build packages",
-                "env": {
-                    "GH_TOKEN": "${{ github.token }}",
-                    "UVR_PLAN": "${{ inputs.plan }}",
-                },
-                "run": "uv run uvr build --runner '${{ toJSON(matrix.runner) }}'",
-            },
-            {
-                "id": "upload",
-                "uses": "actions/upload-artifact@v4",
-                "with": {
-                    "name": "wheels-${{ join(matrix.runner, '-') }}",
-                    "path": "dist/*.whl",
-                    "if-no-files-found": "error",
-                },
-            },
-        ],
-        msg="build.steps was modified",
-    )
+    if_condition: Annotated[str | None, Frozen] = Field(default=None, alias="if")
+    strategy: Annotated[dict, Frozen] = Field(default_factory=dict)
+    runs_on: Annotated[str, Frozen] = Field(default="ubuntu-latest", alias="runs-on")
+    steps: Annotated[list[dict], Frozen] = Field(default_factory=list)
     _ensure_needs = _needs_validator("validate_plan")
 
 
 class ReleaseJob(Job):
-    """The release job. Frozen -- immutable fields enforced per-field."""
+    """The release job."""
 
-    if_condition: WarnIfChanged(  # ty: ignore[invalid-type-form]
-        str | None,
-        default=_gha(f"always() && !failure() && !contains({_PLAN}.skip, 'release')"),
-        msg="release.if was modified",
-        alias="if",
-    )
-    strategy: WarnIfChanged(  # ty: ignore[invalid-type-form]
-        dict,
-        default_factory=lambda: {
-            "fail-fast": False,
-            "matrix": {"include": _gha(f"{_PLAN}.release_matrix")},
-        },
-        msg="release.strategy was modified",
-    )
-    steps: WarnIfChanged(  # ty: ignore[invalid-type-form]
-        list[dict],
-        default_factory=lambda: [
-            {
-                "id": "download",
-                "uses": "actions/download-artifact@v4",
-                "with": {
-                    "pattern": "wheels-*",
-                    "merge-multiple": True,
-                    "path": "dist",
-                    "run-id": _gha(
-                        f"{_PLAN}.reuse_run_id != '' && {_PLAN}.reuse_run_id || github.run_id"
-                    ),
-                },
-            },
-            {
-                "id": "publish",
-                "uses": "softprops/action-gh-release@v2",
-                "with": {
-                    "tag_name": "${{ matrix.tag }}",
-                    "name": "${{ matrix.title }}",
-                    "body": "${{ matrix.body }}",
-                    "files": "dist/${{ matrix.dist_name }}-${{ matrix.version }}*.whl",
-                    "make_latest": "${{ matrix.make_latest }}",
-                },
-            },
-        ],
-        msg="release.steps was modified",
-    )
+    if_condition: Annotated[str | None, Frozen] = Field(default=None, alias="if")
+    strategy: Annotated[dict, Frozen] = Field(default_factory=dict)
+    steps: Annotated[list[dict], Frozen] = Field(default_factory=list)
     _ensure_needs = _needs_validator("build")
 
 
 class FinalizeJob(Job):
-    """The finalize job. Frozen -- immutable fields enforced per-field."""
+    """The finalize job."""
 
-    if_condition: WarnIfChanged(  # ty: ignore[invalid-type-form]
-        str | None,
-        default=_gha(f"always() && !failure() && !contains({_PLAN}.skip, 'finalize')"),
-        msg="finalize.if was modified",
-        alias="if",
-    )
-    steps: WarnIfChanged(  # ty: ignore[invalid-type-form]
-        list[dict],
-        default_factory=lambda: [
-            _CHECKOUT,
-            _SETUP_UV,
-            {
-                "id": "finalize",
-                "name": "Finalize release",
-                "env": {"UVR_PLAN": "${{ inputs.plan }}"},
-                "run": "uv run uvr finalize",
-            },
-        ],
-        msg="finalize.steps was modified",
-    )
+    if_condition: Annotated[str | None, Frozen] = Field(default=None, alias="if")
+    steps: Annotated[list[dict], Frozen] = Field(default_factory=list)
     _ensure_needs = _needs_validator("release")
+
+
+# ---------------------------------------------------------------------------
+# Top-level models
+# ---------------------------------------------------------------------------
 
 
 class WorkflowJobs(BaseModel):
@@ -301,12 +192,10 @@ class WorkflowJobs(BaseModel):
 
 
 class ReleaseWorkflow(BaseModel):
-    """Full representation of .github/workflows/release.yml.
+    """Validation schema for .github/workflows/release.yml.
 
-    The YAML file is the source of truth. This model validates its
-    structure after edits made via ``uvr workflow``. The Jinja2 template
-    generates the initial YAML; this model ensures user edits don't
-    break it.
+    The bundled YAML template is the source of truth for content.
+    This model validates structure after user edits.
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)

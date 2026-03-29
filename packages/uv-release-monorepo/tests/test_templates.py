@@ -1,48 +1,57 @@
-"""Tests for ReleaseWorkflow model serialization."""
+"""Tests for bundled release workflow template."""
 
 from __future__ import annotations
 
+from uv_release_monorepo.cli.init import _latest_template_version, _load_template_yaml
 from uv_release_monorepo.shared.models.workflow import ReleaseWorkflow
 
 
-def _default_workflow() -> dict:
-    return ReleaseWorkflow().model_dump(by_alias=True, exclude_none=True)
+def _template_workflow() -> dict:
+    version = _latest_template_version()
+    return _load_template_yaml(version)
 
 
-def test_workflow_has_name() -> None:
-    doc = _default_workflow()
+def test_template_has_name() -> None:
+    doc = _template_workflow()
     assert doc["name"] == "Release Wheels"
 
 
-def test_workflow_has_plan_input() -> None:
-    doc = _default_workflow()
+def test_template_has_plan_input() -> None:
+    doc = _template_workflow()
     inputs = doc["on"]["workflow_dispatch"]["inputs"]
     assert "plan" in inputs
     assert inputs["plan"]["required"] is True
 
 
-def test_workflow_has_core_jobs() -> None:
-    doc = _default_workflow()
+def test_template_has_core_jobs() -> None:
+    doc = _template_workflow()
     jobs = doc["jobs"]
     assert "build" in jobs
     assert "release" in jobs
     assert "finalize" in jobs
 
 
-def test_workflow_job_needs_chain() -> None:
-    doc = _default_workflow()
+def test_template_validates_against_model() -> None:
+    """The bundled template passes pydantic structural validation."""
+    doc = _template_workflow()
+    ReleaseWorkflow.model_validate(doc)
+
+
+def test_template_job_needs_chain() -> None:
+    doc = _template_workflow()
     jobs = doc["jobs"]
-    assert jobs["release"]["needs"] == ["build"]
-    assert jobs["finalize"]["needs"] == ["release"]
+    assert "validate_plan" in jobs["build"]["needs"]
+    assert "build" in jobs["release"]["needs"]
+    assert "release" in jobs["finalize"]["needs"]
 
 
-def test_workflow_default_permissions() -> None:
-    doc = _default_workflow()
+def test_template_default_permissions() -> None:
+    doc = _template_workflow()
     assert doc["permissions"] == {"contents": "write"}
 
 
-def test_workflow_core_jobs_have_executor_steps() -> None:
-    doc = _default_workflow()
+def test_template_core_jobs_have_executor_steps() -> None:
+    doc = _template_workflow()
     build_steps = doc["jobs"]["build"]["steps"]
     assert any("uvr build" in str(s.get("run", "")) for s in build_steps)
 

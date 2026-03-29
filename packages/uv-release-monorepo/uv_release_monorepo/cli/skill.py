@@ -8,8 +8,10 @@ import tempfile
 from importlib.resources import files
 from pathlib import Path
 
+from ..shared.utils.config import get_config
+from ..shared.utils.toml import read_pyproject, write_pyproject
 from ._common import _fatal
-from .init import _editor_cmd, _get_base_text, _git_commit_and_record, _resolve_editor
+from .init import _editor_cmd, _git_commit_and_record, _resolve_editor
 
 
 _SKILL_FILES: dict[str, list[str]] = {
@@ -31,6 +33,46 @@ _SKILL_FILES: dict[str, list[str]] = {
         "references/troubleshooting.md",
     ],
 }
+
+
+def _get_base_text(root: Path, rel_path: str, config_key: str) -> str:
+    """Retrieve file content at the commit stored under *config_key* in [tool.uvr.config]."""
+    pyproject = root / "pyproject.toml"
+    if not pyproject.exists():
+        return ""
+    config = get_config(read_pyproject(pyproject))
+    commit_sha = config.get(config_key, "")
+    if not commit_sha:
+        return ""
+    result = subprocess.run(
+        ["git", "show", f"{commit_sha}:{rel_path}"],
+        capture_output=True,
+        text=True,
+        cwd=root,
+    )
+    return result.stdout if result.returncode == 0 else ""
+
+
+def _store_skill_commit(root: Path, config_key: str) -> None:
+    """Store the current HEAD commit SHA under *config_key* in [tool.uvr.config]."""
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        cwd=root,
+    )
+    if result.returncode != 0:
+        return
+    sha = result.stdout.strip()
+    pyproject = root / "pyproject.toml"
+    if not pyproject.exists():
+        return
+    doc = read_pyproject(pyproject)
+    tool = doc.setdefault("tool", {})
+    uvr = tool.setdefault("uvr", {})
+    config = uvr.setdefault("config", {})
+    config[config_key] = sha
+    write_pyproject(pyproject, doc)
 
 
 def _skill_root() -> Path:
@@ -89,9 +131,8 @@ def cmd_skill_init(args: argparse.Namespace) -> None:
         for rel_path in _SKILL_FILES[name]
         if (dest_base / name / rel_path).exists()
     ]
-    _git_commit_and_record(
-        root, all_files, "chore: uvr skill init", "skill_init_commit"
-    )
+    _git_commit_and_record(root, all_files, "chore: uvr skill init")
+    _store_skill_commit(root, "skill_init_commit")
 
     print()
     print("Next steps:")
@@ -271,9 +312,5 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
                     print(f"  Resolve markers in {rel}")
                 return
 
-    _git_commit_and_record(
-        root,
-        written_files,
-        "chore: uvr skill init --upgrade",
-        "skill_init_commit",
-    )
+    _git_commit_and_record(root, written_files, "chore: uvr skill init --upgrade")
+    _store_skill_commit(root, "skill_init_commit")

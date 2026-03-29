@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from uv_release_monorepo.cli import cmd_init, cmd_upgrade
+from uv_release_monorepo.cli.init import _latest_template_version
 
 from tests._helpers import _write_workspace_repo
 
@@ -47,8 +48,10 @@ class TestInit:
 
 
 def _init_and_get_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Scaffold a workspace and init the workflow, return the release.yml path."""
+    """Scaffold a workspace, init the workflow, and set up template_version."""
     import subprocess as _sp
+
+    from uv_release_monorepo.cli.init import _load_template
 
     _write_workspace_repo(tmp_path, ["pkg-alpha"])
     monkeypatch.chdir(tmp_path)
@@ -58,28 +61,28 @@ def _init_and_get_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         ["git", "commit", "-m", "init"],
         capture_output=True,
         check=True,
-        env={
-            **__import__("os").environ,
-            "GIT_AUTHOR_NAME": "test",
-            "GIT_AUTHOR_EMAIL": "t@t",
-            "GIT_COMMITTER_NAME": "test",
-            "GIT_COMMITTER_EMAIL": "t@t",
-        },
+        env=_GIT_ENV,
     )
-    cmd_init(argparse.Namespace(workflow_dir=".github/workflows"))
-    wf = tmp_path / ".github" / "workflows" / "release.yml"
-    _sp.run(["git", "add", str(wf)], capture_output=True, check=True)
+
+    # Write template and store version (bypass _git_commit_and_record)
+    version = _latest_template_version()
+    wf_dir = tmp_path / ".github" / "workflows"
+    wf_dir.mkdir(parents=True, exist_ok=True)
+    wf = wf_dir / "release.yml"
+    wf.write_text(_load_template(version))
+
+    # Store template_version in pyproject.toml
+    pyproject = tmp_path / "pyproject.toml"
+    text = pyproject.read_text()
+    text += f'\n[tool.uvr.config]\ntemplate_version = "{version}"\n'
+    pyproject.write_text(text)
+
+    _sp.run(["git", "add", "-A"], capture_output=True, check=True)
     _sp.run(
         ["git", "commit", "-m", "add workflow"],
         capture_output=True,
         check=True,
-        env={
-            **__import__("os").environ,
-            "GIT_AUTHOR_NAME": "test",
-            "GIT_AUTHOR_EMAIL": "t@t",
-            "GIT_COMMITTER_NAME": "test",
-            "GIT_COMMITTER_EMAIL": "t@t",
-        },
+        env=_GIT_ENV,
     )
     return wf
 
@@ -100,6 +103,7 @@ _GIT_ENV = {
     "GIT_AUTHOR_EMAIL": "t@t",
     "GIT_COMMITTER_NAME": "test",
     "GIT_COMMITTER_EMAIL": "t@t",
+    "GIT_CONFIG_GLOBAL": "/dev/null",
 }
 
 
