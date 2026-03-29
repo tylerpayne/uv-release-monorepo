@@ -116,11 +116,12 @@ class ReleasePlanner:
         # Compute next-dev versions
         next_versions = self._compute_next_versions(versioned)
 
-        # Generate release notes
+        # Generate release notes (from baseline tag, not release tag —
+        # the baseline marks where the current dev cycle started)
         notes: dict[str, str] = {}
         for name in changed_names:
             info = versioned[name]
-            baseline = release_tags.get(name)
+            baseline = baselines.get(name)
             notes[name] = generate_release_notes(
                 name, info, baseline, repo=self.ctx.repo
             )
