@@ -48,14 +48,8 @@ def build_context(
     - Baselines use direct pygit2 ref lookup — O(1) per package
     """
     if progress:
-        progress.update("Opening repository")
-    repo = open_repo()
-    if progress:
-        progress.complete("Opened repository")
-
-    # Discover packages first
-    if progress:
         progress.update("Discovering packages")
+    repo = open_repo()
     packages = find_packages()
     if progress:
         progress.complete(f"Discovered {len(packages)} packages")
