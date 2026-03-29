@@ -148,6 +148,11 @@ Run 'uvr <command> --help' for details on a specific command.
         "--rebuild-all", action="store_true", help="Rebuild all packages."
     )
     _build.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="Proceed even if the working tree has uncommitted changes.",
+    )
+    _build.add_argument(
         "--python",
         default="3.12",
         metavar="VER",

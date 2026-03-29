@@ -185,15 +185,24 @@ def cmd_release(args: argparse.Namespace) -> None:
     # For CI mode, ensure clean worktree and workflow exists
     root = Path.cwd()
     json_only = getattr(args, "json", False)
+    allow_dirty = getattr(args, "allow_dirty", False)
     if where == "ci" and not json_only:
         result = subprocess.run(
             ["git", "status", "--porcelain"], capture_output=True, text=True
         )
         if result.stdout.strip():
-            _fatal(
-                "Working tree is not clean. Commit or stash your changes first.\n"
-                + result.stdout
-            )
+            if allow_dirty:
+                import sys as _sys
+
+                print(
+                    f"WARNING: Working tree is not clean.\n{result.stdout}",
+                    file=_sys.stderr,
+                )
+            else:
+                _fatal(
+                    "Working tree is not clean. Commit or stash your changes first.\n"
+                    "  Use --allow-dirty to proceed anyway.\n" + result.stdout
+                )
 
         # Ensure local HEAD matches remote
         subprocess.run(["git", "fetch", "--quiet"], capture_output=True, check=False)
@@ -270,19 +279,8 @@ def cmd_release(args: argparse.Namespace) -> None:
     finally:
         sys.stdout = old_stdout
 
-    # Count generated artifacts
-    stage_count = sum(len(stages) for stages in plan.build_commands.values())
-    cmd_count = (
-        len(plan.release_commands)
-        + len(plan.finalize_commands)
-        + sum(
-            len(s.setup) + sum(len(c) for c in s.packages.values()) + len(s.cleanup)
-            for stages in plan.build_commands.values()
-            for s in stages
-        )
-    )
     if plan.changed:
-        progress.complete(f"Generated {stage_count} build stages, {cmd_count} commands")
+        progress.complete("Generated release plan")
     progress.finish()
 
     if not plan.changed:
