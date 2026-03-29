@@ -23,7 +23,7 @@ def exit_fatal(msg: str) -> None:
     sys.exit(1)
 
 
-_SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+_SPINNER = "|/-\\"
 
 
 class Progress:
@@ -52,7 +52,7 @@ class Progress:
         elapsed_ms = int((time.monotonic() - self._step_start) * 1000)
         self._completed.append((summary, elapsed_ms))
         # Show checkmark briefly
-        sys.stderr.write(f"\r  ✓ {summary} ({elapsed_ms}ms)".ljust(60))
+        sys.stderr.write(f"\r  + {summary} ({elapsed_ms}ms)".ljust(60))
         sys.stderr.flush()
         self._step_start = time.monotonic()
 
