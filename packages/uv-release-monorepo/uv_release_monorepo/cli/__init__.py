@@ -231,7 +231,8 @@ Run 'uvr <command> --help' for details on a specific command.
         a.where = "ci"
         a.dry_run = True
         a.plan = None
-        a.rebuild_all = False
+        a.rebuild_all = getattr(a, "rebuild_all", False)
+        a.allow_dirty = getattr(a, "allow_dirty", False)
         a.yes = False
         a.no_push = False
         a.python_version = "3.12"
@@ -240,6 +241,8 @@ Run 'uvr <command> --help' for details on a specific command.
         a.reuse_run = None
         a.reuse_release = False
         a.json = False
+        a.release_type = None
+        a.pre_kind = None
         cmd_release(a)
 
     status_parser = subparsers.add_parser("status", help=_H)
@@ -247,6 +250,16 @@ Run 'uvr <command> --help' for details on a specific command.
         "--workflow-dir",
         default=".github/workflows",
         help="Workflow directory (default: %(default)s).",
+    )
+    status_parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="Proceed even if the working tree has uncommitted changes.",
+    )
+    status_parser.add_argument(
+        "--rebuild-all",
+        action="store_true",
+        help="Show plan as if all packages changed.",
     )
     status_parser.set_defaults(func=_cmd_status)
 
