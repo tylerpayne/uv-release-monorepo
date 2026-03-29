@@ -266,7 +266,7 @@ def cmd_release(args: argparse.Namespace) -> None:
     if hook:
         config = hook.pre_plan(config)
 
-    progress = Progress()
+    progress = Progress(total_steps=7)
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()  # suppress discovery print_step output
     try:

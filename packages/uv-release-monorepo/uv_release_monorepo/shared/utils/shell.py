@@ -23,43 +23,48 @@ def exit_fatal(msg: str) -> None:
     sys.exit(1)
 
 
-_SPINNER = "|/-\\"
+_BAR_WIDTH = 20
 
 
 class Progress:
-    """ASCII progress reporter with spinner.
+    """ASCII progress bar reporter.
 
-    While running, shows a spinner + current step on stderr.
+    Shows ``STEP [###-----] message...`` on stderr during execution.
     On finish, prints a detailed summary with per-phase timing to stdout.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, total_steps: int) -> None:
         self._start = time.monotonic()
         self._step_start = self._start
         self._completed: list[tuple[str, int]] = []
-        self._spin_idx = 0
+        self._total = total_steps
+        self._current = 0
+
+    def _render_bar(self) -> str:
+        filled = int(_BAR_WIDTH * self._current / self._total) if self._total else 0
+        return "#" * filled + "-" * (_BAR_WIDTH - filled)
 
     def update(self, msg: str) -> None:
-        """Show a spinner with the current step message."""
-        frame = _SPINNER[self._spin_idx % len(_SPINNER)]
-        self._spin_idx += 1
-        sys.stderr.write(f"\r  {frame} {msg}...".ljust(60))
+        """Show progress bar with current step message."""
+        bar = self._render_bar()
+        sys.stderr.write(f"\r  [{bar}] {msg}...".ljust(70))
         sys.stderr.flush()
         self._step_start = time.monotonic()
 
     def complete(self, summary: str) -> None:
-        """Record a completed step with its summary text and elapsed time."""
+        """Record a completed step and advance the bar."""
         elapsed_ms = int((time.monotonic() - self._step_start) * 1000)
         self._completed.append((summary, elapsed_ms))
-        # Show checkmark briefly
-        sys.stderr.write(f"\r  + {summary} ({elapsed_ms}ms)".ljust(60))
+        self._current += 1
+        bar = self._render_bar()
+        sys.stderr.write(f"\r  [{bar}] {summary} ({elapsed_ms}ms)".ljust(70))
         sys.stderr.flush()
         self._step_start = time.monotonic()
 
     def finish(self) -> None:
-        """Clear the progress line and print the detailed summary."""
+        """Clear the progress bar and print the detailed summary."""
         total_ms = int((time.monotonic() - self._start) * 1000)
-        sys.stderr.write("\r" + " " * 60 + "\r")
+        sys.stderr.write("\r" + " " * 70 + "\r")
         sys.stderr.flush()
         for summary, ms in self._completed:
             print(f"  {summary} ({ms}ms)")
