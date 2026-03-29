@@ -34,6 +34,7 @@ def _get_client() -> httpx.Client | None:
             "Authorization": f"Bearer {token}",
             "Accept": "application/vnd.github+json",
         },
+        follow_redirects=True,
     )
     return _client
 
