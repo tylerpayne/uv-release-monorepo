@@ -8,9 +8,8 @@ from pydantic import BaseModel, ConfigDict
 from ..git.local import list_tags, open_repo
 from ..git.remote import list_release_tag_names
 from ..models import PackageInfo
-from ._baselines import find_baselines
-from ._packages import find_packages
-from ._releases import find_release_tags
+from ..utils.packages import find_packages
+from ..utils.tags import find_baselines, find_release_tags
 
 
 class RepositoryContext(BaseModel):

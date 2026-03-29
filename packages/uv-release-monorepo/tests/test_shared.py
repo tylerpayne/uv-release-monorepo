@@ -9,9 +9,6 @@ import pygit2
 import pytest
 
 from uv_release_monorepo.shared.context import RepositoryContext
-from uv_release_monorepo.shared.context._baselines import find_baselines
-from uv_release_monorepo.shared.context._packages import find_packages
-from uv_release_monorepo.shared.context._releases import find_release_tags
 from uv_release_monorepo.shared.git.local import generate_release_notes
 from uv_release_monorepo.shared.models import (
     PackageInfo,
@@ -19,7 +16,9 @@ from uv_release_monorepo.shared.models import (
     ReleasePlan,
 )
 from uv_release_monorepo.shared.planner import build_plan
-from uv_release_monorepo.shared.planner._changes import detect_changes
+from uv_release_monorepo.shared.utils.changes import detect_changes
+from uv_release_monorepo.shared.utils.packages import find_packages
+from uv_release_monorepo.shared.utils.tags import find_baselines, find_release_tags
 
 
 def _make_ctx(
@@ -55,7 +54,7 @@ class TestFindReleaseTags:
             "pkg-b": PackageInfo(path="packages/b", version="1.0.1.dev0", deps=[]),
         }
 
-    @patch("uv_release_monorepo.shared.context._releases.print_step")
+    @patch("uv_release_monorepo.shared.utils.tags.print_step")
     def test_returns_per_package_releases(
         self,
         _mock_step: MagicMock,
@@ -68,7 +67,7 @@ class TestFindReleaseTags:
 
         assert result == {"pkg-a": "pkg-a/v1.0.0", "pkg-b": "pkg-b/v1.0.0"}
 
-    @patch("uv_release_monorepo.shared.context._releases.print_step")
+    @patch("uv_release_monorepo.shared.utils.tags.print_step")
     def test_returns_none_for_new_packages(
         self,
         _mock_step: MagicMock,
@@ -81,7 +80,7 @@ class TestFindReleaseTags:
 
         assert result == {"pkg-a": "pkg-a/v1.0.0", "pkg-b": None}
 
-    @patch("uv_release_monorepo.shared.context._releases.print_step")
+    @patch("uv_release_monorepo.shared.utils.tags.print_step")
     def test_all_new_packages(
         self,
         _mock_step: MagicMock,
@@ -92,7 +91,7 @@ class TestFindReleaseTags:
 
         assert result == {"pkg-a": None, "pkg-b": None}
 
-    @patch("uv_release_monorepo.shared.context._releases.print_step")
+    @patch("uv_release_monorepo.shared.utils.tags.print_step")
     def test_excludes_future_versions(
         self,
         _mock_step: MagicMock,
@@ -120,7 +119,7 @@ class TestGetBaselineTags:
             "pkg-b": PackageInfo(path="packages/b", version="1.0.1", deps=[]),
         }
 
-    @patch("uv_release_monorepo.shared.context._baselines.print_step")
+    @patch("uv_release_monorepo.shared.utils.tags.print_step")
     def test_returns_base_tags(
         self,
         _mock_step: MagicMock,
@@ -136,7 +135,7 @@ class TestGetBaselineTags:
             "pkg-b": "pkg-b/v1.0.1-base",
         }
 
-    @patch("uv_release_monorepo.shared.context._baselines.print_step")
+    @patch("uv_release_monorepo.shared.utils.tags.print_step")
     def test_returns_none_when_no_base_tag(
         self,
         _mock_step: MagicMock,
@@ -152,7 +151,7 @@ class TestGetBaselineTags:
             "pkg-b": "pkg-b/v1.0.1-base",
         }
 
-    @patch("uv_release_monorepo.shared.context._baselines.print_step")
+    @patch("uv_release_monorepo.shared.utils.tags.print_step")
     def test_returns_none_for_new_packages(
         self,
         _mock_step: MagicMock,
@@ -190,8 +189,8 @@ class TestDetectChanges:
         """No packages have tags (first release)."""
         return {"pkg-a": None, "pkg-b": None, "pkg-c": None}
 
-    @patch("uv_release_monorepo.shared.planner._changes.diff_files")
-    @patch("uv_release_monorepo.shared.planner._changes.print_step")
+    @patch("uv_release_monorepo.shared.utils.changes.diff_files")
+    @patch("uv_release_monorepo.shared.utils.changes.print_step")
     def test_first_release_all_changed(
         self,
         mock_step: MagicMock,
@@ -204,8 +203,8 @@ class TestDetectChanges:
 
         assert set(changed) == {"pkg-a", "pkg-b", "pkg-c"}
 
-    @patch("uv_release_monorepo.shared.planner._changes.diff_files")
-    @patch("uv_release_monorepo.shared.planner._changes.print_step")
+    @patch("uv_release_monorepo.shared.utils.changes.diff_files")
+    @patch("uv_release_monorepo.shared.utils.changes.print_step")
     def test_rebuild_all_marks_everything_dirty(
         self,
         mock_step: MagicMock,
@@ -218,8 +217,8 @@ class TestDetectChanges:
 
         assert set(changed) == {"pkg-a", "pkg-b", "pkg-c"}
 
-    @patch("uv_release_monorepo.shared.planner._changes.diff_files")
-    @patch("uv_release_monorepo.shared.planner._changes.print_step")
+    @patch("uv_release_monorepo.shared.utils.changes.diff_files")
+    @patch("uv_release_monorepo.shared.utils.changes.print_step")
     def test_single_package_changed(
         self,
         mock_step: MagicMock,
@@ -239,8 +238,8 @@ class TestDetectChanges:
 
         assert set(changed) == {"pkg-c"}
 
-    @patch("uv_release_monorepo.shared.planner._changes.diff_files")
-    @patch("uv_release_monorepo.shared.planner._changes.print_step")
+    @patch("uv_release_monorepo.shared.utils.changes.diff_files")
+    @patch("uv_release_monorepo.shared.utils.changes.print_step")
     def test_dependency_change_propagates(
         self,
         mock_step: MagicMock,
@@ -260,8 +259,8 @@ class TestDetectChanges:
 
         assert set(changed) == {"pkg-a", "pkg-b", "pkg-c"}
 
-    @patch("uv_release_monorepo.shared.planner._changes.diff_files")
-    @patch("uv_release_monorepo.shared.planner._changes.print_step")
+    @patch("uv_release_monorepo.shared.utils.changes.diff_files")
+    @patch("uv_release_monorepo.shared.utils.changes.print_step")
     def test_middle_package_change_propagates_to_dependents(
         self,
         mock_step: MagicMock,
@@ -281,8 +280,8 @@ class TestDetectChanges:
 
         assert set(changed) == {"pkg-b", "pkg-c"}
 
-    @patch("uv_release_monorepo.shared.planner._changes.diff_files")
-    @patch("uv_release_monorepo.shared.planner._changes.print_step")
+    @patch("uv_release_monorepo.shared.utils.changes.diff_files")
+    @patch("uv_release_monorepo.shared.utils.changes.print_step")
     def test_root_pyproject_change_does_not_mark_packages_dirty(
         self,
         mock_step: MagicMock,
@@ -297,8 +296,8 @@ class TestDetectChanges:
 
         assert changed == []
 
-    @patch("uv_release_monorepo.shared.planner._changes.diff_files")
-    @patch("uv_release_monorepo.shared.planner._changes.print_step")
+    @patch("uv_release_monorepo.shared.utils.changes.diff_files")
+    @patch("uv_release_monorepo.shared.utils.changes.print_step")
     def test_no_changes_returns_empty(
         self,
         mock_step: MagicMock,
@@ -341,8 +340,8 @@ class TestDetectChangesDiamondDeps:
             "top": "top/v1.0.0",
         }
 
-    @patch("uv_release_monorepo.shared.planner._changes.diff_files")
-    @patch("uv_release_monorepo.shared.planner._changes.print_step")
+    @patch("uv_release_monorepo.shared.utils.changes.diff_files")
+    @patch("uv_release_monorepo.shared.utils.changes.print_step")
     def test_bottom_change_propagates_to_all(
         self,
         mock_step: MagicMock,
@@ -365,8 +364,8 @@ class TestDetectChangesDiamondDeps:
 
         assert set(changed) == {"bottom", "left", "right", "top"}
 
-    @patch("uv_release_monorepo.shared.planner._changes.diff_files")
-    @patch("uv_release_monorepo.shared.planner._changes.print_step")
+    @patch("uv_release_monorepo.shared.utils.changes.diff_files")
+    @patch("uv_release_monorepo.shared.utils.changes.print_step")
     def test_left_change_propagates_to_top_only(
         self,
         mock_step: MagicMock,
@@ -389,8 +388,8 @@ class TestDetectChangesDiamondDeps:
 
         assert set(changed) == {"left", "top"}
 
-    @patch("uv_release_monorepo.shared.planner._changes.diff_files")
-    @patch("uv_release_monorepo.shared.planner._changes.print_step")
+    @patch("uv_release_monorepo.shared.utils.changes.diff_files")
+    @patch("uv_release_monorepo.shared.utils.changes.print_step")
     def test_top_change_only_affects_top(
         self,
         mock_step: MagicMock,
@@ -417,7 +416,7 @@ class TestDetectChangesDiamondDeps:
 class TestDiscoverPackagesRoot:
     """Tests for find_packages() root parameter."""
 
-    @patch("uv_release_monorepo.shared.context._packages.print_step")
+    @patch("uv_release_monorepo.shared.utils.packages.print_step")
     def test_accepts_explicit_root(self, mock_step: MagicMock, tmp_path: Path) -> None:
         """find_packages() uses the provided root directory."""
         root = tmp_path

@@ -11,7 +11,7 @@ from ..git.local import diff_files
 from ..models import PackageInfo
 from ..shell import print_step
 
-from ._graph import _build_graph_maps
+from ..planner._graph import build_graph_maps
 
 if TYPE_CHECKING:
     from ..context import RepositoryContext
@@ -97,7 +97,7 @@ def detect_changes(
                 print(f"  {name}: {reason}")
 
     # Build reverse dependency map
-    _, reverse_deps = _build_graph_maps(packages)
+    _, reverse_deps = build_graph_maps(packages)
 
     # Propagate dirtiness to dependents using BFS
     queue = list(dirty)
