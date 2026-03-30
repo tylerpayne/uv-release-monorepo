@@ -65,6 +65,7 @@ def _find_latest_release_tag(package: str, gh_repo: str | None = None) -> str | 
 
 def cmd_install(args: argparse.Namespace) -> None:
     """Install a package and its transitive internal deps from GitHub releases."""
+    import shutil
     import subprocess
     import tempfile
 
@@ -73,6 +74,14 @@ def cmd_install(args: argparse.Namespace) -> None:
     from ..shared.models import FetchGithubReleaseCommand
 
     gh_repo, package, version = _parse_install_spec(args.package)
+    output_dir: str | None = getattr(args, "output", None)
+    no_install: bool = getattr(args, "no_install", False)
+
+    if no_install and not output_dir:
+        _fatal("--no-install requires -o/--output.")
+
+    if output_dir:
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # For now, install only the requested package; pip resolves external deps
     order = [package]
@@ -104,5 +113,11 @@ def cmd_install(args: argparse.Namespace) -> None:
             wheels.append(str(found[0]))
             print(f"  {found[0].name}")
 
-        print(f"\nInstalling {len(wheels)} wheel(s)...")
-        subprocess.run(["uv", "pip", "install", *wheels], check=True)
+        if output_dir:
+            for whl in wheels:
+                shutil.copy2(whl, output_dir)
+            print(f"\nSaved {len(wheels)} wheel(s) to {output_dir}/")
+
+        if not no_install:
+            print(f"Installing {len(wheels)} wheel(s)...")
+            subprocess.run(["uv", "pip", "install", *wheels], check=True)

@@ -394,6 +394,18 @@ Run 'uvr <command> --help' for details on a specific command.
         "package",
         help="Install spec: ORG/REPO/PKG[@VERSION]",
     )
+    install_parser.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        help="Save wheels to this directory.",
+    )
+    install_parser.add_argument(
+        "--no-install",
+        action="store_true",
+        default=False,
+        help="Download only, do not install. Requires -o/--output.",
+    )
     install_parser.set_defaults(func=cmd_install)
 
     # init
