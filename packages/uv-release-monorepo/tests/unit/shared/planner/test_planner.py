@@ -243,14 +243,12 @@ class TestBuildCommandStages:
         # No cleanup stage (all packages assigned to the same runner)
         assert len(stages) == 4
 
-        # Layer 0 (alpha) should NOT have --no-sources
-        alpha_build = [
-            c for c in stages[1].packages["alpha"] if c.label == "Build alpha"
-        ][0]
-        assert "--no-sources" not in alpha_build.args
-
-        # Layer 1+ (beta, delta, gamma) SHOULD have --no-sources
-        for stage, pkgs in [(stages[2], ["beta", "delta"]), (stages[3], ["gamma"])]:
+        # All layers should have --no-sources
+        for stage, pkgs in [
+            (stages[1], ["alpha"]),
+            (stages[2], ["beta", "delta"]),
+            (stages[3], ["gamma"]),
+        ]:
             for pkg in pkgs:
                 build_cmd = [
                     c for c in stage.packages[pkg] if c.label == f"Build {pkg}"
