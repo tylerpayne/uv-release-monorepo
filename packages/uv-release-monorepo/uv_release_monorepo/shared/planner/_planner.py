@@ -340,9 +340,8 @@ class ReleasePlanner:
                         "dist/",
                         "--find-links",
                         "deps/",
+                        "--no-sources",
                     ]
-                    if layer > 0:
-                        build_args.append("--no-sources")
                     layer_cmds[pkg] = [
                         PlanCommand(args=build_args, label=f"Build {pkg}"),
                     ]
