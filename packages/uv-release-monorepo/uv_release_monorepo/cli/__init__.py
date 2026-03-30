@@ -19,11 +19,16 @@ from ._common import (
 )
 from ._yaml import _MISSING, _yaml_delete, _yaml_get, _yaml_set
 from .init import cmd_init, cmd_upgrade, cmd_validate
-from .install import _find_latest_release_tag, _parse_install_spec, cmd_install
+from ._common import _parse_install_spec
+from ..shared.utils.tags import (
+    find_latest_remote_release_tag as _find_latest_release_tag,
+)
+from .install import cmd_install
 from .bump import cmd_bump
 from .release import cmd_release
 from .runners import cmd_runners
 from .skill import cmd_skill_init, cmd_skill_upgrade
+from .wheels import cmd_wheels
 
 __all__ = [
     "_MISSING",
@@ -51,6 +56,7 @@ __all__ = [
     "cmd_runners",
     "cmd_upgrade",
     "cmd_validate",
+    "cmd_wheels",
 ]
 
 
@@ -67,6 +73,7 @@ Commands:
   status        Preview the release plan (alias for release --dry-run)
   runners       Manage per-package build runners
   install       Install a package from GitHub releases (org/repo/pkg)
+  wheels        Download wheels from GitHub releases or CI artifacts
   init          Scaffold the GitHub Actions workflow
   validate      Validate an existing release.yml
   skill init    Copy Claude Code skills into your project
@@ -395,6 +402,30 @@ Run 'uvr <command> --help' for details on a specific command.
         help="Install spec: ORG/REPO/PKG[@VERSION]",
     )
     install_parser.set_defaults(func=cmd_install)
+
+    # wheels
+    wheels_parser = subparsers.add_parser("wheels", help=_H)
+    wheels_parser.add_argument(
+        "package",
+        help="Install spec: ORG/REPO/PKG[@VERSION]",
+    )
+    wheels_parser.add_argument(
+        "--release-tag",
+        default=None,
+        help="Download from a GitHub release tag.",
+    )
+    wheels_parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Download from a GitHub Actions run's artifacts.",
+    )
+    wheels_parser.add_argument(
+        "-o",
+        "--output",
+        default="dist",
+        help="Directory to save wheels into (default: dist/).",
+    )
+    wheels_parser.set_defaults(func=cmd_wheels)
 
     # init
     init_parser = subparsers.add_parser("init", help=_H)

@@ -23,7 +23,7 @@ jobs:
       run: uv run uvr validate-plan
   uvr-build:
     runs-on: ${{ matrix.runner }}
-    if: ${{ !cancelled() && !contains(fromJSON(inputs.plan).skip, 'uvr-build') }}
+    if: ${{ always() && !failure() && !cancelled() && !contains(fromJSON(inputs.plan).skip, 'uvr-build') }}
     needs:
     - uvr-validate
     strategy:
