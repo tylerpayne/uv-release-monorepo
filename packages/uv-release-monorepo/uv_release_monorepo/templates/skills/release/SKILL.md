@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Releasing Packages
 
-Prerequisites: `uvr` (`uv tool install uv-release-monorepo`) and `gh`.
+Prerequisites: `uvr` (`uv add --dev uv-release-monorepo`) and `gh`.
 
 For first-time setup, scaffold the workflow with `uvr init` (see `references/cmd-init.md`). To install the Claude skills into your project, see `references/cmd-skill-init.md`.
 
