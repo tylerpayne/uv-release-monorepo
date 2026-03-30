@@ -68,10 +68,10 @@ There are three core job classes. All inherit directly from `Job`:
 | Class | Default `if` | `_needs_validator` |
 |-------|-------------|-------------------|
 | `BuildJob` | `!contains(plan.skip, 'uvr-build')` | (none) |
-| `ReleaseJob` | `always() && !failed() && !cancelled() && !contains(plan.skip, 'uvr-release')` | `uvr-build` |
-| `FinalizeJob` | `always() && !failed() && !cancelled() && !contains(plan.skip, 'uvr-finalize')` | `uvr-release` |
+| `ReleaseJob` | `always() && !failure() && !cancelled() && !contains(plan.skip, 'uvr-release')` | `uvr-build` |
+| `FinalizeJob` | `always() && !failure() && !cancelled() && !contains(plan.skip, 'uvr-finalize')` | `uvr-release` |
 
-The `always() && !failed() && !cancelled()` pattern means downstream jobs run even when
+The `always() && !failure() && !cancelled()` pattern means downstream jobs run even when
 earlier jobs are skipped (via the `skip` list in the plan), but stop if a
 preceding job actually failed or the workflow was cancelled.
 
