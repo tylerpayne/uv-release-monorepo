@@ -494,7 +494,6 @@ class ReleasePlan(BaseModel):
     unchanged: dict[str, PackageInfo]
     skip: list[str] = Field(default_factory=list)
     reuse_run_id: str = ""
-    tag_conflicts: list[str] = Field(default_factory=list)
 
     # Pre-computed command sequences for the executor
     build_commands: dict[RunnerKey, list[BuildStage]] = Field(default_factory=dict)

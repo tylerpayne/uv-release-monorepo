@@ -193,12 +193,8 @@ class ReleasePlanner:
         release_commands = self._generate_release_commands(changed)
         bump_commands = self._generate_bump_commands(changed, published_versions)
 
-        # Validate tag conflicts: abort for real releases, collect for dry-run
-        if self.config.dry_run:
-            tag_conflicts = self._find_tag_conflicts(changed)
-        else:
-            self._check_tag_conflicts(changed)
-            tag_conflicts = []
+        # Validate tag conflicts: always abort on conflict
+        self._check_tag_conflicts(changed)
 
         return ReleasePlan(
             uvr_version=self.config.uvr_version,
@@ -208,7 +204,6 @@ class ReleasePlanner:
             ci_publish=self.config.ci_publish,
             changed=changed,
             unchanged=unchanged,
-            tag_conflicts=tag_conflicts,
             build_commands=build_commands,
             release_commands=release_commands,
             bump_commands=bump_commands,

@@ -94,18 +94,8 @@ def cmd_status(args: argparse.Namespace) -> None:
 
     # Version conflicts (dev version targets already-released version)
     version_conflicts = find_version_conflicts(ctx.packages, ctx.repo)
-    version_conflict_tags = {c.tag for c in version_conflicts}
     for c in version_conflicts:
         all_warnings.append(f"{c.warning()}\n    Fix: {c.hint()}")
-
-    # Tag conflicts (skip if already covered by a version conflict)
-    for tag in sorted(plan.tag_conflicts):
-        if tag in version_conflict_tags:
-            continue
-        pkg_name, version = tag.split("/v", 1) if "/v" in tag else (tag, "")
-        all_warnings.append(
-            f"Tag conflict: {pkg_name} {version} already exists (tag: {tag})"
-        )
 
     if all_warnings:
         print()
