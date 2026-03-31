@@ -584,9 +584,8 @@ def find_version_conflicts(
         release_version = strip_dev(v)
         tag = f"{name}/v{release_version}"
         if repo.references.get(f"refs/tags/{tag}") is not None:
-            base = get_base_version(v)
             warnings.append(
-                f"{name} {v} is a pre-release version for {base} "
+                f"{name} {v} is a pre-release version for {release_version} "
                 f"and {release_version} was already released (tag: {tag})"
             )
     return warnings
