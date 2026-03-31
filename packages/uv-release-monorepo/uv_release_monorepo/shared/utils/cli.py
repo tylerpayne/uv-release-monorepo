@@ -17,7 +17,7 @@ __version__ = pkg_version("uv-release-monorepo")
 
 def fatal(msg: str) -> NoReturn:
     """Print error and exit."""
-    print(f"Error: {msg}", file=sys.stderr)
+    print(f"\nError: {msg}", file=sys.stderr)
     sys.exit(1)
 
 
