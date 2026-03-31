@@ -21,13 +21,31 @@ def fatal(msg: str) -> NoReturn:
     sys.exit(1)
 
 
-def diff_stat(baseline_tag: str | None, pkg_path: str) -> tuple[str, str]:
-    """Return (changes_str, commits_str) for a package since its baseline."""
-    if not baseline_tag:
+def diff_stat(
+    baseline_tag: str | None,
+    pkg_path: str,
+    fallback_tag: str | None = None,
+) -> tuple[str, str]:
+    """Return (changes_str, commits_str) for a package since its baseline.
+
+    If baseline_tag doesn't resolve, falls back to fallback_tag.
+    """
+    tag = baseline_tag or fallback_tag
+    if not tag:
         return ("-", "-")
 
+    # Check if the tag exists
+    check = subprocess.run(
+        ["git", "rev-parse", "--verify", f"refs/tags/{tag}"],
+        capture_output=True,
+    )
+    if check.returncode != 0:
+        tag = fallback_tag
+        if not tag:
+            return ("-", "-")
+
     result = subprocess.run(
-        ["git", "diff", "--shortstat", f"{baseline_tag}..HEAD", "--", pkg_path],
+        ["git", "diff", "--shortstat", f"{tag}..HEAD", "--", pkg_path],
         capture_output=True,
         text=True,
     )
@@ -42,7 +60,7 @@ def diff_stat(baseline_tag: str | None, pkg_path: str) -> tuple[str, str]:
     changes = f"+{adds} / -{dels}"
 
     result = subprocess.run(
-        ["git", "rev-list", "--count", f"{baseline_tag}..HEAD", "--", pkg_path],
+        ["git", "rev-list", "--count", f"{tag}..HEAD", "--", pkg_path],
         capture_output=True,
         text=True,
     )

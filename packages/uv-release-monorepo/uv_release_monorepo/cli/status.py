@@ -47,7 +47,9 @@ def cmd_status(args: argparse.Namespace) -> None:
     rows: list[tuple[str, str, str, str, str, str]] = []
     for name, pkg in sorted(plan.changed.items()):
         baseline = f"{name}/v{pkg.current_version}-base"
-        changes, commits = diff_stat(baseline, pkg.path)
+        changes, commits = diff_stat(
+            baseline, pkg.path, fallback_tag=pkg.last_release_tag
+        )
         rows.append(
             (
                 "changed",
