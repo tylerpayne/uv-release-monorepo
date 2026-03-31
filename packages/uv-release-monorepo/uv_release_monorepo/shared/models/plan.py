@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json as _json
 import subprocess
+import sys
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, Protocol, Union
 
@@ -366,6 +367,13 @@ class PublishGithubReleaseCommand(BaseModel):
         target = sha_result.stdout.strip() if sha_result.returncode == 0 else "HEAD"
 
         files = sorted(glob_fn(self.dist_pattern))
+        if not files:
+            print(
+                f"ERROR: No files matching {self.dist_pattern!r} — "
+                f"cannot create release {self.tag} without assets.",
+                file=sys.stderr,
+            )
+            return subprocess.CompletedProcess(args=[], returncode=1)
         args = [
             "gh",
             "release",
