@@ -60,6 +60,14 @@ def _store_skill_version(root: Path) -> None:
     write_pyproject(pyproject, doc)
 
 
+def cmd_skill_dispatch(args: argparse.Namespace) -> None:
+    """Route to cmd_skill_init or cmd_skill_upgrade based on --upgrade flag."""
+    if getattr(args, "upgrade", False):
+        cmd_skill_upgrade(args)
+    else:
+        cmd_skill_init(args)
+
+
 def cmd_skill_init(args: argparse.Namespace) -> None:
     """Copy bundled Claude Code skills into the current project."""
     from ._common import __version__

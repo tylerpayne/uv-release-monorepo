@@ -16,6 +16,7 @@ from ..shared.utils.versions import (
     bump_patch,
     extract_pre_kind,
     get_base_version,
+    is_post,
     make_dev,
     make_post,
     make_pre,
@@ -54,6 +55,16 @@ def compute_bumped_version(
         return _bump_post(current)
     if bump_type == "dev":
         return bump_dev(current)
+    if bump_type == "stable":
+        if is_post(current) or is_post(strip_dev(current)):
+            msg = (
+                f"Cannot bump to stable from post-release {current} "
+                f"— the stable version was already released. "
+                f"Use --patch to bump past it."
+            )
+            raise ValueError(msg)
+        # Strip pre suffix: 1.0.1a2.dev0 → 1.0.1.dev0
+        return make_dev(get_base_version(current))
     msg = f"Unknown bump type: {bump_type!r}"
     raise ValueError(msg)
 
@@ -179,7 +190,7 @@ def _resolve_changed(
         for name, info in ctx.packages.items():
             try:
                 baselines[name] = resolve_baseline(
-                    info.version, "final", name, ctx.repo
+                    info.version, "stable", name, ctx.repo
                 )
             except ValueError:
                 baselines[name] = None

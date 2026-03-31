@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from importlib.metadata import version as pkg_version
 from pathlib import Path
@@ -11,6 +12,36 @@ from ..shared.utils.config import get_hooks, get_matrix
 from ..shared.utils.toml import read_pyproject
 
 __version__ = pkg_version("uv-release-monorepo")
+
+
+def _diff_stat(baseline_tag: str | None, pkg_path: str) -> tuple[str, str]:
+    """Return (changes_str, commits_str) for a package since its baseline."""
+    if not baseline_tag:
+        return ("-", "-")
+
+    result = subprocess.run(
+        ["git", "diff", "--shortstat", f"{baseline_tag}..HEAD", "--", pkg_path],
+        capture_output=True,
+        text=True,
+    )
+    adds, dels = 0, 0
+    if result.returncode == 0 and result.stdout.strip():
+        for part in result.stdout.strip().split(","):
+            part = part.strip()
+            if "insertion" in part:
+                adds = int(part.split()[0])
+            elif "deletion" in part:
+                dels = int(part.split()[0])
+    changes = f"+{adds} / -{dels}"
+
+    result = subprocess.run(
+        ["git", "rev-list", "--count", f"{baseline_tag}..HEAD", "--", pkg_path],
+        capture_output=True,
+        text=True,
+    )
+    commits = result.stdout.strip() if result.returncode == 0 else "-"
+
+    return changes, commits
 
 
 def _read_matrix(root: Path) -> dict[str, list[list[str]]]:

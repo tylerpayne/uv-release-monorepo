@@ -1,4 +1,4 @@
-"""Bump matrix: 27 versions × 8 bump types = 216 cells.
+"""Bump matrix: 27 versions × 9 bump types = 243 cells.
 
 Every valid PEP 440 version form × every bump type → expected result or error.
 Expected outcomes are static literals — no version logic in the test.
@@ -253,18 +253,52 @@ _MATRIX: list[tuple[str, str, str]] = [
     ("1.0.1.post2",        "dev", "1.0.1.post2.dev0"),
     ("1.0.1.post2.dev0",   "dev", "1.0.1.post2.dev1"),
     ("1.0.1.post2.dev3",   "dev", "1.0.1.post2.dev4"),
+
+    # ── --stable (27 cells: strip pre/post suffix, keep base) ──
+    # stable base (no-op — already stable)
+    ("1.0.1",              "stable", "1.0.1.dev0"),
+    ("1.0.1.dev0",         "stable", "1.0.1.dev0"),
+    ("1.0.1.dev3",         "stable", "1.0.1.dev0"),
+    # alpha → strip
+    ("1.0.1a0",            "stable", "1.0.1.dev0"),
+    ("1.0.1a0.dev0",       "stable", "1.0.1.dev0"),
+    ("1.0.1a0.dev3",       "stable", "1.0.1.dev0"),
+    ("1.0.1a2",            "stable", "1.0.1.dev0"),
+    ("1.0.1a2.dev0",       "stable", "1.0.1.dev0"),
+    ("1.0.1a2.dev3",       "stable", "1.0.1.dev0"),
+    # beta → strip
+    ("1.0.1b0",            "stable", "1.0.1.dev0"),
+    ("1.0.1b0.dev0",       "stable", "1.0.1.dev0"),
+    ("1.0.1b0.dev3",       "stable", "1.0.1.dev0"),
+    ("1.0.1b2",            "stable", "1.0.1.dev0"),
+    ("1.0.1b2.dev0",       "stable", "1.0.1.dev0"),
+    ("1.0.1b2.dev3",       "stable", "1.0.1.dev0"),
+    # rc → strip
+    ("1.0.1rc0",           "stable", "1.0.1.dev0"),
+    ("1.0.1rc0.dev0",      "stable", "1.0.1.dev0"),
+    ("1.0.1rc0.dev3",      "stable", "1.0.1.dev0"),
+    ("1.0.1rc2",           "stable", "1.0.1.dev0"),
+    ("1.0.1rc2.dev0",      "stable", "1.0.1.dev0"),
+    ("1.0.1rc2.dev3",      "stable", "1.0.1.dev0"),
+    # post → error (stable version already released)
+    ("1.0.1.post0",        "stable", E),
+    ("1.0.1.post0.dev0",   "stable", E),
+    ("1.0.1.post0.dev3",   "stable", E),
+    ("1.0.1.post2",        "stable", E),
+    ("1.0.1.post2.dev0",   "stable", E),
+    ("1.0.1.post2.dev3",   "stable", E),
 ]
 # fmt: on
 
-# Sanity check
-assert len(_MATRIX) == 216, f"Expected 216 cells, got {len(_MATRIX)}"
+# Sanity check: 27 versions × 9 bump types = 243 cells
+assert len(_MATRIX) == 243, f"Expected 243 cells, got {len(_MATRIX)}"
 
 _VALID = [(v, bt, exp) for v, bt, exp in _MATRIX if exp != E]
 _ERRORS = [(v, bt) for v, bt, exp in _MATRIX if exp == E]
 
 
 class TestBumpMatrix:
-    """27 versions × 8 bump types = 216 cells."""
+    """27 versions × 9 bump types = 243 cells."""
 
     @pytest.mark.parametrize(
         "version,bump_type,expected",
@@ -285,3 +319,4 @@ class TestBumpMatrix:
         pre_kind = _PRE_KIND_MAP.get(bump_type, "")
         with pytest.raises(ValueError):
             validate_bump(version, bump_type, pre_kind)
+            compute_bumped_version(version, bump_type=bump_type)

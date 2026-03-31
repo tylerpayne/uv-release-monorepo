@@ -18,7 +18,7 @@ from uv_release_monorepo.shared.planner import ReleasePlanner
 E = "ERROR"
 
 
-def _planner(release_type: str = "final") -> ReleasePlanner:
+def _planner(release_type: str = "stable") -> ReleasePlanner:
     return ReleasePlanner(
         PlanConfig(
             rebuild_all=True,
@@ -51,39 +51,39 @@ def _release_and_bump(planner: ReleasePlanner, version: str) -> tuple[str, str]:
 
 # fmt: off
 _MATRIX: list[tuple[str, str, str, str]] = [
-    # ── uvr release (no flags → "final") ──
+    # ── uvr release (no flags → "stable") ──
     # stable base
-    ("1.0.1",              "final", "1.0.1",       "1.0.2.dev0"),
-    ("1.0.1.dev0",         "final", "1.0.1",       "1.0.2.dev0"),
-    ("1.0.1.dev3",         "final", "1.0.1",       "1.0.2.dev0"),
+    ("1.0.1",              "stable", "1.0.1",       "1.0.2.dev0"),
+    ("1.0.1.dev0",         "stable", "1.0.1",       "1.0.2.dev0"),
+    ("1.0.1.dev3",         "stable", "1.0.1",       "1.0.2.dev0"),
     # alpha
-    ("1.0.1a0",            "final", "1.0.1a0",     "1.0.1a1.dev0"),
-    ("1.0.1a0.dev0",       "final", "1.0.1a0",     "1.0.1a1.dev0"),
-    ("1.0.1a0.dev3",       "final", "1.0.1a0",     "1.0.1a1.dev0"),
-    ("1.0.1a2",            "final", "1.0.1a2",     "1.0.1a3.dev0"),
-    ("1.0.1a2.dev0",       "final", "1.0.1a2",     "1.0.1a3.dev0"),
-    ("1.0.1a2.dev3",       "final", "1.0.1a2",     "1.0.1a3.dev0"),
+    ("1.0.1a0",            "stable", "1.0.1a0",     "1.0.1a1.dev0"),
+    ("1.0.1a0.dev0",       "stable", "1.0.1a0",     "1.0.1a1.dev0"),
+    ("1.0.1a0.dev3",       "stable", "1.0.1a0",     "1.0.1a1.dev0"),
+    ("1.0.1a2",            "stable", "1.0.1a2",     "1.0.1a3.dev0"),
+    ("1.0.1a2.dev0",       "stable", "1.0.1a2",     "1.0.1a3.dev0"),
+    ("1.0.1a2.dev3",       "stable", "1.0.1a2",     "1.0.1a3.dev0"),
     # beta
-    ("1.0.1b0",            "final", "1.0.1b0",     "1.0.1b1.dev0"),
-    ("1.0.1b0.dev0",       "final", "1.0.1b0",     "1.0.1b1.dev0"),
-    ("1.0.1b0.dev3",       "final", "1.0.1b0",     "1.0.1b1.dev0"),
-    ("1.0.1b2",            "final", "1.0.1b2",     "1.0.1b3.dev0"),
-    ("1.0.1b2.dev0",       "final", "1.0.1b2",     "1.0.1b3.dev0"),
-    ("1.0.1b2.dev3",       "final", "1.0.1b2",     "1.0.1b3.dev0"),
+    ("1.0.1b0",            "stable", "1.0.1b0",     "1.0.1b1.dev0"),
+    ("1.0.1b0.dev0",       "stable", "1.0.1b0",     "1.0.1b1.dev0"),
+    ("1.0.1b0.dev3",       "stable", "1.0.1b0",     "1.0.1b1.dev0"),
+    ("1.0.1b2",            "stable", "1.0.1b2",     "1.0.1b3.dev0"),
+    ("1.0.1b2.dev0",       "stable", "1.0.1b2",     "1.0.1b3.dev0"),
+    ("1.0.1b2.dev3",       "stable", "1.0.1b2",     "1.0.1b3.dev0"),
     # rc
-    ("1.0.1rc0",           "final", "1.0.1rc0",    "1.0.1rc1.dev0"),
-    ("1.0.1rc0.dev0",      "final", "1.0.1rc0",    "1.0.1rc1.dev0"),
-    ("1.0.1rc0.dev3",      "final", "1.0.1rc0",    "1.0.1rc1.dev0"),
-    ("1.0.1rc2",           "final", "1.0.1rc2",    "1.0.1rc3.dev0"),
-    ("1.0.1rc2.dev0",      "final", "1.0.1rc2",    "1.0.1rc3.dev0"),
-    ("1.0.1rc2.dev3",      "final", "1.0.1rc2",    "1.0.1rc3.dev0"),
+    ("1.0.1rc0",           "stable", "1.0.1rc0",    "1.0.1rc1.dev0"),
+    ("1.0.1rc0.dev0",      "stable", "1.0.1rc0",    "1.0.1rc1.dev0"),
+    ("1.0.1rc0.dev3",      "stable", "1.0.1rc0",    "1.0.1rc1.dev0"),
+    ("1.0.1rc2",           "stable", "1.0.1rc2",    "1.0.1rc3.dev0"),
+    ("1.0.1rc2.dev0",      "stable", "1.0.1rc2",    "1.0.1rc3.dev0"),
+    ("1.0.1rc2.dev3",      "stable", "1.0.1rc2",    "1.0.1rc3.dev0"),
     # post
-    ("1.0.1.post0",        "final", "1.0.1.post0", "1.0.1.post1.dev0"),
-    ("1.0.1.post0.dev0",   "final", "1.0.1.post0", "1.0.1.post1.dev0"),
-    ("1.0.1.post0.dev3",   "final", "1.0.1.post0", "1.0.1.post1.dev0"),
-    ("1.0.1.post2",        "final", "1.0.1.post2", "1.0.1.post3.dev0"),
-    ("1.0.1.post2.dev0",   "final", "1.0.1.post2", "1.0.1.post3.dev0"),
-    ("1.0.1.post2.dev3",   "final", "1.0.1.post2", "1.0.1.post3.dev0"),
+    ("1.0.1.post0",        "stable", "1.0.1.post0", "1.0.1.post1.dev0"),
+    ("1.0.1.post0.dev0",   "stable", "1.0.1.post0", "1.0.1.post1.dev0"),
+    ("1.0.1.post0.dev3",   "stable", "1.0.1.post0", "1.0.1.post1.dev0"),
+    ("1.0.1.post2",        "stable", "1.0.1.post2", "1.0.1.post3.dev0"),
+    ("1.0.1.post2.dev0",   "stable", "1.0.1.post2", "1.0.1.post3.dev0"),
+    ("1.0.1.post2.dev3",   "stable", "1.0.1.post2", "1.0.1.post3.dev0"),
 
     # ── uvr release --dev ──
     # stable base

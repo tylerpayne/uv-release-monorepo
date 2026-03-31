@@ -9,7 +9,8 @@ from unittest.mock import patch
 
 import pytest
 
-from uv_release_monorepo.cli import cli, cmd_skill_init
+from uv_release_monorepo.cli import cli
+from uv_release_monorepo.cli.skill import cmd_skill_init
 from uv_release_monorepo.cli.skill import (
     _SKILL_FILES,
     _load_skill_file,
@@ -88,7 +89,7 @@ class TestSkillInit:
 def test_cli_skill_init_parsing() -> None:
     """``uvr skill init --force`` parses correctly."""
     with patch.object(sys, "argv", ["uvr", "skill", "init", "--force"]):
-        with patch("uv_release_monorepo.cli.cmd_skill_init") as mock:
+        with patch("uv_release_monorepo.cli.skill.cmd_skill_init") as mock:
             cli()
             args = mock.call_args[0][0]
             assert args.force is True

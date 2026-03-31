@@ -335,7 +335,7 @@ def resolve_baseline(
 
     Args:
         current_version: Version string from pyproject.toml.
-        release_type: One of "final", "minor", "major", "dev", "pre", "post".
+        release_type: One of "stable", "dev", "pre", "post".
         name: Package name (for tag prefix).
         repo: pygit2.Repository for ref lookups.
 
@@ -360,7 +360,7 @@ def resolve_baseline(
     # --- Dev version ---
 
     # Validate: post-release dev + final/minor/major/pre → invalid
-    if has_post and release_type in ("final", "minor", "major", "pre"):
+    if has_post and release_type in ("stable", "pre"):
         msg = (
             f"Cannot {release_type}-release from post-release version {current_version}"
         )
@@ -391,7 +391,7 @@ def resolve_baseline(
         return f"{name}/v{current_version}-base"
 
     # Final/minor/major from pre-release dev → cumulative since last final
-    if has_pre and release_type in ("final", "minor", "major"):
+    if has_pre and release_type in ("stable",):
         base = get_base_version(current_version)
         prev = find_previous_release(base, name, repo)
         if prev is None:
@@ -532,3 +532,28 @@ def validate_bump(
                 f"{current_kind} to {pre_kind} ({current_version})"
             )
             raise ValueError(msg)
+
+
+def detect_release_type(packages: dict) -> str:
+    """Auto-detect release type from package versions.
+
+    Examines the first package's version to determine what kind of release
+    the user is working toward, so baselines resolve correctly.
+
+    Returns one of ``"stable"``, ``"pre"``, ``"post"``.
+    """
+    for info in packages.values():
+        v = info.version
+        if is_dev(v):
+            base = v.rsplit(".dev", 1)[0]
+            if is_pre(base):
+                return "pre"
+            if is_post(base):
+                return "post"
+            return "stable"
+        if is_pre(v):
+            return "pre"
+        if is_post(v):
+            return "post"
+        return "stable"
+    return "stable"

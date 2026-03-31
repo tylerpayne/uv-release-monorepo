@@ -159,6 +159,14 @@ def _store_workflow_version(root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def cmd_init_dispatch(args: argparse.Namespace) -> None:
+    """Route to cmd_init or cmd_upgrade based on --upgrade flag."""
+    if getattr(args, "upgrade", False):
+        cmd_upgrade(args)
+    else:
+        cmd_init(args)
+
+
 def cmd_init(args: argparse.Namespace) -> None:
     """Scaffold the GitHub Actions workflow into your repo."""
     from ._common import __version__

@@ -75,33 +75,64 @@ def _load_workflow_jobs() -> list[str]:
 
 def _print_packages(plan: ReleasePlan) -> None:
     """Print the packages table."""
+    from ._common import _diff_stat
+
     _section("Packages")
     all_names = sorted({*plan.changed, *plan.unchanged})
     if not all_names:
         return
-    sw = len("unchanged")  # status column width
-    nw = max(len(n) for n in all_names)
-    cur_strs: dict[str, str] = {}
-    rel_strs: dict[str, str] = {}
+
+    # Build rows: (status, name, current, will_release, previous, changes, commits)
+    rows: list[tuple[str, ...]] = []
     for name in all_names:
         if name in plan.changed:
             pkg = plan.changed[name]
-            cur_strs[name] = pkg.current_version
-            rel_strs[name] = pkg.release_version
+            baseline = f"{name}/v{pkg.current_version}-base"
+            changes, commits = _diff_stat(baseline, pkg.path)
+            prev = (
+                pkg.last_release_tag.split("/v", 1)[1] if pkg.last_release_tag else "-"
+            )
+            rows.append(
+                (
+                    "changed",
+                    name,
+                    pkg.current_version,
+                    pkg.release_version,
+                    prev,
+                    changes,
+                    commits,
+                )
+            )
         else:
-            cur_strs[name] = plan.unchanged[name].version
-            rel_strs[name] = "—"
-    cw = max(len(v) for v in cur_strs.values())
-    print(
-        f"  {'STATUS'.ljust(sw)}  {'PACKAGE'.ljust(nw)}  "
-        f"{'CURRENT'.ljust(cw)}  WILL RELEASE"
+            rows.append(
+                (
+                    "unchanged",
+                    name,
+                    plan.unchanged[name].version,
+                    "-",
+                    "-",
+                    "-",
+                    "-",
+                )
+            )
+
+    headers = (
+        "STATUS",
+        "PACKAGE",
+        "CURRENT",
+        "WILL RELEASE",
+        "PREVIOUS",
+        "CHANGES",
+        "COMMITS",
     )
-    for name in all_names:
-        status = "changed" if name in plan.changed else "unchanged"
-        print(
-            f"  {status.ljust(sw)}  {name.ljust(nw)}  "
-            f"{cur_strs[name].ljust(cw)}  {rel_strs[name]}"
-        )
+    widths = [max(len(h), *(len(r[i]) for r in rows)) for i, h in enumerate(headers)]
+
+    def _row(cols: tuple[str, ...]) -> str:
+        return "  ".join(c.ljust(w) for c, w in zip(cols, widths))
+
+    print(f"  {_row(headers)}")
+    for row in rows:
+        print(f"  {_row(row)}")
 
 
 def _print_plan(
@@ -283,9 +314,6 @@ def cmd_release(args: argparse.Namespace) -> None:
     import io
     import sys
 
-    # Determine release type from flags
-    release_type = getattr(args, "release_type", None) or "final"
-
     # Load hook (if any) for pre_plan / post_plan
     from ..shared.hooks import load_hook
 
@@ -293,19 +321,7 @@ def cmd_release(args: argparse.Namespace) -> None:
 
     from ..shared.context import build_context
     from ..shared.utils.shell import Progress
-
-    dry_run = getattr(args, "dry_run", False) or json_only
-    config = _cli.PlanConfig(
-        rebuild_all=args.rebuild_all,
-        matrix=package_runners,
-        uvr_version=__version__,
-        python_version=getattr(args, "python_version", "3.12"),
-        ci_publish=(where == "ci"),
-        release_type=release_type,
-        dry_run=dry_run,
-    )
-    if hook:
-        config = hook.pre_plan(config)
+    from ..shared.utils.versions import detect_release_type
 
     # Steps: discover + resolve baselines + detect changes + compute versions + generate notes
     old_stdout = sys.stdout
@@ -313,6 +329,39 @@ def cmd_release(args: argparse.Namespace) -> None:
     progress = Progress(total_steps=5)
     try:
         ctx = build_context(progress=progress)
+
+        dry_run = getattr(args, "dry_run", False) or json_only
+
+        # Apply --bump if provided (bump all packages before planning)
+        bump_type = getattr(args, "bump", None)
+        if bump_type:
+            from .bump import compute_bumped_version
+
+            if not dry_run:
+                from ..shared.utils.dependencies import set_version
+
+            for info in ctx.packages.values():
+                new_version = compute_bumped_version(info.version, bump_type=bump_type)
+                if not dry_run:
+                    set_version(Path(info.path) / "pyproject.toml", new_version)
+                info.version = new_version
+
+        # Auto-detect release type from versions, allow CLI override
+        release_type = getattr(args, "release_type", None) or detect_release_type(
+            ctx.packages
+        )
+        config = _cli.PlanConfig(
+            rebuild_all=args.rebuild_all,
+            matrix=package_runners,
+            uvr_version=__version__,
+            python_version=getattr(args, "python_version", "3.12"),
+            ci_publish=(where == "ci"),
+            release_type=release_type,
+            dry_run=dry_run,
+        )
+        if hook:
+            config = hook.pre_plan(config)
+
         plan = _cli.ReleasePlanner(config, ctx, progress=progress).plan()
     finally:
         sys.stdout = old_stdout

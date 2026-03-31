@@ -76,7 +76,7 @@ class PlanConfig:
         uvr_version: The uvr version to embed in the plan.
         python_version: Python version for CI builds.
         ci_publish: If True (default), plan targets CI execution.
-        release_type: One of "final", "minor", "major", "dev", "pre", "post".
+        release_type: One of "stable", "dev", "pre", "post".
         dry_run: If True, skip local writes (version bumps, dep pins).
     """
 
@@ -85,7 +85,7 @@ class PlanConfig:
     uvr_version: str
     python_version: str = "3.12"
     ci_publish: bool = True
-    release_type: str = "final"
+    release_type: str = "stable"
     dry_run: bool = False
 
 
@@ -487,7 +487,7 @@ class ReleasePlan(BaseModel):
     uvr_version: str
     uvr_install: str = "uv-release-monorepo"
     python_version: str = "3.12"
-    release_type: str = "final"
+    release_type: str = "stable"
     rebuild_all: bool
     ci_publish: bool = False
     changed: dict[str, ChangedPackage]

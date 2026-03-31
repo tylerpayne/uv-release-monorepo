@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from ..shared.models import PlanConfig, ReleasePlan
+from ..shared.models import PlanConfig, ReleasePlan  # noqa: F401 (re-exported)
 from ..shared.planner import ReleasePlanner, build_plan
 from ..shared.executor import ReleaseExecutor
 from ._common import (
@@ -12,14 +12,14 @@ from ._common import (
     _discover_package_names,
     _discover_packages,
     _fatal,
+    _parse_install_spec,
     _print_dependencies,
     _print_matrix_status,
     _read_matrix,
-    _resolve_plan_json,
+    _resolve_plan_json,  # noqa: F401 (re-exported)
 )
 from ._yaml import _MISSING, _yaml_delete, _yaml_get, _yaml_set
 from .init import cmd_init, cmd_upgrade, cmd_validate
-from ._common import _parse_install_spec
 from ..shared.utils.tags import (
     find_latest_remote_release_tag as _find_latest_release_tag,
 )
@@ -27,7 +27,6 @@ from .install import cmd_install
 from .bump import cmd_bump
 from .release import cmd_release
 from .runners import cmd_runners
-from .skill import cmd_skill_init, cmd_skill_upgrade
 from .wheels import cmd_wheels
 
 __all__ = [
@@ -143,7 +142,7 @@ Run 'uvr <command> --help' for details on a specific command.
         "--plan",
         default=None,
         metavar="JSON",
-        help="Execute a pre-computed release plan locally.",
+        help="Execute a pre-computed release plan instead of generating one.",
     )
     _build = release_parser.add_argument_group("build options")
     _build.add_argument(
@@ -161,42 +160,29 @@ Run 'uvr <command> --help' for details on a specific command.
         dest="python_version",
         help="Python version for CI builds (default: %(default)s).",
     )
-    _rtype = release_parser.add_argument_group("release type (default: final)")
-    _rtype_mut = _rtype.add_mutually_exclusive_group()
-    _rtype_mut.add_argument(
+    release_parser.add_argument(
         "--dev",
         action="store_const",
         const="dev",
         dest="release_type",
-        help="Publish a dev release (as-is .devN version).",
+        help="Publish the .devN version as-is instead of stripping it.",
     )
-    _rtype_mut.add_argument(
-        "--pre",
-        action="store_const",
-        const="pre",
-        dest="release_type",
-        help="Publish the pre-release version as-is (requires pre suffix).",
-    )
-    _rtype_mut.add_argument(
-        "--post",
-        action="store_const",
-        const="post",
-        dest="release_type",
-        help="Publish a post-release.",
-    )
-    _rtype_mut.add_argument(
-        "--minor",
-        action="store_const",
-        const="minor",
-        dest="release_type",
-        help="Bump minor version and release (X.Y+1.0).",
-    )
-    _rtype_mut.add_argument(
-        "--major",
-        action="store_const",
-        const="major",
-        dest="release_type",
-        help="Bump major version and release (X+1.0.0).",
+    release_parser.add_argument(
+        "--bump",
+        choices=[
+            "alpha",
+            "beta",
+            "rc",
+            "post",
+            "dev",
+            "stable",
+            "minor",
+            "major",
+            "patch",
+        ],
+        default=None,
+        metavar="TYPE",
+        help="Bump all packages before planning (e.g. --bump alpha).",
     )
     _dispatch = release_parser.add_argument_group("dispatch (CI mode)")
     _dispatch.add_argument(
@@ -223,6 +209,11 @@ Run 'uvr <command> --help' for details on a specific command.
         action="store_true",
         help="Assume GitHub releases already exist.",
     )
+    _dispatch.add_argument(
+        "--workflow-dir",
+        default=".github/workflows",
+        help="Workflow directory (default: %(default)s).",
+    )
     _local = release_parser.add_argument_group("local (--where local)")
     _local.add_argument(
         "--no-push",
@@ -235,12 +226,7 @@ Run 'uvr <command> --help' for details on a specific command.
         action="store_true",
         help="Print only the plan JSON to stdout and exit.",
     )
-    _out.add_argument(
-        "--workflow-dir",
-        default=".github/workflows",
-        help="Workflow directory (default: %(default)s).",
-    )
-    _out.add_argument(
+    release_parser.add_argument(
         "--release-notes",
         nargs=2,
         action="append",
@@ -250,62 +236,7 @@ Run 'uvr <command> --help' for details on a specific command.
     release_parser.set_defaults(func=cmd_release)
 
     # status
-    def _cmd_status(a: argparse.Namespace) -> None:
-        from pathlib import Path
-
-        config = PlanConfig(
-            rebuild_all=getattr(a, "rebuild_all", False),
-            matrix=_read_matrix(Path.cwd()),
-            uvr_version=__version__,
-            ci_publish=True,
-            dry_run=True,
-        )
-        plan = build_plan(config)
-
-        # Collect all packages (changed + unchanged)
-        all_pkgs: list[tuple[str, str, str, str | None, str | None]] = []
-        for name, pkg in sorted(plan.changed.items()):
-            all_pkgs.append(
-                (
-                    "changed",
-                    name,
-                    pkg.current_version,
-                    pkg.last_release_tag,
-                    f"{name}/v{pkg.current_version}-base",
-                )
-            )
-        for name, pkg in sorted(plan.unchanged.items()):
-            all_pkgs.append(
-                (
-                    "unchanged",
-                    name,
-                    pkg.version,
-                    None,
-                    None,
-                )
-            )
-
-        if not all_pkgs:
-            print("No packages found.")
-            return
-
-        nw = max(len(p[1]) for p in all_pkgs)
-        vw = max(len(p[2]) for p in all_pkgs)
-        sw = max(len(p[0]) for p in all_pkgs)
-
-        header = (
-            f"  {'STATUS'.ljust(sw)}  {'PACKAGE'.ljust(nw)}  "
-            f"{'VERSION'.ljust(vw)}  BASELINE"
-        )
-        print()
-        print(header)
-        for status, name, version, last_release, baseline in all_pkgs:
-            base_str = baseline or "-"
-            print(
-                f"  {status.ljust(sw)}  {name.ljust(nw)}  "
-                f"{version.ljust(vw)}  {base_str}"
-            )
-        print()
+    from .status import cmd_status
 
     status_parser = subparsers.add_parser("status", help=_H)
     status_parser.add_argument(
@@ -318,7 +249,7 @@ Run 'uvr <command> --help' for details on a specific command.
         default=".github/workflows",
         help="Workflow directory (default: %(default)s).",
     )
-    status_parser.set_defaults(func=_cmd_status)
+    status_parser.set_defaults(func=cmd_status)
 
     # bump
     bump_parser = subparsers.add_parser(
@@ -483,13 +414,9 @@ Run 'uvr <command> --help' for details on a specific command.
         help="Editor to use for conflict resolution (e.g. 'code', 'vim').",
     )
 
-    def _cmd_init_dispatch(a: argparse.Namespace) -> None:
-        if getattr(a, "upgrade", False):
-            cmd_upgrade(a)
-        else:
-            cmd_init(a)
+    from .init import cmd_init_dispatch
 
-    wf_init_parser.set_defaults(func=_cmd_init_dispatch)
+    wf_init_parser.set_defaults(func=cmd_init_dispatch)
 
     # workflow validate
     wf_validate_parser = workflow_sub.add_parser(
@@ -560,13 +487,9 @@ Run 'uvr <command> --help' for details on a specific command.
         help="Editor to use for conflict resolution (e.g. 'code', 'vim').",
     )
 
-    def _cmd_skill_dispatch(a: argparse.Namespace) -> None:
-        if getattr(a, "upgrade", False):
-            cmd_skill_upgrade(a)
-        else:
-            cmd_skill_init(a)
+    from .skill import cmd_skill_dispatch
 
-    skill_init_parser.set_defaults(func=_cmd_skill_dispatch)
+    skill_init_parser.set_defaults(func=cmd_skill_dispatch)
 
     # -- jobs (CI steps + low-level) --------------------------------------
 
@@ -580,11 +503,12 @@ Run 'uvr <command> --help' for details on a specific command.
         dest="jobs_command", required=True, title=argparse.SUPPRESS, metavar=""
     )
 
-    def _cmd_validate_plan(a: argparse.Namespace) -> None:
-        import json
-
-        plan = ReleasePlan.model_validate_json(_resolve_plan_json(a.plan))
-        print(json.dumps(plan.model_dump(mode="json"), indent=2))
+    from .jobs import (
+        cmd_validate_plan,
+        cmd_build,
+        cmd_release as cmd_job_release,
+        cmd_bump as cmd_job_bump,
+    )
 
     vp_parser = jobs_sub.add_parser(
         "validate", help="Validate and pretty-print the release plan."
@@ -594,15 +518,7 @@ Run 'uvr <command> --help' for details on a specific command.
         default=None,
         help="Plan JSON, @file path, or omit to use UVR_PLAN env var.",
     )
-    vp_parser.set_defaults(func=_cmd_validate_plan)
-
-    def _cmd_build(a: argparse.Namespace) -> None:
-        from pathlib import Path
-        from ..shared.hooks import load_hook
-
-        plan_obj = ReleasePlan.model_validate_json(_resolve_plan_json(a.plan))
-        hook = load_hook(Path.cwd())
-        ReleaseExecutor(plan_obj, hook).build(runner=a.runner)
+    vp_parser.set_defaults(func=cmd_validate_plan)
 
     build_parser = jobs_sub.add_parser("build", help="Build packages for a runner.")
     build_parser.add_argument(
@@ -611,15 +527,7 @@ Run 'uvr <command> --help' for details on a specific command.
         help="Plan JSON, @file path, or omit to use UVR_PLAN env var.",
     )
     build_parser.add_argument("--runner", required=True)
-    build_parser.set_defaults(func=_cmd_build)
-
-    def _cmd_release(a: argparse.Namespace) -> None:
-        from pathlib import Path
-        from ..shared.hooks import load_hook
-
-        plan_obj = ReleasePlan.model_validate_json(_resolve_plan_json(a.plan))
-        hook = load_hook(Path.cwd())
-        ReleaseExecutor(plan_obj, hook).publish()
+    build_parser.set_defaults(func=cmd_build)
 
     release_job_parser = jobs_sub.add_parser(
         "release", help="Tag, create GitHub releases, and push release tags."
@@ -629,15 +537,7 @@ Run 'uvr <command> --help' for details on a specific command.
         default=None,
         help="Plan JSON, @file path, or omit to use UVR_PLAN env var.",
     )
-    release_job_parser.set_defaults(func=_cmd_release)
-
-    def _cmd_bump(a: argparse.Namespace) -> None:
-        from pathlib import Path
-        from ..shared.hooks import load_hook
-
-        plan_obj = ReleasePlan.model_validate_json(_resolve_plan_json(a.plan))
-        hook = load_hook(Path.cwd())
-        ReleaseExecutor(plan_obj, hook).bump()
+    release_job_parser.set_defaults(func=cmd_job_release)
 
     bump_job_parser = jobs_sub.add_parser(
         "bump", help="Bump versions, commit, baseline tags, and push."
@@ -647,7 +547,7 @@ Run 'uvr <command> --help' for details on a specific command.
         default=None,
         help="Plan JSON, @file path, or omit to use UVR_PLAN env var.",
     )
-    bump_job_parser.set_defaults(func=_cmd_bump)
+    bump_job_parser.set_defaults(func=cmd_job_bump)
 
     args = parser.parse_args()
     args.func(args)
