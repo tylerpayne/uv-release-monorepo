@@ -5,140 +5,96 @@ The missing CI release orchestrator for [uv](https://github.com/astral-sh/uv) wo
 ## Quick Start
 
 ```bash
-uv tool install uv-release-monorepo
-uvr workflow init        # generate .github/workflows/release.yml
-uvr release     # detect changes, show plan, dispatch to CI
-```
+# Install as a dev dependency
+uv add --dev uv-release-monorepo
 
-## Releasing
+# Generate .github/workflows/release.yml
+uvr workflow init
 
-```bash
 # Preview what would be released
 uvr release --dry-run
 
-# Release to CI (default)
+# Plan + dispatch to GitHub Actions
 uvr release
-
-# Release locally (pure-python packages only)
-uvr release --where local
 ```
 
-### Version bumping
+## Configuration
 
 ```bash
-uvr bump --all --minor       # 1.0.1.dev0 → 1.1.0.dev0
-uvr bump --all --alpha       # 1.0.1.dev0 → 1.0.1a0.dev0
-uvr bump --all --rc          # 1.0.1a2.dev0 → 1.0.1rc0.dev0
-uvr bump --package my-pkg --patch  # bump one package
+# Add a cross-platform build runner
+uvr workflow runners my-pkg --add macos-14
+
+# Check release.yml against the schema
+uvr workflow validate
 ```
-
-`uvr release` auto-detects from the version — just strip `.devN` and publish:
-
-```bash
-uvr release              # 1.0.1.dev0 → release 1.0.1
-uvr release              # 1.0.1a0.dev0 → release 1.0.1a0
-uvr release --dev        # publish 1.0.1.dev0 as-is
-```
-
-### Skipping and reusing
-
-```bash
-uvr release --skip build                      # skip the build job
-uvr release --skip-to release                 # skip everything before release
-uvr release --skip build --reuse-run 12345    # reuse artifacts from run 12345
-```
-
-## Managing runners
-
-```bash
-uvr workflow runners                        # show all package runners
-uvr workflow runners my-pkg --add macos-14  # add a build runner
-uvr workflow runners my-pkg --clear         # reset to default (ubuntu-latest)
-```
-
-## Installing from releases
-
-```bash
-uvr install myorg/myrepo/my-pkg           # latest release
-uvr install myorg/myrepo/my-pkg@1.2.3     # specific version
-```
-
-## Downloading wheels
-
-```bash
-uvr download myorg/myrepo/my-pkg                  # latest release
-uvr download myorg/myrepo/my-pkg -o wheels/       # save to custom dir
-uvr download myorg/myrepo/my-pkg --run-id 12345   # from CI artifacts
-```
-
-## Hooks
-
-Customize the release pipeline with Python hooks. Subclass `ReleaseHook` and override the methods you need:
-
-```python
-from uv_release_monorepo import ReleaseHook, ReleasePlan
-
-class Hook(ReleaseHook):
-    def post_plan(self, plan: ReleasePlan) -> ReleasePlan:
-        data = plan.model_dump()
-        data["deploy_env"] = "staging"
-        return ReleasePlan.model_validate(data)
-```
-
-Configure in `pyproject.toml`:
 
 ```toml
-[tool.uvr.hooks]
-file = "uvr_hooks.py"          # default class: Hook
-# or: file = "path/to/file.py:MyHook"
+# pyproject.toml — control which packages are released
+[tool.uvr.config]
+# only release these (optional)
+include = ["pkg-alpha", "pkg-beta"]  
+# skip these (optional) 
+exclude = ["pkg-internal"]           
 ```
 
-Or just drop a `uvr_hooks.py` with a `Hook` class at the workspace root — it's discovered automatically.
+Add custom jobs (tests, linting, PyPI publish, notifications) by editing `release.yml` directly, or extend the pipeline with Python hooks by subclassing `ReleaseHook` in `uvr_hooks.py`. See the [User Guide](docs/user-guide/README.md) for details.
 
-**Hook points:** `pre_plan` / `post_plan` (local), `pre_build` / `post_build`, `pre_build_stage` / `post_build_stage`, `pre_build_package` / `post_build_package`, `pre_release` / `post_release`, `pre_bump` / `post_bump` (CI).
+## Example
 
-## How it works
+```bash
+# Start from main
+git checkout -b release/my-feature
 
-`uvr release` scans your workspace, diffs each package against its last baseline tag, walks the dependency graph, and builds a plan containing every shell command needed for the release. It dispatches this plan to GitHub Actions, which runs eight jobs:
+# Enter alpha pre-release cycle
+uvr bump --package my-pkg --alpha
 
+# Make changes, commit, push
+
+# Release alpha
+uvr release --pre
+
+# Iterate — fix bugs
+
+# Release next alpha
+uvr release --pre
+
+# No more bugs, release stable
+uvr release
+
+# Merge back to main
+git checkout main
+git merge --no-ff release/my-feature
+git push
 ```
-validate → build → release → bump
+
+## Claude Skill
+
+Let Claude release for you.
+
+```bash
+uvr skill init
 ```
 
-Hook jobs (pre-build, post-build, pre-release, post-release) are no-ops by default — edit `release.yml` directly to add tests, linting, PyPI publish, or notifications. Release assets are uploaded via `gh release create`.
+```bash
+# Claude or your favorite SKILL.md-supporting agent
+claude
+
+> /release [--dev|--pre|--post]
+```
+
+## Consuming Releases
+
+Haven't published to PyPi? No problem, install your packages directly from GitHub releases.
+
+```bash
+# Install from GitHub releases
+uvr install myorg/myrepo/my-pkg@0.1.2
+
+# Download wheels only
+uvr download myorg/myrepo/my-pkg
+```
 
 ## Documentation
 
-- **[User Guide](../../docs/user-guide/README.md)** — setup, releasing, hooks, PyPI, skip/reuse, package filtering
-- **[Under the Hood](../../docs/under-the-hood/README.md)** — change detection, dependency pinning, build matrix, workflow model
-
-## Repository Structure
-
-This repo is itself a uv workspace monorepo with dummy packages for testing:
-
-```
-uv-release-monorepo/
-├── packages/
-│   ├── uv-release-monorepo/  # The actual CLI tool (published to PyPI)
-│   ├── pkg-alpha/             # Dummy: no dependencies
-│   ├── pkg-beta/              # Dummy: depends on alpha
-│   ├── pkg-delta/             # Dummy: depends on alpha (sibling of beta)
-│   └── pkg-gamma/             # Dummy: depends on beta
-└── pyproject.toml             # Workspace root
-```
-
-### Dependency Graph
-
-```mermaid
-flowchart BT
-    alpha[pkg-alpha]
-    beta[pkg-beta] --> alpha
-    delta[pkg-delta] --> alpha
-    gamma[pkg-gamma] --> beta
-```
-
-This structure tests:
-- **Leaf changes** — Changing `pkg-gamma` rebuilds only gamma
-- **Root changes** — Changing `pkg-alpha` cascades to alpha, beta, delta, gamma
-- **Sibling isolation** — Changing `pkg-delta` doesn't affect gamma (different branch)
-- **Middle changes** — Changing `pkg-beta` rebuilds beta and gamma
+- **[User Guide](docs/user-guide/README.md)** — setup, releasing, custom jobs, troubleshooting, command reference
+- **[Under the Hood](docs/under-the-hood/README.md)** — change detection, dependency pinning, build matrix, workflow model

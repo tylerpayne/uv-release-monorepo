@@ -69,6 +69,7 @@ Lazy monorepo wheel builder — only rebuilds what changed.
 
 Commands:
   release          Plan and execute a release (locally or via CI)
+  status           Preview the release plan (allows dirty working tree)
   bump             Bump package versions in the workspace
   install          Install a package from GitHub releases (org/repo/pkg)
   download         Download wheels from GitHub releases or CI artifacts
@@ -247,6 +248,77 @@ Run 'uvr <command> --help' for details on a specific command.
         help="Set release notes for a package. NOTES is inline text or @file.",
     )
     release_parser.set_defaults(func=cmd_release)
+
+    # status
+    def _cmd_status(a: argparse.Namespace) -> None:
+        from pathlib import Path
+
+        config = PlanConfig(
+            rebuild_all=getattr(a, "rebuild_all", False),
+            matrix=_read_matrix(Path.cwd()),
+            uvr_version=__version__,
+            ci_publish=True,
+            dry_run=True,
+        )
+        plan = build_plan(config)
+
+        # Collect all packages (changed + unchanged)
+        all_pkgs: list[tuple[str, str, str, str | None, str | None]] = []
+        for name, pkg in sorted(plan.changed.items()):
+            all_pkgs.append(
+                (
+                    "changed",
+                    name,
+                    pkg.current_version,
+                    pkg.last_release_tag,
+                    f"{name}/v{pkg.current_version}-base",
+                )
+            )
+        for name, pkg in sorted(plan.unchanged.items()):
+            all_pkgs.append(
+                (
+                    "unchanged",
+                    name,
+                    pkg.version,
+                    None,
+                    None,
+                )
+            )
+
+        if not all_pkgs:
+            print("No packages found.")
+            return
+
+        nw = max(len(p[1]) for p in all_pkgs)
+        vw = max(len(p[2]) for p in all_pkgs)
+        sw = max(len(p[0]) for p in all_pkgs)
+
+        header = (
+            f"  {'STATUS'.ljust(sw)}  {'PACKAGE'.ljust(nw)}  "
+            f"{'VERSION'.ljust(vw)}  BASELINE"
+        )
+        print()
+        print(header)
+        for status, name, version, last_release, baseline in all_pkgs:
+            base_str = baseline or "-"
+            print(
+                f"  {status.ljust(sw)}  {name.ljust(nw)}  "
+                f"{version.ljust(vw)}  {base_str}"
+            )
+        print()
+
+    status_parser = subparsers.add_parser("status", help=_H)
+    status_parser.add_argument(
+        "--rebuild-all",
+        action="store_true",
+        help="Show all packages as changed.",
+    )
+    status_parser.add_argument(
+        "--workflow-dir",
+        default=".github/workflows",
+        help="Workflow directory (default: %(default)s).",
+    )
+    status_parser.set_defaults(func=_cmd_status)
 
     # bump
     bump_parser = subparsers.add_parser(
