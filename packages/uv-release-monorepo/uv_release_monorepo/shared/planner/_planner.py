@@ -193,9 +193,12 @@ class ReleasePlanner:
         release_commands = self._generate_release_commands(changed)
         bump_commands = self._generate_bump_commands(changed, published_versions)
 
-        # Validate no tag conflicts (skip for dry-run / status)
-        if not self.config.dry_run:
+        # Validate tag conflicts: abort for real releases, collect for dry-run
+        if self.config.dry_run:
+            tag_conflicts = self._find_tag_conflicts(changed)
+        else:
             self._check_tag_conflicts(changed)
+            tag_conflicts = []
 
         return ReleasePlan(
             uvr_version=self.config.uvr_version,
@@ -205,6 +208,7 @@ class ReleasePlanner:
             ci_publish=self.config.ci_publish,
             changed=changed,
             unchanged=unchanged,
+            tag_conflicts=tag_conflicts,
             build_commands=build_commands,
             release_commands=release_commands,
             bump_commands=bump_commands,
@@ -496,18 +500,14 @@ class ReleasePlanner:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _check_tag_conflicts(
+    def _find_tag_conflicts(
         self,
         changed: dict[str, ChangedPackage],
-    ) -> None:
-        """Verify that no planned tags already exist locally or as GitHub releases.
+    ) -> list[str]:
+        """Find planned tags that already exist locally.
 
-        Checks local git refs first (free), then makes targeted GitHub API
-        calls only for the specific release tags being created.
+        Returns a list of conflicting tag names. Does not abort.
         """
-        from ..utils.shell import exit_fatal
-
-        # Check local git tags (direct ref lookup — O(1) each)
         repo = self.ctx.repo
         conflicts: list[str] = []
         for name, pkg in changed.items():
@@ -517,16 +517,16 @@ class ReleasePlanner:
             ):
                 if repo.references.get(f"refs/tags/{tag}") is not None:
                     conflicts.append(tag)
+        return conflicts
 
-        # Release conflicts: if the release tag exists locally,
-        # a GitHub release almost certainly exists too (bump pushes both).
-        # No need for remote API calls — local refs are the source of truth.
-        for name, pkg in changed.items():
-            tag = f"{name}/v{pkg.release_version}"
-            if tag not in conflicts:
-                if repo.references.get(f"refs/tags/{tag}") is not None:
-                    conflicts.append(tag)
+    def _check_tag_conflicts(
+        self,
+        changed: dict[str, ChangedPackage],
+    ) -> None:
+        """Verify that no planned tags conflict. Aborts on conflict."""
+        from ..utils.shell import exit_fatal
 
+        conflicts = self._find_tag_conflicts(changed)
         if not conflicts:
             return
 

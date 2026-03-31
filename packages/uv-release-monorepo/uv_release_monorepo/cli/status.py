@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import argparse
 import io
+import subprocess
 import sys
 from pathlib import Path
 
-from ..shared.utils.cli import __version__
-from ..shared.utils.cli import diff_stat, read_matrix
+from ..shared.utils.cli import __version__, diff_stat, read_matrix
 from ..shared.models import PlanConfig
 from ..shared.planner import ReleasePlanner
 from ..shared.context import build_context
@@ -17,6 +17,15 @@ from ..shared.utils.versions import detect_release_type
 
 def cmd_status(args: argparse.Namespace) -> None:
     """Show workspace package status from the release planner."""
+    # Warn on dirty working tree
+    result = subprocess.run(
+        ["git", "status", "--short"], capture_output=True, text=True
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        print("WARNING: Working tree is not clean.", file=sys.stderr)
+        print(result.stdout.rstrip(), file=sys.stderr)
+        print(file=sys.stderr)
+
     # Suppress planner's verbose discovery output
     old_stdout = sys.stdout
     sys.stdout = io.StringIO()
@@ -78,4 +87,13 @@ def cmd_status(args: argparse.Namespace) -> None:
     print(f"  {_row(headers)}")
     for row in rows:
         print(f"  {_row(row)}")
+
+    # Warn on tag conflicts
+    if plan.tag_conflicts:
+        print()
+        print("Conflicts")
+        print("---------")
+        for tag in sorted(plan.tag_conflicts):
+            print(f"  {tag}")
+
     print()
