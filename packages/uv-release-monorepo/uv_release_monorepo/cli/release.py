@@ -341,7 +341,7 @@ def cmd_release(args: argparse.Namespace) -> None:
             fatal(
                 "Version conflicts detected:\n"
                 + "\n".join(f"  {w}" for w in version_conflicts)
-                + "\n\nBump past the conflict with: uvr bump --all --patch"
+                + "\n\nBump past the conflict with: uvr bump --package <pkg> --patch"
             )
 
         # Apply --bump if provided (bump all packages before planning)
