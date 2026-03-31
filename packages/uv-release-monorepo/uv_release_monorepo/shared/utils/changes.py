@@ -10,6 +10,7 @@ import pygit2
 from ..models import PackageInfo
 from .git import _resolve_tag, path_changed
 from .shell import print_step
+from .versions import detect_release_type_for_version
 
 from ..planner._graph import build_graph_maps
 
@@ -93,10 +94,14 @@ def detect_changes(
     # Build reverse dependency map
     _, reverse_deps = build_graph_maps(packages)
 
-    # Propagate dirtiness to dependents using BFS
+    # Propagate dirtiness to dependents using BFS.
+    # Post-release packages don't propagate — a post-fix only affects the
+    # package in question, not its dependents.
     queue = list(dirty)
     while queue:
         node = queue.pop(0)
+        if detect_release_type_for_version(packages[node].version) == "post":
+            continue
         for dependent in reverse_deps[node]:
             if dependent not in dirty:
                 print(f"  {dependent}: dirty (depends on {node})")
