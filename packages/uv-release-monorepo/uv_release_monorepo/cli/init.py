@@ -13,7 +13,7 @@ from pathlib import Path
 from ..shared.models.workflow import ReleaseWorkflow, frozen_paths
 from ..shared.utils.config import get_config
 from ..shared.utils.toml import get_path, read_pyproject, write_pyproject
-from ._common import _fatal
+from ..shared.utils.cli import fatal
 from ._yaml import _MISSING, _load_yaml, _yaml_get
 
 
@@ -184,16 +184,16 @@ def cmd_init(args: argparse.Namespace) -> None:
 
     # Sanity checks
     if not (root / ".git").exists():
-        _fatal("Not a git repository. Run from the repo root.")
+        fatal("Not a git repository. Run from the repo root.")
 
     pyproject = root / "pyproject.toml"
     if not pyproject.exists():
-        _fatal("No pyproject.toml found in current directory.")
+        fatal("No pyproject.toml found in current directory.")
 
     doc = read_pyproject(pyproject)
     members = doc.get("tool", {}).get("uv", {}).get("workspace", {}).get("members")
     if not members:
-        _fatal(
+        fatal(
             "No [tool.uv.workspace] members defined in pyproject.toml.\n"
             "uvr requires a uv workspace. Example:\n\n"
             "  [tool.uv.workspace]\n"
@@ -207,7 +207,7 @@ def cmd_init(args: argparse.Namespace) -> None:
 
     force = getattr(args, "force", False)
     if dest.exists() and not force:
-        _fatal(
+        fatal(
             f"{dest.relative_to(root)} already exists.\n"
             "  Use --force to overwrite, or `uvr validate` to check the existing file."
         )
@@ -236,7 +236,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
     dest = root / workflow_dir / "release.yml"
 
     if not dest.exists():
-        _fatal(
+        fatal(
             f"No workflow found at {dest.relative_to(root)}. Run `uvr workflow init` first."
         )
 
@@ -366,7 +366,7 @@ def _three_way_merge(dest: Path, base_text: str, fresh_text: str) -> tuple[str, 
         fresh_path.unlink(missing_ok=True)
 
     if result.returncode < 0:
-        _fatal(f"git merge-file failed:\n{result.stderr}")
+        fatal(f"git merge-file failed:\n{result.stderr}")
 
     return result.stdout, result.returncode > 0
 
@@ -378,7 +378,7 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
     dest = root / workflow_dir / "release.yml"
 
     if not dest.exists():
-        _fatal(
+        fatal(
             f"No workflow found at {dest.relative_to(root)}. Run `uvr workflow init` first."
         )
 
@@ -388,7 +388,7 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
         capture_output=True,
     )
     if result.returncode != 0:
-        _fatal(
+        fatal(
             f"{dest.relative_to(root)} has uncommitted changes.\n"
             "  Commit or stash them before upgrading."
         )

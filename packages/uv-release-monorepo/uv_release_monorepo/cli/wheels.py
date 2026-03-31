@@ -7,7 +7,7 @@ from pathlib import Path
 
 from packaging.utils import canonicalize_name
 
-from ._common import _fatal, _parse_install_spec
+from ..shared.utils.cli import fatal, parse_install_spec
 from ..shared.utils.tags import find_latest_remote_release_tag
 
 
@@ -15,7 +15,7 @@ def cmd_wheels(args: argparse.Namespace) -> None:
     """Download platform-compatible wheels from a GitHub release or CI run."""
     from ..shared.models import FetchGithubReleaseCommand, FetchRunArtifactsCommand
 
-    gh_repo, package, version = _parse_install_spec(args.package)
+    gh_repo, package, version = parse_install_spec(args.package)
     dist_name = canonicalize_name(package).replace("-", "_")
     output_dir: str = args.output
 
@@ -36,7 +36,7 @@ def cmd_wheels(args: argparse.Namespace) -> None:
         else:
             tag = find_latest_remote_release_tag(package, gh_repo=gh_repo)
         if not tag:
-            _fatal(f"No release found for '{package}'.")
+            fatal(f"No release found for '{package}'.")
 
         cmd = FetchGithubReleaseCommand(
             tag=tag,
@@ -47,7 +47,7 @@ def cmd_wheels(args: argparse.Namespace) -> None:
 
     result = cmd.execute()
     if result.returncode != 0:
-        _fatal(f"No compatible wheels found for '{package}'.")
+        fatal(f"No compatible wheels found for '{package}'.")
 
     found = list(Path(output_dir).glob(f"{dist_name}-*.whl"))
     for whl in found:

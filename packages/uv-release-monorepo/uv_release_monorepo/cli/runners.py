@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ..shared.utils.config import get_matrix, set_matrix
 from ..shared.utils.toml import read_pyproject, write_pyproject
-from ._common import _discover_package_names, _fatal, _print_matrix_status
+from ..shared.utils.cli import discover_package_names, fatal, print_matrix_status
 
 _DEFAULT_RUNNERS: list[list[str]] = [["ubuntu-latest"]]
 
@@ -17,7 +17,7 @@ def cmd_runners(args: argparse.Namespace) -> None:
     root = Path.cwd()
     pyproject = root / "pyproject.toml"
     if not pyproject.exists():
-        _fatal("No pyproject.toml found in current directory.")
+        fatal("No pyproject.toml found in current directory.")
 
     doc = read_pyproject(pyproject)
     matrix = get_matrix(doc)
@@ -29,9 +29,9 @@ def cmd_runners(args: argparse.Namespace) -> None:
 
     # No package -> show all (fill in defaults for unconfigured packages)
     if not pkg:
-        all_packages = _discover_package_names()
+        all_packages = discover_package_names()
         effective = {name: matrix.get(name, _DEFAULT_RUNNERS) for name in all_packages}
-        _print_matrix_status(effective)
+        print_matrix_status(effective)
         return
 
     # --clear
@@ -64,7 +64,7 @@ def cmd_runners(args: argparse.Namespace) -> None:
         labels = [s.strip() for s in remove_val.split(",")]
         runners = matrix.get(pkg, [])
         if labels not in runners:
-            _fatal(f"[{', '.join(labels)}] not in runners for '{pkg}'")
+            fatal(f"[{', '.join(labels)}] not in runners for '{pkg}'")
         runners.remove(labels)
         if runners:
             matrix[pkg] = runners

@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ._common import _fatal
+from ..shared.utils.cli import fatal
 from ..shared.utils.dependencies import set_version
 from ..shared.utils.versions import (
     bump_dev,
@@ -120,12 +120,12 @@ def cmd_bump(args: argparse.Namespace) -> None:
         targets = {}
         for name in package_names:
             if name not in packages:
-                _fatal(f"Unknown package: {name!r}")
+                fatal(f"Unknown package: {name!r}")
             targets[name] = packages[name]
     elif changed:
         targets = _resolve_changed(packages)
     else:
-        _fatal("Specify --all, --changed, or --package PKG.")
+        fatal("Specify --all, --changed, or --package PKG.")
 
     if not targets:
         print("No packages to bump.")
@@ -134,7 +134,7 @@ def cmd_bump(args: argparse.Namespace) -> None:
     # Determine bump type
     bump_type: str = getattr(args, "bump_type", None) or ""
     if not bump_type:
-        _fatal(
+        fatal(
             "Specify a bump type: --minor, --major, --alpha, --beta, --rc, --post, or --dev."
         )
 
@@ -148,7 +148,7 @@ def cmd_bump(args: argparse.Namespace) -> None:
         try:
             validate_bump(info.version, bump_type, pre_kind)
         except ValueError as exc:
-            _fatal(f"{name}: {exc}")
+            fatal(f"{name}: {exc}")
         new_version = compute_bumped_version(info.version, bump_type=bump_type)
         results.append((name, info.version, new_version))
 

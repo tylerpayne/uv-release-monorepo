@@ -7,7 +7,8 @@ import io
 import sys
 from pathlib import Path
 
-from ._common import __version__, _diff_stat, _read_matrix
+from ._common import __version__
+from ..shared.utils.cli import diff_stat, read_matrix
 from ..shared.models import PlanConfig
 from ..shared.planner import ReleasePlanner
 from ..shared.context import build_context
@@ -24,7 +25,7 @@ def cmd_status(args: argparse.Namespace) -> None:
         release_type = detect_release_type(ctx.packages)
         config = PlanConfig(
             rebuild_all=getattr(args, "rebuild_all", False),
-            matrix=_read_matrix(Path.cwd()),
+            matrix=read_matrix(Path.cwd()),
             uvr_version=__version__,
             ci_publish=True,
             release_type=release_type,
@@ -38,7 +39,7 @@ def cmd_status(args: argparse.Namespace) -> None:
     rows: list[tuple[str, str, str, str, str, str]] = []
     for name, pkg in sorted(plan.changed.items()):
         baseline = f"{name}/v{pkg.current_version}-base"
-        changes, commits = _diff_stat(baseline, pkg.path)
+        changes, commits = diff_stat(baseline, pkg.path)
         rows.append(
             (
                 "changed",

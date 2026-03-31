@@ -1,4 +1,4 @@
-"""Tests for the runners command and _read_matrix."""
+"""Tests for the runners command and read_matrix."""
 
 from __future__ import annotations
 
@@ -6,7 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from uv_release_monorepo.cli import _read_matrix, cmd_runners
+from uv_release_monorepo.shared.utils.cli import read_matrix
+from uv_release_monorepo.cli import cmd_runners
 
 from tests._helpers import _runners_args, _write_workspace_repo
 
@@ -30,13 +31,13 @@ class TestCmdRunners:
         assert "ubuntu-latest" in output
 
     def test_add_runner(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Adds a runner for a package, verifiable via _read_matrix."""
+        """Adds a runner for a package, verifiable via read_matrix."""
         _write_workspace_repo(tmp_path, ["pkg-alpha"])
         monkeypatch.chdir(tmp_path)
 
         cmd_runners(_runners_args(package="pkg-alpha", add_value="ubuntu-latest"))
 
-        result = _read_matrix(tmp_path)
+        result = read_matrix(tmp_path)
         assert result["pkg-alpha"] == [["ubuntu-latest"]]
 
     def test_add_duplicate_ignored(
@@ -52,7 +53,7 @@ class TestCmdRunners:
         cmd_runners(_runners_args(package="pkg-alpha", add_value="ubuntu-latest"))
         cmd_runners(_runners_args(package="pkg-alpha", add_value="ubuntu-latest"))
 
-        result = _read_matrix(tmp_path)
+        result = read_matrix(tmp_path)
         assert result["pkg-alpha"] == [["ubuntu-latest"]]
         output = capsys.readouterr().out
         assert "already in runners" in output
@@ -68,7 +69,7 @@ class TestCmdRunners:
         cmd_runners(_runners_args(package="pkg-alpha", add_value="macos-14"))
         cmd_runners(_runners_args(package="pkg-alpha", remove_value="ubuntu-latest"))
 
-        result = _read_matrix(tmp_path)
+        result = read_matrix(tmp_path)
         assert result["pkg-alpha"] == [["macos-14"]]
 
     def test_remove_last_runner_clears_package(
@@ -81,7 +82,7 @@ class TestCmdRunners:
         cmd_runners(_runners_args(package="pkg-alpha", add_value="ubuntu-latest"))
         cmd_runners(_runners_args(package="pkg-alpha", remove_value="ubuntu-latest"))
 
-        result = _read_matrix(tmp_path)
+        result = read_matrix(tmp_path)
         assert "pkg-alpha" not in result
 
     def test_clear(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -93,7 +94,7 @@ class TestCmdRunners:
         cmd_runners(_runners_args(package="pkg-alpha", add_value="macos-14"))
         cmd_runners(_runners_args(package="pkg-alpha", clear=True))
 
-        result = _read_matrix(tmp_path)
+        result = read_matrix(tmp_path)
         assert "pkg-alpha" not in result
 
     def test_read_single_package(
@@ -117,17 +118,17 @@ class TestCmdRunners:
 
 
 class TestReadMatrix:
-    """Tests for _read_matrix()."""
+    """Tests for read_matrix()."""
 
     def test_returns_empty_when_no_matrix(self, tmp_path: Path) -> None:
         """Returns {} for a repo with no [tool.uvr.matrix]."""
         _write_workspace_repo(tmp_path, [])
-        result = _read_matrix(tmp_path)
+        result = read_matrix(tmp_path)
         assert result == {}
 
     def test_returns_empty_when_no_pyproject(self, tmp_path: Path) -> None:
         """Returns {} when pyproject.toml does not exist."""
-        result = _read_matrix(tmp_path)
+        result = read_matrix(tmp_path)
         assert result == {}
 
     def test_returns_matrix_after_cmd_runners(
@@ -141,7 +142,7 @@ class TestReadMatrix:
         cmd_runners(_runners_args(package="pkg-b", add_value="ubuntu-latest"))
         cmd_runners(_runners_args(package="pkg-b", add_value="macos-14"))
 
-        result = _read_matrix(tmp_path)
+        result = read_matrix(tmp_path)
         assert result == {
             "pkg-a": [["ubuntu-latest"]],
             "pkg-b": [["ubuntu-latest"], ["macos-14"]],

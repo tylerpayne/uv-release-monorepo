@@ -9,7 +9,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from ..shared.utils.toml import get_path, read_pyproject, write_pyproject
-from ._common import _fatal
+from ..shared.utils.cli import fatal
 from .init import _editor_cmd, _read_base, _resolve_editor, _write_base
 
 
@@ -87,7 +87,7 @@ def cmd_skill_init(args: argparse.Namespace) -> None:
         return
 
     if not (root / ".git").exists():
-        _fatal("Not a git repository. Run from the repo root.")
+        fatal("Not a git repository. Run from the repo root.")
 
     dest_base = root / ".claude" / "skills"
     force = getattr(args, "force", False)
@@ -134,7 +134,7 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
     root = Path.cwd()
 
     if not (root / ".git").exists():
-        _fatal("Not a git repository. Run from the repo root.")
+        fatal("Not a git repository. Run from the repo root.")
 
     dest_base = root / ".claude" / "skills"
 
@@ -151,7 +151,7 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
             capture_output=True,
         )
         if result.returncode != 0:
-            _fatal(
+            fatal(
                 "Skill files have uncommitted changes.\n"
                 "  Commit or stash them before upgrading."
             )

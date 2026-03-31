@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ._common import _fatal, _parse_install_spec
+from ..shared.utils.cli import fatal, parse_install_spec
 from ..shared.utils.tags import find_latest_remote_release_tag
 
 
@@ -18,7 +18,7 @@ def cmd_install(args: argparse.Namespace) -> None:
 
     from ..shared.models import FetchGithubReleaseCommand
 
-    gh_repo, package, version = _parse_install_spec(args.package)
+    gh_repo, package, version = parse_install_spec(args.package)
 
     # For now, install only the requested package; pip resolves external deps
     order = [package]
@@ -31,7 +31,7 @@ def cmd_install(args: argparse.Namespace) -> None:
             else:
                 tag = find_latest_remote_release_tag(pkg, gh_repo=gh_repo)
             if not tag:
-                _fatal(f"No release found for '{pkg}'.")
+                fatal(f"No release found for '{pkg}'.")
 
             dist_name = canonicalize_name(pkg).replace("-", "_")
             fetch = FetchGithubReleaseCommand(
@@ -42,11 +42,11 @@ def cmd_install(args: argparse.Namespace) -> None:
             )
             result = fetch.execute()
             if result.returncode != 0:
-                _fatal(f"No compatible wheel for '{pkg}' in release {tag}.")
+                fatal(f"No compatible wheel for '{pkg}' in release {tag}.")
 
             found = list(Path(tmp).glob(f"{dist_name}-*.whl"))
             if not found:
-                _fatal(f"No wheel found for '{pkg}' in release {tag}.")
+                fatal(f"No wheel found for '{pkg}' in release {tag}.")
             wheels.append(str(found[0]))
             print(f"  {found[0].name}")
 

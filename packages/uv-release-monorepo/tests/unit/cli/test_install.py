@@ -1,4 +1,4 @@
-"""Tests for the install command, _parse_install_spec, and _find_latest_release_tag."""
+"""Tests for the install command, parse_install_spec, and _find_latest_release_tag."""
 
 from __future__ import annotations
 
@@ -11,10 +11,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from uv_release_monorepo.cli import (
-    _parse_install_spec,
-    cmd_install,
-)
+from uv_release_monorepo.cli import cmd_install
+from uv_release_monorepo.shared.utils.cli import parse_install_spec
 from uv_release_monorepo.shared.utils.tags import (
     find_latest_remote_release_tag as _find_latest_release_tag,
 )
@@ -176,24 +174,24 @@ class TestCmdInstallRemote:
 
 
 class TestParseInstallSpec:
-    """Tests for _parse_install_spec()."""
+    """Tests for parse_install_spec()."""
 
     def test_bare_package_raises(self) -> None:
         with pytest.raises(SystemExit):
-            _parse_install_spec("pkg-alpha")
+            parse_install_spec("pkg-alpha")
 
     def test_bare_package_with_version_raises(self) -> None:
         with pytest.raises(SystemExit):
-            _parse_install_spec("pkg-alpha@1.2.3")
+            parse_install_spec("pkg-alpha@1.2.3")
 
     def test_remote_package(self) -> None:
-        gh_repo, package, version = _parse_install_spec("acme/my-monorepo/pkg-alpha")
+        gh_repo, package, version = parse_install_spec("acme/my-monorepo/pkg-alpha")
         assert gh_repo == "acme/my-monorepo"
         assert package == "pkg-alpha"
         assert version is None
 
     def test_remote_package_with_version(self) -> None:
-        gh_repo, package, version = _parse_install_spec(
+        gh_repo, package, version = parse_install_spec(
             "acme/my-monorepo/pkg-alpha@2.0.0"
         )
         assert gh_repo == "acme/my-monorepo"
@@ -202,11 +200,11 @@ class TestParseInstallSpec:
 
     def test_invalid_two_part_spec_raises(self) -> None:
         with pytest.raises(SystemExit):
-            _parse_install_spec("acme/pkg-alpha")
+            parse_install_spec("acme/pkg-alpha")
 
     def test_invalid_four_part_spec_raises(self) -> None:
         with pytest.raises(SystemExit):
-            _parse_install_spec("acme/org/repo/pkg")
+            parse_install_spec("acme/org/repo/pkg")
 
 
 class TestFindLatestReleaseTag:
