@@ -94,7 +94,7 @@ def cmd_status(args: argparse.Namespace) -> None:
         print("Warnings")
         print("--------")
         for tag in sorted(plan.tag_conflicts):
-            version = tag.split("/v", 1)[1] if "/v" in tag else tag
-            print(f"  Version conflict: {version} already exists (tag: {tag})")
+            pkg_name, version = tag.split("/v", 1) if "/v" in tag else (tag, "")
+            print(f"  Version conflict: {pkg_name} {version} already exists")
 
     print()
