@@ -24,7 +24,6 @@ def cmd_status(args: argparse.Namespace) -> None:
     if result.returncode == 0 and result.stdout.strip():
         print("WARNING: Working tree is not clean.", file=sys.stderr)
         print(result.stdout.rstrip(), file=sys.stderr)
-        print(file=sys.stderr)
 
     # Suppress planner's verbose discovery output
     old_stdout = sys.stdout
