@@ -500,7 +500,7 @@ def validate_bump(
     Args:
         current_version: Version string from pyproject.toml.
         bump_type: One of "major", "minor", "patch", "alpha", "beta",
-            "rc", "post", "dev".
+            "rc", "post", "dev", "stable".
         pre_kind: PEP 440 short pre-release kind ("a", "b", "rc").
             Required when bump_type is a pre-release name.
 
@@ -512,6 +512,16 @@ def validate_bump(
 
     has_pre = is_pre(strip_dev(current_version))
     has_post = is_post(current_version)
+
+    if bump_type == "stable":
+        if has_post or is_post(strip_dev(current_version)):
+            msg = (
+                f"Cannot bump to stable from post-release {current_version} "
+                f"— the stable version was already released. "
+                f"Use --patch to bump past it."
+            )
+            raise ValueError(msg)
+        return
 
     if bump_type == "post" and not has_post:
         msg = f"Cannot enter post-release from unreleased version {current_version}"

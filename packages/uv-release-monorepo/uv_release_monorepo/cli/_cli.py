@@ -290,6 +290,13 @@ Run 'uvr <command> --help' for details on a specific command.
         dest="bump_type",
         help="Increment the dev number.",
     )
+    _btype_mut.add_argument(
+        "--stable",
+        action="store_const",
+        const="stable",
+        dest="bump_type",
+        help="Strip pre-release markers: X.Y.Z.dev0",
+    )
     bump_parser.set_defaults(func=cmd_bump)
 
     # install
