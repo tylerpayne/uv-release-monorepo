@@ -57,7 +57,7 @@ class TestCleanFinal:
         return _repo(f"{PKG}/v1.0.0")
 
     def test_final(self, repo: _FakeRepo) -> None:
-        result = resolve_baseline("1.0.1", "final", PKG, repo)
+        result = resolve_baseline("1.0.1", "stable", PKG, repo)
         assert result == f"{PKG}/v1.0.0"
 
     def test_pre(self, repo: _FakeRepo) -> None:
@@ -87,7 +87,7 @@ class TestDevAfterFinal:
     """
 
     def test_final(self) -> None:
-        result = resolve_baseline("1.0.1.dev0", "final", PKG, _repo())
+        result = resolve_baseline("1.0.1.dev0", "stable", PKG, _repo())
         assert result == f"{PKG}/v1.0.1.dev0-base"
 
     def test_pre_invalid(self) -> None:
@@ -117,7 +117,7 @@ class TestDevNAfterFinal:
     """
 
     def test_final(self) -> None:
-        result = resolve_baseline("1.0.1.dev3", "final", PKG, _repo())
+        result = resolve_baseline("1.0.1.dev3", "stable", PKG, _repo())
         assert result == f"{PKG}/v1.0.1.dev0-base"
 
     def test_pre_invalid(self) -> None:
@@ -151,7 +151,7 @@ class TestCleanPreRelease:
 
     @pytest.mark.parametrize("version", ["1.0.1a3", "1.0.1b1", "1.0.1rc2"])
     def test_final(self, version: str, repo: _FakeRepo) -> None:
-        result = resolve_baseline(version, "final", PKG, repo)
+        result = resolve_baseline(version, "stable", PKG, repo)
         assert result == f"{PKG}/v1.0.0"
 
     @pytest.mark.parametrize("version", ["1.0.1a3", "1.0.1b1", "1.0.1rc2"])
@@ -192,7 +192,7 @@ class TestDevAfterPreRelease:
     )
     def test_final_cumulative(self, version: str, repo: _FakeRepo) -> None:
         """Final from pre-release → cumulative since last final."""
-        result = resolve_baseline(version, "final", PKG, repo)
+        result = resolve_baseline(version, "stable", PKG, repo)
         assert result == f"{PKG}/v1.0.0"
 
     @pytest.mark.parametrize(
@@ -239,7 +239,7 @@ class TestDevMAfterPreRelease:
         "version", ["1.0.1a3.dev2", "1.0.1b1.dev5", "1.0.1rc2.dev1"]
     )
     def test_final_cumulative(self, version: str, repo: _FakeRepo) -> None:
-        result = resolve_baseline(version, "final", PKG, repo)
+        result = resolve_baseline(version, "stable", PKG, repo)
         assert result == f"{PKG}/v1.0.0"
 
     @pytest.mark.parametrize(
@@ -282,7 +282,7 @@ class TestCleanPostRelease:
         return _repo(f"{PKG}/v1.0.1.post1", f"{PKG}/v1.0.1")
 
     def test_final(self, repo: _FakeRepo) -> None:
-        result = resolve_baseline("1.0.1.post2", "final", PKG, repo)
+        result = resolve_baseline("1.0.1.post2", "stable", PKG, repo)
         assert result == f"{PKG}/v1.0.1.post1"
 
     def test_pre(self, repo: _FakeRepo) -> None:
@@ -318,8 +318,8 @@ class TestDevAfterPostRelease:
         assert result == f"{PKG}/v1.0.1.post2.dev0-base"
 
     def test_final_invalid(self) -> None:
-        with pytest.raises(ValueError, match="final"):
-            resolve_baseline("1.0.1.post2.dev0", "final", PKG, _repo())
+        with pytest.raises(ValueError, match="stable"):
+            resolve_baseline("1.0.1.post2.dev0", "stable", PKG, _repo())
 
     def test_pre_invalid(self) -> None:
         with pytest.raises(ValueError, match="pre"):
@@ -346,8 +346,8 @@ class TestDevMAfterPostRelease:
         assert result == f"{PKG}/v1.0.1.post2.dev3-base"
 
     def test_final_invalid(self) -> None:
-        with pytest.raises(ValueError, match="final"):
-            resolve_baseline("1.0.1.post2.dev3", "final", PKG, _repo())
+        with pytest.raises(ValueError, match="stable"):
+            resolve_baseline("1.0.1.post2.dev3", "stable", PKG, _repo())
 
     def test_pre_invalid(self) -> None:
         with pytest.raises(ValueError, match="pre"):

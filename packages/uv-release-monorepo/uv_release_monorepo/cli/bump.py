@@ -7,15 +7,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ._common import _fatal
-from ..shared.utils.dependencies import set_version
+from ..shared.utils.cli import fatal
+from ..shared.utils.dependencies import pin_dependencies, set_version
 from ..shared.utils.versions import (
     bump_dev,
     bump_major,
     bump_minor,
     bump_patch,
+    detect_release_type_for_version,
     extract_pre_kind,
     get_base_version,
+    is_post,
     make_dev,
     make_post,
     make_pre,
@@ -37,7 +39,7 @@ def compute_bumped_version(
     Args:
         current: Current version string from pyproject.toml.
         bump_type: One of "major", "minor", "patch", "alpha", "beta",
-            "rc", "post", "dev".
+            "rc", "post", "dev", "stable".
 
     Returns:
         The bumped version string.
@@ -54,6 +56,16 @@ def compute_bumped_version(
         return _bump_post(current)
     if bump_type == "dev":
         return bump_dev(current)
+    if bump_type == "stable":
+        if is_post(current) or is_post(strip_dev(current)):
+            msg = (
+                f"Cannot bump to stable from post-release {current} "
+                f"— the stable version was already released. "
+                f"Use --patch to bump past it."
+            )
+            raise ValueError(msg)
+        # Strip pre suffix: 1.0.1a2.dev0 → 1.0.1.dev0
+        return make_dev(get_base_version(current))
     msg = f"Unknown bump type: {bump_type!r}"
     raise ValueError(msg)
 
@@ -109,22 +121,35 @@ def cmd_bump(args: argparse.Namespace) -> None:
         targets = {}
         for name in package_names:
             if name not in packages:
-                _fatal(f"Unknown package: {name!r}")
+                fatal(f"Unknown package: {name!r}")
             targets[name] = packages[name]
     elif changed:
         targets = _resolve_changed(packages)
     else:
-        _fatal("Specify --all, --changed, or --package PKG.")
+        fatal("Specify --all, --changed, or --package PKG.")
 
     if not targets:
         print("No packages to bump.")
         return
 
+    # Guard: when targeting specific packages, fail if other packages also
+    # have unreleased changes (unless --force is passed).
+    force = getattr(args, "force", False)
+    if package_names and not force:
+        all_changed = _resolve_changed(packages)
+        missed = sorted(set(all_changed) - set(targets))
+        if missed:
+            names = ", ".join(missed)
+            fatal(
+                f"Other packages also have unreleased changes: {names}\n"
+                f"  Include them with --package or use --force to skip this check."
+            )
+
     # Determine bump type
     bump_type: str = getattr(args, "bump_type", None) or ""
     if not bump_type:
-        _fatal(
-            "Specify a bump type: --minor, --major, --alpha, --beta, --rc, --post, or --dev."
+        fatal(
+            "Specify a bump type: --minor, --major, --alpha, --beta, --rc, --post, --dev, or --stable."
         )
 
     # Map pre-release names to internal representation for validation
@@ -137,15 +162,32 @@ def cmd_bump(args: argparse.Namespace) -> None:
         try:
             validate_bump(info.version, bump_type, pre_kind)
         except ValueError as exc:
-            _fatal(f"{name}: {exc}")
+            fatal(f"{name}: {exc}")
         new_version = compute_bumped_version(info.version, bump_type=bump_type)
         results.append((name, info.version, new_version))
 
-    # Write versions
+    # Write versions and pin deps
     root = Path.cwd()
+    bumped_versions = {name: new for name, _, new in results}
+    modified_pyprojects: list[str] = []
+
     for name, _old, new_version in results:
         pyproject = root / targets[name].path / "pyproject.toml"
         set_version(pyproject, new_version)
+        modified_pyprojects.append(str(root / targets[name].path / "pyproject.toml"))
+
+    # Pin internal deps in all workspace packages that depend on bumped packages
+    for name, info in packages.items():
+        dep_versions = {
+            dep: bumped_versions[dep] for dep in info.deps if dep in bumped_versions
+        }
+        if not dep_versions:
+            continue
+        pyproject = root / info.path / "pyproject.toml"
+        pin_dependencies(pyproject, dep_versions)
+        pyproject_str = str(pyproject)
+        if pyproject_str not in modified_pyprojects:
+            modified_pyprojects.append(pyproject_str)
 
     # Sync lockfile
     subprocess.run(
@@ -159,6 +201,17 @@ def cmd_bump(args: argparse.Namespace) -> None:
     ow = max(len(old) for _, old, _ in results)
     for name, old, new in results:
         print(f"  {name.ljust(nw)}  {old.ljust(ow)}  ->  {new}")
+
+    # Remind user to commit
+    modified_pyprojects.append("uv.lock")
+    files = " ".join(modified_pyprojects)
+    if len(results) == 1:
+        name, _, new = results[0]
+        msg = f"chore: bump ({bump_type}) {name} to {new}"
+    else:
+        lines = ", ".join(f"{name} to {new}" for name, _, new in results)
+        msg = f"chore: bump ({bump_type}) {lines}"
+    print(f'\nCommit the updated files:\n  git add {files} && git commit -m "{msg}"')
 
 
 def _resolve_changed(
@@ -178,9 +231,8 @@ def _resolve_changed(
         baselines: dict[str, str | None] = {}
         for name, info in ctx.packages.items():
             try:
-                baselines[name] = resolve_baseline(
-                    info.version, "final", name, ctx.repo
-                )
+                rt = detect_release_type_for_version(info.version)
+                baselines[name] = resolve_baseline(info.version, rt, name, ctx.repo)
             except ValueError:
                 baselines[name] = None
         changed_names = detect_changes(ctx.packages, baselines, False, ctx=ctx)

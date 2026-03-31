@@ -55,9 +55,9 @@ class TestReleasePlan:
             unchanged={"pkg-beta": beta},
         )
 
-    def test_schema_version_defaults_to_10(self) -> None:
+    def test_schema_version_defaults_to_11(self) -> None:
         plan = self._make_plan()
-        assert plan.schema_version == 10
+        assert plan.schema_version == 11
 
     def test_extra_keys_survive_round_trip(self) -> None:
         plan = self._make_plan()
@@ -88,15 +88,6 @@ class TestReleasePlan:
         plan = self._make_plan()
         data = plan.model_dump()
         assert data["build_matrix"] == [["ubuntu-latest"]]
-
-    def test_release_matrix_shape(self) -> None:
-        """release_matrix serializes as list of dicts for GHA fromJSON."""
-        plan = self._make_plan()
-        data = plan.model_dump()
-        assert len(data["release_matrix"]) == 1
-        entry = data["release_matrix"][0]
-        assert entry["package"] == "pkg-alpha"
-        assert entry["tag"] == "pkg-alpha/v0.1.5"
 
 
 class TestShellCommand:

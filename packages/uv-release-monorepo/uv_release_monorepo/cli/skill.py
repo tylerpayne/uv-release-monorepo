@@ -9,7 +9,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from ..shared.utils.toml import get_path, read_pyproject, write_pyproject
-from ._common import _fatal
+from ..shared.utils.cli import fatal
 from .init import _editor_cmd, _read_base, _resolve_editor, _write_base
 
 
@@ -45,7 +45,7 @@ def _load_skill_file(skill_name: str, rel_path: str) -> str:
 
 def _store_skill_version(root: Path) -> None:
     """Store the current uvr package version as skill_version in [tool.uvr.config]."""
-    from ._common import __version__
+    from ..shared.utils.cli import __version__
 
     pyproject = root / "pyproject.toml"
     if not pyproject.exists():
@@ -60,9 +60,17 @@ def _store_skill_version(root: Path) -> None:
     write_pyproject(pyproject, doc)
 
 
+def cmd_skill_dispatch(args: argparse.Namespace) -> None:
+    """Route to cmd_skill_init or cmd_skill_upgrade based on --upgrade flag."""
+    if getattr(args, "upgrade", False):
+        cmd_skill_upgrade(args)
+    else:
+        cmd_skill_init(args)
+
+
 def cmd_skill_init(args: argparse.Namespace) -> None:
     """Copy bundled Claude Code skills into the current project."""
-    from ._common import __version__
+    from ..shared.utils.cli import __version__
 
     root = Path.cwd()
     base_only = getattr(args, "base_only", False)
@@ -79,7 +87,7 @@ def cmd_skill_init(args: argparse.Namespace) -> None:
         return
 
     if not (root / ".git").exists():
-        _fatal("Not a git repository. Run from the repo root.")
+        fatal("Not a git repository. Run from the repo root.")
 
     dest_base = root / ".claude" / "skills"
     force = getattr(args, "force", False)
@@ -105,7 +113,7 @@ def cmd_skill_init(args: argparse.Namespace) -> None:
     print()
     if written:
         _store_skill_version(root)
-        from ._common import __version__
+        from ..shared.utils.cli import __version__
 
         print(f"OK: Wrote {written} file(s) to .claude/skills/ (uvr v{__version__})")
     if skipped:
@@ -126,7 +134,7 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
     root = Path.cwd()
 
     if not (root / ".git").exists():
-        _fatal("Not a git repository. Run from the repo root.")
+        fatal("Not a git repository. Run from the repo root.")
 
     dest_base = root / ".claude" / "skills"
 
@@ -143,7 +151,7 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
             capture_output=True,
         )
         if result.returncode != 0:
-            _fatal(
+            fatal(
                 "Skill files have uncommitted changes.\n"
                 "  Commit or stash them before upgrading."
             )
@@ -349,6 +357,6 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
                 return
 
     _store_skill_version(root)
-    from ._common import __version__
+    from ..shared.utils.cli import __version__
 
     print(f"\nUpgraded skills (uvr v{__version__}). Review and commit the changes.")

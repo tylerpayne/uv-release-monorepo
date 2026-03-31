@@ -1,4 +1,4 @@
-"""The ``uvr init``, ``uvr init --upgrade``, and ``uvr validate`` commands."""
+"""The ``uvr workflow init``, ``uvr workflow init --upgrade``, and ``uvr validate`` commands."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from pathlib import Path
 from ..shared.models.workflow import ReleaseWorkflow, frozen_paths
 from ..shared.utils.config import get_config
 from ..shared.utils.toml import get_path, read_pyproject, write_pyproject
-from ._common import _fatal
-from ._yaml import _MISSING, _load_yaml, _yaml_get
+from ..shared.utils.cli import fatal
+from ..shared.utils.yaml import MISSING, load_yaml, yaml_get
 
 
 _FALLBACK_EDITORS = ("code", "vim", "vi", "nano")
@@ -44,7 +44,7 @@ def _load_template_yaml() -> dict:
         f.write(text)
         tmp = Path(f.name)
     try:
-        return _load_yaml(tmp)
+        return load_yaml(tmp)
     finally:
         tmp.unlink(missing_ok=True)
 
@@ -85,11 +85,11 @@ def _check_frozen_paths(existing: dict, template: dict) -> list[str]:
     warnings: list[str] = []
     for path in frozen_paths(ReleaseWorkflow):
         keys = path.split(".")
-        user_val = _yaml_get(existing, keys)
-        tmpl_val = _yaml_get(template, keys)
-        if user_val is _MISSING:
+        user_val = yaml_get(existing, keys)
+        tmpl_val = yaml_get(template, keys)
+        if user_val is MISSING:
             continue  # field absent in user file — skip
-        if tmpl_val is _MISSING:
+        if tmpl_val is MISSING:
             continue  # field absent in template — skip
         if user_val != tmpl_val:
             warnings.append(f"{path} was modified from template default")
@@ -139,7 +139,7 @@ def _resolve_editor(args: argparse.Namespace, root: Path) -> str | None:
 
 def _store_workflow_version(root: Path) -> None:
     """Store the current uvr package version as workflow_version in [tool.uvr.config]."""
-    from ._common import __version__
+    from ..shared.utils.cli import __version__
 
     pyproject = root / "pyproject.toml"
     if not pyproject.exists():
@@ -159,9 +159,17 @@ def _store_workflow_version(root: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def cmd_init_dispatch(args: argparse.Namespace) -> None:
+    """Route to cmd_init or cmd_upgrade based on --upgrade flag."""
+    if getattr(args, "upgrade", False):
+        cmd_upgrade(args)
+    else:
+        cmd_init(args)
+
+
 def cmd_init(args: argparse.Namespace) -> None:
     """Scaffold the GitHub Actions workflow into your repo."""
-    from ._common import __version__
+    from ..shared.utils.cli import __version__
 
     root = Path.cwd()
     base_only = getattr(args, "base_only", False)
@@ -176,16 +184,16 @@ def cmd_init(args: argparse.Namespace) -> None:
 
     # Sanity checks
     if not (root / ".git").exists():
-        _fatal("Not a git repository. Run from the repo root.")
+        fatal("Not a git repository. Run from the repo root.")
 
     pyproject = root / "pyproject.toml"
     if not pyproject.exists():
-        _fatal("No pyproject.toml found in current directory.")
+        fatal("No pyproject.toml found in current directory.")
 
     doc = read_pyproject(pyproject)
     members = doc.get("tool", {}).get("uv", {}).get("workspace", {}).get("members")
     if not members:
-        _fatal(
+        fatal(
             "No [tool.uv.workspace] members defined in pyproject.toml.\n"
             "uvr requires a uv workspace. Example:\n\n"
             "  [tool.uv.workspace]\n"
@@ -199,7 +207,7 @@ def cmd_init(args: argparse.Namespace) -> None:
 
     force = getattr(args, "force", False)
     if dest.exists() and not force:
-        _fatal(
+        fatal(
             f"{dest.relative_to(root)} already exists.\n"
             "  Use --force to overwrite, or `uvr validate` to check the existing file."
         )
@@ -228,17 +236,19 @@ def cmd_validate(args: argparse.Namespace) -> None:
     dest = root / workflow_dir / "release.yml"
 
     if not dest.exists():
-        _fatal(f"No workflow found at {dest.relative_to(root)}. Run `uvr init` first.")
+        fatal(
+            f"No workflow found at {dest.relative_to(root)}. Run `uvr workflow init` first."
+        )
 
     import difflib
     import warnings
 
     from pydantic import ValidationError
 
-    existing = _load_yaml(dest)
+    existing = load_yaml(dest)
     rel = dest.relative_to(root)
 
-    from ._common import __version__
+    from ..shared.utils.cli import __version__
 
     # Resolve versions
     stored_version = ""
@@ -296,11 +306,11 @@ def cmd_validate(args: argparse.Namespace) -> None:
         print("  Run `uvr validate --diff` to view differences from the template.")
     if version_diff:
         print(
-            f"  Run `uvr init --upgrade` to update from "
+            f"  Run `uvr workflow init --upgrade` to update from "
             f"v{stored_version} to v{__version__}."
         )
     elif not stored_version:
-        print("  Run `uvr init --upgrade` to track your workflow version.")
+        print("  Run `uvr workflow init --upgrade` to track your workflow version.")
 
     # --diff: show unified diff
     if getattr(args, "diff", False) and has_diff:
@@ -356,7 +366,7 @@ def _three_way_merge(dest: Path, base_text: str, fresh_text: str) -> tuple[str, 
         fresh_path.unlink(missing_ok=True)
 
     if result.returncode < 0:
-        _fatal(f"git merge-file failed:\n{result.stderr}")
+        fatal(f"git merge-file failed:\n{result.stderr}")
 
     return result.stdout, result.returncode > 0
 
@@ -368,7 +378,9 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
     dest = root / workflow_dir / "release.yml"
 
     if not dest.exists():
-        _fatal(f"No workflow found at {dest.relative_to(root)}. Run `uvr init` first.")
+        fatal(
+            f"No workflow found at {dest.relative_to(root)}. Run `uvr workflow init` first."
+        )
 
     # Ensure release.yml has no uncommitted changes
     result = subprocess.run(
@@ -376,12 +388,12 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
         capture_output=True,
     )
     if result.returncode != 0:
-        _fatal(
+        fatal(
             f"{dest.relative_to(root)} has uncommitted changes.\n"
             "  Commit or stash them before upgrading."
         )
 
-    from ._common import __version__
+    from ..shared.utils.cli import __version__
 
     rel_dest = str(dest.relative_to(root))
     existing_text = dest.read_text()
@@ -400,13 +412,11 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
                 default="",
             )
         if stored_version:
-            uvx_cmd = (
-                f"uvx --from uv-release-monorepo=={stored_version} uvr init --base-only"
-            )
+            uvx_cmd = f"uvx --from uv-release-monorepo=={stored_version} uvr workflow init --base-only"
             print(
                 f"No merge base found. For a cleaner upgrade, recover the base first:\n"
                 f"  {uvx_cmd}\n"
-                f"  uvr init --upgrade\n"
+                f"  uvr workflow init --upgrade\n"
             )
             try:
                 run_it = input("Run the uvx command above? [y/N] ").strip().lower()

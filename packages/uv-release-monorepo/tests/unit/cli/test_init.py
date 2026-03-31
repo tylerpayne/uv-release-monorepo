@@ -30,7 +30,7 @@ class TestInit:
         text = workflow.read_text()
         assert "uvr-build:" in text
         assert "uvr-release:" in text
-        assert "uvr-finalize:" in text
+        assert "uvr-bump:" in text
 
     def test_init_workflow_has_plan_input(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -50,7 +50,7 @@ def _init_and_get_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Scaffold a workspace, init the workflow, and set up workflow_version."""
     import subprocess as _sp
 
-    from uv_release_monorepo.cli._common import __version__
+    from uv_release_monorepo.shared.utils.cli import __version__
     from uv_release_monorepo.cli.init import _load_template, _write_base
 
     _write_workspace_repo(tmp_path, ["pkg-alpha"])
@@ -122,7 +122,7 @@ def _git_commit_wf(wf: Path) -> None:
 
 
 class TestUpgrade:
-    """Tests for uvr init --upgrade."""
+    """Tests for uvr workflow init --upgrade."""
 
     def test_no_workflow_exits(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

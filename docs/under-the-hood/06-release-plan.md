@@ -3,7 +3,7 @@
 The `ReleasePlan` model is the single artifact passed from the local CLI to CI.
 It encodes everything the executor needs with zero git access.
 
-See [How it works](../user-guide/09-architecture.md) and [Skip jobs and reuse artifacts](../user-guide/06-skip-reuse.md) for usage.
+See [How it works](08-architecture.md) and [Skip jobs and reuse artifacts](../user-guide/08-troubleshooting.md) for usage.
 
 ## Source files
 
@@ -17,11 +17,11 @@ See [How it works](../user-guide/09-architecture.md) and [Skip jobs and reuse ar
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `schema_version` | `int` | Currently `9`. Bumped when the plan shape changes. |
+| `schema_version` | `int` | Currently `11`. Bumped when the plan shape changes. |
 | `uvr_version` | `str` | Version of uvr that created the plan. Empty string if running a `.dev` version. |
 | `uvr_install` | `str` | The pip install spec for CI (e.g., `uv-release-monorepo==0.5.2` or just `uv-release-monorepo` for dev). |
 | `python_version` | `str` | Python version for CI (default `"3.12"`). |
-| `release_type` | `str` | One of `"final"`, `"dev"`. Defaults to `"final"`. Release type is auto-detected from the version. |
+| `dev_release` | `bool` | `True` when `--dev` is passed (publish `.devN` versions as-is). Defaults to `False`. |
 | `rebuild_all` | `bool` | Whether `--rebuild-all` was passed. |
 | `changed` | `dict[str, ChangedPackage]` | Packages that need rebuilding. `ChangedPackage` extends `PackageInfo` with version lifecycle info and runners. |
 | `unchanged` | `dict[str, PackageInfo]` | Packages reused from previous releases. |
@@ -30,9 +30,8 @@ See [How it works](../user-guide/09-architecture.md) and [Skip jobs and reuse ar
 | `reuse_run_id` | `str` | If non-empty, download artifacts from this workflow run instead of building. |
 | `build_commands` | `dict[RunnerKey, list[BuildStage]]` | Pre-computed build command stages keyed by runner (JSON-serialized runner list). See below. |
 | `release_commands` | `list[PlanCommand]` | Pre-computed release commands (local execution only; empty for CI). |
-| `finalize_commands` | `list[PlanCommand]` | Pre-computed finalize commands (tag, bump, commit, push). |
+| `bump_commands` | `list[PlanCommand]` | Pre-computed bump commands (tag, bump, commit, push). |
 | `build_matrix` | `list[list[str]]` | **Computed field.** Unique runner label sets across all changed packages. Drives the workflow's `strategy.matrix.runner`. |
-| `release_matrix` | `list[dict[str, Any]]` | **Computed field.** One entry per changed package with tag, title, body, dist name, make_latest. Drives the release job's `strategy.matrix.include`. |
 
 ## Sub-models
 
@@ -99,7 +98,8 @@ class PlanConfig:
     uvr_version: str
     python_version: str = "3.12"
     ci_publish: bool = True
-    release_type: str = "final"
+    dev_release: bool = False
+    dry_run: bool = False
 ```
 
 Internal configuration passed to `ReleasePlanner`. Uses `dataclass` (not
@@ -150,10 +150,10 @@ This value is used in the CI setup step to install the correct version of uvr.
 
 ## Schema versioning
 
-`schema_version` is currently `9`. It is a simple integer that gets bumped when
-the plan shape changes in a backward-incompatible way. There is no migration
-logic -- if CI receives a plan with an unexpected schema version, it will likely
-fail with a Pydantic validation error.
+`schema_version` is currently `11`. It is a simple integer that gets bumped when
+the plan shape changes in a backward-incompatible way. A migration validator
+converts older plans (e.g., the legacy `release_type` string field is mapped to
+`dev_release: bool`).
 
 ## Serialization
 

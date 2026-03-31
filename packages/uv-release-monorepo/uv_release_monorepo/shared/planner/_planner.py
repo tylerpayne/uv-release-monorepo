@@ -15,7 +15,9 @@ from ..models import (
     ChangedPackage,
     FetchGithubReleaseCommand,
     PackageInfo,
+    PinDepsCommand,
     PlanConfig,
+    PublishGithubReleaseCommand,
     ReleasePlan,
     StageCommand,
     ShellCommand,
@@ -29,6 +31,7 @@ from ..utils.dependencies import pin_dependencies, set_version
 from ..utils.versions import (
     bump_dev,
     bump_patch,
+    detect_release_type_for_version,
     extract_pre_kind,
     find_previous_release,
     is_dev,
@@ -72,7 +75,7 @@ class ReleasePlanner:
     """Single entry point for creating release plans.
 
     Generates a ReleasePlan containing pre-computed shell commands for
-    every phase (build, publish, finalize). The executor is a dumb runner.
+    every phase (build, release, bump). The executor is a dumb runner.
     """
 
     def __init__(
@@ -98,9 +101,14 @@ class ReleasePlanner:
         else:
             baselines: dict[str, str | None] = {}
             for name, info in packages.items():
+                rt = (
+                    "dev"
+                    if self.config.dev_release
+                    else detect_release_type_for_version(info.version)
+                )
                 baselines[name] = resolve_baseline(
                     info.version,
-                    self.config.release_type,
+                    rt,
                     name,
                     self.ctx.repo,
                 )
@@ -189,24 +197,22 @@ class ReleasePlanner:
         # Generate command sequences
         build_commands = self._generate_build_commands(changed, unchanged, release_tags)
         release_commands = self._generate_release_commands(changed)
-        finalize_commands = self._generate_finalize_commands(
-            changed, published_versions
-        )
+        bump_commands = self._generate_bump_commands(changed, published_versions)
 
-        # Validate no tag conflicts (uses targeted GitHub API checks)
+        # Validate tag conflicts: always abort on conflict
         self._check_tag_conflicts(changed)
 
         return ReleasePlan(
             uvr_version=self.config.uvr_version,
             python_version=self.config.python_version,
             rebuild_all=self.config.rebuild_all,
-            release_type=self.config.release_type,
+            dev_release=self.config.dev_release,
             ci_publish=self.config.ci_publish,
             changed=changed,
             unchanged=unchanged,
             build_commands=build_commands,
             release_commands=release_commands,
-            finalize_commands=finalize_commands,
+            bump_commands=bump_commands,
         )
 
     def _apply_versions_and_pins(
@@ -231,10 +237,9 @@ class ReleasePlanner:
         changed: dict[str, PackageInfo],
     ) -> dict[str, str]:
         """Compute the release version string for each changed package."""
-        rt = self.config.release_type
         result: dict[str, str] = {}
 
-        if rt == "dev":
+        if self.config.dev_release:
             for name, info in changed.items():
                 # If already dev, publish as-is; otherwise append .dev0
                 result[name] = (
@@ -249,11 +254,10 @@ class ReleasePlanner:
 
     def _compute_next_versions(self, changed: dict[str, PackageInfo]) -> dict[str, str]:
         """Compute the post-release dev version for each changed package."""
-        rt = self.config.release_type
         result: dict[str, str] = {}
 
         for name, info in changed.items():
-            if rt == "dev":
+            if self.config.dev_release:
                 result[name] = bump_dev(info.version)
             else:
                 # Auto-detect from the release version
@@ -375,40 +379,43 @@ class ReleasePlanner:
     def _generate_release_commands(
         self,
         changed: dict[str, ChangedPackage],
-    ) -> list[ShellCommand]:
-        """Generate publish commands (only for local execution)."""
-        if self.config.ci_publish:
-            return []
+    ) -> list[ShellCommand | PublishGithubReleaseCommand]:
+        """Generate release commands: tag, create GitHub releases, push tags."""
+        cmds: list[ShellCommand | PublishGithubReleaseCommand] = []
 
-        cmds: list[ShellCommand] = []
+        # Release tags on the current commit (the "set release versions" commit)
+        for name, pkg in sorted(changed.items()):
+            tag = f"{name}/v{pkg.release_version}"
+            cmds.append(ShellCommand(args=["git", "tag", tag], label=f"Tag {tag}"))
+
+        # Create GitHub releases with wheels
         for name, pkg in sorted(changed.items()):
             tag = f"{name}/v{pkg.release_version}"
             cmds.append(
-                ShellCommand(
-                    args=[
-                        "gh",
-                        "release",
-                        "create",
-                        tag,
-                        "--title",
-                        f"{name} {pkg.release_version}",
-                        "--notes",
-                        pkg.release_notes,
-                        "--pattern",
-                        f"dist/{_dist_name(name)}-{pkg.release_version}-*.whl",
-                    ],
+                PublishGithubReleaseCommand(
+                    tag=tag,
+                    title=f"{name} {pkg.release_version}",
+                    notes=pkg.release_notes,
+                    dist_pattern=f"dist/{_dist_name(name)}-{pkg.release_version}-*.whl",
+                    make_latest=pkg.make_latest,
                     label=f"Publish {tag}",
                 )
             )
+
+        # Push release tags (only after all releases succeed)
+        cmds.append(
+            ShellCommand(args=["git", "push", "--tags"], label="Push release tags")
+        )
+
         return cmds
 
-    def _generate_finalize_commands(
+    def _generate_bump_commands(
         self,
         changed: dict[str, ChangedPackage],
         published_versions: dict[str, str],
-    ) -> list[ShellCommand]:
-        """Generate finalize commands (tag, bump, commit, push)."""
-        cmds: list[ShellCommand] = []
+    ) -> list[ShellCommand | PinDepsCommand]:
+        """Generate bump commands (version bumps, commit, baseline tags, push)."""
+        cmds: list[ShellCommand | PinDepsCommand] = []
 
         # Git identity (CI only)
         if self.config.ci_publish:
@@ -426,12 +433,6 @@ class ReleasePlanner:
                 )
             )
 
-        # Release tags (local only -- CI publish action creates them)
-        if not self.config.ci_publish:
-            for name, pkg in sorted(changed.items()):
-                tag = f"{name}/v{pkg.release_version}"
-                cmds.append(ShellCommand(args=["git", "tag", tag], label=f"Tag {tag}"))
-
         # Version bumps + dep pinning
         pyproject_paths: list[str] = []
         for name, pkg in sorted(changed.items()):
@@ -445,15 +446,16 @@ class ReleasePlanner:
                 )
             )
 
-            dep_specs = [
-                f"{dep}>={published_versions[dep]}"
+            dep_versions = {
+                dep: published_versions[dep]
                 for dep in pkg.deps
                 if dep in published_versions
-            ]
-            if dep_specs:
+            }
+            if dep_versions:
                 cmds.append(
-                    ShellCommand(
-                        args=["uvr", "pin-deps", "--path", pyproject] + dep_specs,
+                    PinDepsCommand(
+                        path=pyproject,
+                        versions=dep_versions,
                         label=f"Pin {name} deps",
                     )
                 )
@@ -497,18 +499,14 @@ class ReleasePlanner:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _check_tag_conflicts(
+    def _find_tag_conflicts(
         self,
         changed: dict[str, ChangedPackage],
-    ) -> None:
-        """Verify that no planned tags already exist locally or as GitHub releases.
+    ) -> list[str]:
+        """Find planned tags that already exist locally.
 
-        Checks local git refs first (free), then makes targeted GitHub API
-        calls only for the specific release tags being created.
+        Returns a list of conflicting tag names. Does not abort.
         """
-        from ..utils.shell import exit_fatal
-
-        # Check local git tags (direct ref lookup — O(1) each)
         repo = self.ctx.repo
         conflicts: list[str] = []
         for name, pkg in changed.items():
@@ -518,16 +516,16 @@ class ReleasePlanner:
             ):
                 if repo.references.get(f"refs/tags/{tag}") is not None:
                     conflicts.append(tag)
+        return conflicts
 
-        # Release conflicts: if the release tag exists locally,
-        # a GitHub release almost certainly exists too (finalize pushes both).
-        # No need for remote API calls — local refs are the source of truth.
-        for name, pkg in changed.items():
-            tag = f"{name}/v{pkg.release_version}"
-            if tag not in conflicts:
-                if repo.references.get(f"refs/tags/{tag}") is not None:
-                    conflicts.append(tag)
+    def _check_tag_conflicts(
+        self,
+        changed: dict[str, ChangedPackage],
+    ) -> None:
+        """Verify that no planned tags conflict. Aborts on conflict."""
+        from ..utils.shell import exit_fatal
 
+        conflicts = self._find_tag_conflicts(changed)
         if not conflicts:
             return
 

@@ -1,19 +1,75 @@
-"""Shared utilities and constants for the CLI package."""
+"""Shared CLI utilities — used by multiple CLI commands."""
 
 from __future__ import annotations
 
+import subprocess
 import sys
-from importlib.metadata import version as pkg_version
 from pathlib import Path
 from typing import NoReturn
 
-from ..shared.utils.config import get_hooks, get_matrix
-from ..shared.utils.toml import read_pyproject
+from importlib.metadata import version as pkg_version
+
+from .config import get_hooks, get_matrix
+from .toml import read_pyproject
 
 __version__ = pkg_version("uv-release-monorepo")
 
 
-def _read_matrix(root: Path) -> dict[str, list[list[str]]]:
+def fatal(msg: str) -> NoReturn:
+    """Print error and exit."""
+    print(f"\nError: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def diff_stat(
+    baseline_tag: str | None,
+    pkg_path: str,
+    fallback_tag: str | None = None,
+) -> tuple[str, str]:
+    """Return (changes_str, commits_str) for a package since its baseline.
+
+    If baseline_tag doesn't resolve, falls back to fallback_tag.
+    """
+    tag = baseline_tag or fallback_tag
+    if not tag:
+        return ("-", "-")
+
+    # Check if the tag exists
+    check = subprocess.run(
+        ["git", "rev-parse", "--verify", f"refs/tags/{tag}"],
+        capture_output=True,
+    )
+    if check.returncode != 0:
+        tag = fallback_tag
+        if not tag:
+            return ("-", "-")
+
+    result = subprocess.run(
+        ["git", "diff", "--shortstat", f"{tag}..HEAD", "--", pkg_path],
+        capture_output=True,
+        text=True,
+    )
+    adds, dels = 0, 0
+    if result.returncode == 0 and result.stdout.strip():
+        for part in result.stdout.strip().split(","):
+            part = part.strip()
+            if "insertion" in part:
+                adds = int(part.split()[0])
+            elif "deletion" in part:
+                dels = int(part.split()[0])
+    changes = f"+{adds} / -{dels}"
+
+    result = subprocess.run(
+        ["git", "rev-list", "--count", f"{tag}..HEAD", "--", pkg_path],
+        capture_output=True,
+        text=True,
+    )
+    commits = result.stdout.strip() if result.returncode == 0 else "-"
+
+    return changes, commits
+
+
+def read_matrix(root: Path) -> dict[str, list[list[str]]]:
     """Read [tool.uvr.matrix] from the workspace pyproject.toml."""
     pyproject = root / "pyproject.toml"
     if not pyproject.exists():
@@ -21,7 +77,7 @@ def _read_matrix(root: Path) -> dict[str, list[list[str]]]:
     return get_matrix(read_pyproject(pyproject))
 
 
-def _read_hooks(root: Path) -> dict[str, str]:
+def read_hooks(root: Path) -> dict[str, str]:
     """Read [tool.uvr.hooks] from the workspace pyproject.toml."""
     pyproject = root / "pyproject.toml"
     if not pyproject.exists():
@@ -29,34 +85,44 @@ def _read_hooks(root: Path) -> dict[str, str]:
     return get_hooks(read_pyproject(pyproject))
 
 
-def _print_matrix_status(package_runners: dict[str, list[list[str]]]) -> None:
-    """Print the build matrix grouped by runner."""
-    if not package_runners:
-        return
+def resolve_plan_json(raw: str | None) -> str:
+    """Resolve plan JSON from a --plan arg, @file path, or UVR_PLAN env var."""
+    import os
 
-    # Invert: runner -> sorted list of packages
-    runner_to_pkgs: dict[str, list[str]] = {}
-    for pkg, runners in package_runners.items():
-        for labels in runners:
-            key = f"[{', '.join(labels)}]"
-            runner_to_pkgs.setdefault(key, []).append(pkg)
-
-    print()
-    print("Build matrix:")
-    for runner in sorted(runner_to_pkgs):
-        print(f"  {runner}")
-        for pkg in sorted(runner_to_pkgs[runner]):
-            print(f"    {pkg}")
+    value = raw or os.environ.get("UVR_PLAN", "")
+    if value.startswith("@"):
+        value = Path(value[1:]).read_text()
+    if not value:
+        fatal("No plan provided. Pass --plan JSON, --plan @file, or set UVR_PLAN.")
+    return value
 
 
-def _discover_packages(root: Path | None = None) -> dict[str, tuple[str, list[str]]]:
+def parse_install_spec(spec: str) -> tuple[str, str, str | None]:
+    """Parse an install spec into (gh_repo, package, version).
+
+    Required form: ``org/repo/package[@version]``
+    """
+    version: str | None = None
+    if "@" in spec:
+        spec, version = spec.rsplit("@", 1)
+
+    parts = spec.split("/")
+    if len(parts) == 3:
+        org, repo, package = parts
+        return f"{org}/{repo}", package, version
+    else:
+        fatal(
+            f"Invalid install spec '{spec}'. "
+            "Expected 'org/repo/package', optionally with '@version'.\n"
+            "  Example: uvr install myorg/myrepo/my-pkg@1.0.0"
+        )
+
+
+def discover_packages(root: Path | None = None) -> dict[str, tuple[str, list[str]]]:
     """Scan workspace members and return {name: (version, [internal_dep_names])}.
 
     Lightweight alternative to pipeline.discover_packages() — no git or
     shell calls, no stdout output.
-
-    Args:
-        root: Workspace root directory. Defaults to the current working directory.
     """
     import glob as globmod
 
@@ -85,9 +151,8 @@ def _discover_packages(root: Path | None = None) -> dict[str, tuple[str, list[st
                 pkg_doc = tomlkit.parse(pkg_toml.read_text())
                 raw_name = pkg_doc.get("project", {}).get("name", p.name)
                 name = canonicalize_name(raw_name)
-                version = pkg_doc.get("project", {}).get("version", "0.0.0")
-                packages[name] = (version, [])
-                # Gather all dependency strings
+                ver = pkg_doc.get("project", {}).get("version", "0.0.0")
+                packages[name] = (ver, [])
                 dep_strs = list(pkg_doc.get("project", {}).get("dependencies", []))
                 for group in (
                     pkg_doc.get("project", {}).get("optional-dependencies", {}).values()
@@ -123,7 +188,31 @@ def _discover_packages(root: Path | None = None) -> dict[str, tuple[str, list[st
     return packages
 
 
-def _print_dependencies(
+def discover_package_names() -> list[str]:
+    """Scan workspace members and return sorted package names."""
+    return sorted(discover_packages().keys())
+
+
+def print_matrix_status(package_runners: dict[str, list[list[str]]]) -> None:
+    """Print the build matrix grouped by runner."""
+    if not package_runners:
+        return
+
+    runner_to_pkgs: dict[str, list[str]] = {}
+    for pkg, runners in package_runners.items():
+        for labels in runners:
+            key = f"[{', '.join(labels)}]"
+            runner_to_pkgs.setdefault(key, []).append(pkg)
+
+    print()
+    print("Build matrix:")
+    for runner in sorted(runner_to_pkgs):
+        print(f"  {runner}")
+        for pkg in sorted(runner_to_pkgs[runner]):
+            print(f"    {pkg}")
+
+
+def print_dependencies(
     packages: dict[str, tuple[str, list[str]]],
     *,
     direct_dirty: set[str] | None = None,
@@ -142,14 +231,14 @@ def _print_dependencies(
     print()
     print("Dependencies:")
     for name in names:
-        version, deps = packages[name]
+        ver, deps = packages[name]
         if name in direct_dirty:
             label = f"* {name}"
         elif name in transitive_dirty:
             label = f"+ {name}"
         else:
             label = f"  {name}"
-        ver_col = version.ljust(vw)
+        ver_col = ver.ljust(vw)
         if deps:
             print(
                 f"  {label.ljust(w + 2)}  {ver_col}  \u2192  {', '.join(sorted(deps))}"
@@ -164,47 +253,3 @@ def _print_dependencies(
             print("  * = changed since last release")
         if has_transitive:
             print("  + = rebuild (dependency changed)")
-
-
-def _discover_package_names() -> list[str]:
-    """Scan workspace members and return sorted package names."""
-    return sorted(_discover_packages().keys())
-
-
-def _resolve_plan_json(raw: str | None) -> str:
-    """Resolve plan JSON from a --plan arg, @file path, or UVR_PLAN env var."""
-    import os
-
-    value = raw or os.environ.get("UVR_PLAN", "")
-    if value.startswith("@"):
-        value = Path(value[1:]).read_text()
-    if not value:
-        _fatal("No plan provided. Pass --plan JSON, --plan @file, or set UVR_PLAN.")
-    return value
-
-
-def _fatal(msg: str) -> NoReturn:
-    """Print error and exit."""
-    print(f"Error: {msg}", file=sys.stderr)
-    sys.exit(1)
-
-
-def _parse_install_spec(spec: str) -> tuple[str, str, str | None]:
-    """Parse an install spec into (gh_repo, package, version).
-
-    Required form: ``org/repo/package[@version]``
-    """
-    version: str | None = None
-    if "@" in spec:
-        spec, version = spec.rsplit("@", 1)
-
-    parts = spec.split("/")
-    if len(parts) == 3:
-        org, repo, package = parts
-        return f"{org}/{repo}", package, version
-    else:
-        _fatal(
-            f"Invalid install spec '{spec}'. "
-            "Expected 'org/repo/package', optionally with '@version'.\n"
-            "  Example: uvr install myorg/myrepo/my-pkg@1.0.0"
-        )
