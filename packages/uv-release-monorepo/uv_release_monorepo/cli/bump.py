@@ -176,18 +176,20 @@ def cmd_bump(args: argparse.Namespace) -> None:
         set_version(pyproject, new_version)
         modified_pyprojects.append(str(root / targets[name].path / "pyproject.toml"))
 
-    # Pin internal deps in all workspace packages that depend on bumped packages
-    for name, info in packages.items():
-        dep_versions = {
-            dep: bumped_versions[dep] for dep in info.deps if dep in bumped_versions
-        }
-        if not dep_versions:
-            continue
-        pyproject = root / info.path / "pyproject.toml"
-        pin_dependencies(pyproject, dep_versions)
-        pyproject_str = str(pyproject)
-        if pyproject_str not in modified_pyprojects:
-            modified_pyprojects.append(pyproject_str)
+    # Pin internal deps — skip for post bumps (post releases only affect the
+    # target package, dependents keep their existing pins).
+    if bump_type != "post":
+        for name, info in packages.items():
+            dep_versions = {
+                dep: bumped_versions[dep] for dep in info.deps if dep in bumped_versions
+            }
+            if not dep_versions:
+                continue
+            pyproject = root / info.path / "pyproject.toml"
+            pin_dependencies(pyproject, dep_versions)
+            pyproject_str = str(pyproject)
+            if pyproject_str not in modified_pyprojects:
+                modified_pyprojects.append(pyproject_str)
 
     # Sync lockfile
     subprocess.run(
