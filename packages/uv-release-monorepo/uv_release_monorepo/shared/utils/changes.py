@@ -79,9 +79,10 @@ def detect_changes(
 
         for name, info, baseline in to_check:
             # If the version is clean (no .dev suffix) and its release
-            # tag exists, use the release tag as the baseline instead.
-            # This handles post-release branches where the dev baseline
-            # tag is on a different branch.
+            # tag exists, diff against the release tag instead of the
+            # dev baseline.  This correctly identifies packages as
+            # unchanged when they sit at an already-released version
+            # (e.g. on post-release branches, or after a stable bump).
             effective_baseline = baseline
             if not is_dev(info.version):
                 release_tag = f"{name}/v{info.version}"
