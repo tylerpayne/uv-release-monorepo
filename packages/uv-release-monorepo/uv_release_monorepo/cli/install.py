@@ -24,14 +24,6 @@ def _read_internal_deps(wheel_path: Path, known_packages: set[str]) -> list[str]
 
     Parses ``Requires-Dist`` entries and returns names that appear in
     *known_packages* (canonicalized).
-
-    Args:
-        wheel_path: Path to a ``.whl`` file.
-        known_packages: Set of canonicalized package names that are
-            internal (have GitHub releases in the same repo).
-
-    Returns:
-        List of canonicalized internal dependency names.
     """
     try:
         with ZipFile(wheel_path) as zf:
@@ -49,11 +41,7 @@ def _read_internal_deps(wheel_path: Path, known_packages: set[str]) -> list[str]
 
 
 def _list_repo_packages(gh_repo: str) -> set[str]:
-    """List all package names that have GitHub releases in a repo.
-
-    Scans release tags matching ``{pkg}/v*`` and extracts unique package
-    name prefixes.
-    """
+    """List all package names that have GitHub releases in a repo."""
     import json
     import subprocess
 
@@ -107,9 +95,11 @@ def cmd_install(args: argparse.Namespace) -> None:
         gh_repo = resolve_gh_repo(getattr(args, "repo", None), spec_repo)
 
     # Discover which packages exist in this repo (for transitive resolution)
+    print(f"Discovering packages in {gh_repo}...")
     repo_packages = _list_repo_packages(gh_repo) if gh_repo else set()
 
     # BFS: fetch the target package, then transitively fetch internal deps
+    print(f"\nFetching {package}...")
     to_fetch = [package]
     fetched: set[str] = set()
     wheels: list[str] = []
@@ -123,43 +113,44 @@ def cmd_install(args: argparse.Namespace) -> None:
 
         dist_name = canon.replace("-", "_")
 
-        # Check cache first — skip fetch if we already have a wheel
+        # Check cache first
         cached = sorted(cache_dir.glob(f"{dist_name}-*.whl"))
         if cached:
             whl = cached[-1]
             wheels.append(str(whl))
             print(f"  {whl.name} (cached)")
-            for dep in _read_internal_deps(whl, repo_packages):
+            internal_deps = _read_internal_deps(whl, repo_packages)
+            for dep in internal_deps:
                 if dep not in fetched:
                     to_fetch.append(dep)
             continue
 
         fetched_ok = False
 
-        # Try run artifacts first (if --run-id), then fall back to release
+        # Try run artifacts first (if --run-id)
         if run_id:
+            print(f"  Downloading from run {run_id}...")
             fetch = FetchRunArtifactsCommand(
                 run_id=run_id,
                 dist_name=dist_name,
                 gh_repo=gh_repo,
                 directory=cache,
-                label=f"Fetch {pkg} from run {run_id}",
             )
             result = fetch.execute()
             fetched_ok = result.returncode == 0
 
+        # Fall back to latest GitHub release
         if not fetched_ok:
-            # Fall back to latest GitHub release
             if pkg == package and version:
                 tag = f"{pkg}/v{version}"
             else:
                 tag = find_latest_remote_release_tag(pkg, gh_repo=gh_repo)
             if tag:
+                print(f"  Downloading release {tag}...")
                 fetch = FetchGithubReleaseCommand(
                     tag=tag,
                     dist_name=dist_name,
                     directory=cache,
-                    label=f"Fetch {pkg} from {tag}",
                 )
                 result = fetch.execute()
                 fetched_ok = result.returncode == 0
@@ -175,12 +166,16 @@ def cmd_install(args: argparse.Namespace) -> None:
         if not found:
             continue
 
-        whl = found[-1]  # latest version if multiple
+        whl = found[-1]
         wheels.append(str(whl))
         print(f"  {whl.name}")
 
-        # Resolve transitive internal deps from the wheel metadata
-        for dep in _read_internal_deps(whl, repo_packages):
+        # Resolve transitive internal deps
+        internal_deps = _read_internal_deps(whl, repo_packages)
+        if internal_deps:
+            dep_names = ", ".join(internal_deps)
+            print(f"\nFetching dependencies ({dep_names})...")
+        for dep in internal_deps:
             if dep not in fetched:
                 to_fetch.append(dep)
 
