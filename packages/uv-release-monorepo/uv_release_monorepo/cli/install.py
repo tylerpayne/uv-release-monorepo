@@ -99,7 +99,6 @@ def cmd_install(args: argparse.Namespace) -> None:
     repo_packages = _list_repo_packages(gh_repo) if gh_repo else set()
 
     # BFS: fetch the target package, then transitively fetch internal deps
-    print(f"\nFetching {package}...")
     to_fetch = [package]
     fetched: set[str] = set()
     wheels: list[str] = []
@@ -118,9 +117,8 @@ def cmd_install(args: argparse.Namespace) -> None:
         if cached:
             whl = cached[-1]
             wheels.append(str(whl))
-            print(f"  {whl.name} (cached)")
-            internal_deps = _read_internal_deps(whl, repo_packages)
-            for dep in internal_deps:
+            print(f"  {pkg}: {whl.name} (cached)")
+            for dep in _read_internal_deps(whl, repo_packages):
                 if dep not in fetched:
                     to_fetch.append(dep)
             continue
@@ -129,7 +127,7 @@ def cmd_install(args: argparse.Namespace) -> None:
 
         # Try run artifacts first (if --run-id)
         if run_id:
-            print(f"  Downloading from run {run_id}...")
+            print(f"  {pkg}: downloading from run {run_id}...")
             fetch = FetchRunArtifactsCommand(
                 run_id=run_id,
                 dist_name=dist_name,
@@ -146,7 +144,7 @@ def cmd_install(args: argparse.Namespace) -> None:
             else:
                 tag = find_latest_remote_release_tag(pkg, gh_repo=gh_repo)
             if tag:
-                print(f"  Downloading release {tag}...")
+                print(f"  {pkg}: downloading release {tag}...")
                 fetch = FetchGithubReleaseCommand(
                     tag=tag,
                     dist_name=dist_name,
@@ -156,10 +154,7 @@ def cmd_install(args: argparse.Namespace) -> None:
                 fetched_ok = result.returncode == 0
 
         if not fetched_ok:
-            print(
-                f"  WARNING: Could not fetch '{pkg}', skipping.",
-                file=sys.stderr,
-            )
+            print(f"  {pkg}: not found, skipping", file=sys.stderr)
             continue
 
         found = sorted(cache_dir.glob(f"{dist_name}-*.whl"))
@@ -168,13 +163,10 @@ def cmd_install(args: argparse.Namespace) -> None:
 
         whl = found[-1]
         wheels.append(str(whl))
-        print(f"  {whl.name}")
+        print(f"  {pkg}: {whl.name}")
 
         # Resolve transitive internal deps
         internal_deps = _read_internal_deps(whl, repo_packages)
-        if internal_deps:
-            dep_names = ", ".join(internal_deps)
-            print(f"\nFetching dependencies ({dep_names})...")
         for dep in internal_deps:
             if dep not in fetched:
                 to_fetch.append(dep)
