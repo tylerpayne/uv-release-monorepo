@@ -410,7 +410,9 @@ def cmd_release(args: argparse.Namespace) -> None:
             "linux": "ubuntu",
             "windows": "windows",
         }
-        local_prefix = compatible_prefixes.get(system, "")
+        local_prefix = compatible_prefixes.get(system)
+        if not local_prefix:
+            fatal(f"Unsupported platform for local release: {system}")
         incompatible: list[str] = []
         for pkg, runners in package_runners.items():
             if pkg not in plan.changed:

@@ -89,11 +89,11 @@ def resolve_plan_json(raw: str | None) -> str:
     """Resolve plan JSON from a --plan arg, @file path, or UVR_PLAN env var."""
     import os
 
-    value = raw or os.environ.get("UVR_PLAN", "")
-    if value.startswith("@"):
-        value = Path(value[1:]).read_text()
+    value = raw or os.environ.get("UVR_PLAN")
     if not value:
         fatal("No plan provided. Pass --plan JSON, --plan @file, or set UVR_PLAN.")
+    if value.startswith("@"):
+        value = Path(value[1:]).read_text()
     return value
 
 
