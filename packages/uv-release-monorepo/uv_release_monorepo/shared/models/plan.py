@@ -280,6 +280,7 @@ class FetchRunArtifactsCommand(BaseModel):
     dist_name: str
     directory: str = "dist"
     gh_repo: str = ""
+    all_platforms: bool = False
     label: str = ""
     check: bool = True
 
@@ -317,30 +318,34 @@ class FetchRunArtifactsCommand(BaseModel):
             if not all_wheels:
                 return subprocess.CompletedProcess(args=[], returncode=1)
 
-            # 3. For each dist, prefer universal wheels; fall back to
-            #    platform-compatible.  Evaluate per-dist so a mix of
-            #    universal and platform-specific packages works.
-            compatible = set(sys_tags())
-            to_copy: list[Path] = []
-            by_dist: dict[str, list[Path]] = {}
-            for whl in all_wheels:
-                dist = whl.name.split("-")[0]
-                by_dist.setdefault(dist, []).append(whl)
+            if self.all_platforms:
+                # Release job: keep all wheels for all platforms
+                to_copy = all_wheels
+            else:
+                # Build/install: filter to current platform
+                compatible = set(sys_tags())
+                to_copy: list[Path] = []
+                by_dist: dict[str, list[Path]] = {}
+                for whl in all_wheels:
+                    dist = whl.name.split("-")[0]
+                    by_dist.setdefault(dist, []).append(whl)
 
-            for dist, dist_wheels in by_dist.items():
-                uni = [
-                    w
-                    for w in dist_wheels
-                    if any(t.platform == "any" for t in parse_wheel_filename(w.name)[3])
-                ]
-                if uni:
-                    to_copy.extend(uni)
-                else:
-                    to_copy.extend(
+                for dist, dist_wheels in by_dist.items():
+                    uni = [
                         w
                         for w in dist_wheels
-                        if parse_wheel_filename(w.name)[3] & compatible
-                    )
+                        if any(
+                            t.platform == "any" for t in parse_wheel_filename(w.name)[3]
+                        )
+                    ]
+                    if uni:
+                        to_copy.extend(uni)
+                    else:
+                        to_copy.extend(
+                            w
+                            for w in dist_wheels
+                            if parse_wheel_filename(w.name)[3] & compatible
+                        )
 
             if not to_copy:
                 return subprocess.CompletedProcess(args=[], returncode=1)
@@ -448,6 +453,7 @@ class DownloadWheelsCommand(BaseModel):
     exclude: list[str] = Field(default_factory=list)
     gh_repo: str = ""
     run_id: str = ""
+    all_platforms: bool = False
     directory: str = "deps"
     label: str = ""
     check: bool = True
@@ -474,6 +480,7 @@ class DownloadWheelsCommand(BaseModel):
                 run_id=self.run_id,
                 dist_name="",  # all wheels
                 gh_repo=self.gh_repo,
+                all_platforms=self.all_platforms,
                 directory=str(out),
             )
             fetch.execute()  # best-effort; missing packages fall back to releases

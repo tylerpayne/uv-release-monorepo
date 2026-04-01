@@ -36,6 +36,7 @@ def cmd_download(args: argparse.Namespace) -> None:
             run_id=args.run_id,
             dist_name=dist_name,
             gh_repo=gh_repo,
+            all_platforms=getattr(args, "all_platforms", False),
             directory=output_dir,
             label=f"Fetch wheels from run {args.run_id}",
         )

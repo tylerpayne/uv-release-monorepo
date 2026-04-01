@@ -354,6 +354,12 @@ Run 'uvr <command> --help' for details on a specific command.
         default="dist",
         help="Directory to save wheels into (default: dist/).",
     )
+    download_parser.add_argument(
+        "--all-platforms",
+        action="store_true",
+        default=False,
+        help="Download wheels for all platforms, not just the current one.",
+    )
     download_parser.set_defaults(func=cmd_download)
 
     # clean

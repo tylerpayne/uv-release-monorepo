@@ -77,6 +77,7 @@ def cmd_download(args: argparse.Namespace) -> None:
     cmd = DownloadWheelsCommand(
         packages=packages,
         run_id=run_id,
+        all_platforms=True,
         directory="dist",
         label="Download release wheels",
     )
