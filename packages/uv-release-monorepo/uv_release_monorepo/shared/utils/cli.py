@@ -25,14 +25,15 @@ def diff_stat(
     baseline_tag: str | None,
     pkg_path: str,
     fallback_tag: str | None = None,
-) -> tuple[str, str]:
-    """Return (changes_str, commits_str) for a package since its baseline.
+) -> tuple[str, str, str]:
+    """Return (changes_str, commits_str, diff_tag) for a package since its baseline.
 
     If baseline_tag doesn't resolve, falls back to fallback_tag.
+    The third element is the tag actually used for the diff.
     """
     tag = baseline_tag or fallback_tag
     if not tag:
-        return ("-", "-")
+        return ("-", "-", "-")
 
     # Check if the tag exists
     check = subprocess.run(
@@ -42,7 +43,7 @@ def diff_stat(
     if check.returncode != 0:
         tag = fallback_tag
         if not tag:
-            return ("-", "-")
+            return ("-", "-", "-")
 
     result = subprocess.run(
         ["git", "diff", "--shortstat", f"{tag}..HEAD", "--", pkg_path],
@@ -66,7 +67,7 @@ def diff_stat(
     )
     commits = result.stdout.strip() if result.returncode == 0 else "-"
 
-    return changes, commits
+    return changes, commits, tag or "-"
 
 
 def read_matrix(root: Path) -> dict[str, list[list[str]]]:

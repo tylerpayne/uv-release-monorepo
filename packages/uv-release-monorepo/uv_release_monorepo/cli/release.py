@@ -85,13 +85,12 @@ def _print_packages(plan: ReleasePlan) -> None:
     if not all_names:
         return
 
-    # Build rows: (status, name, current, will_release, previous, changes, commits)
     rows: list[tuple[str, ...]] = []
     for name in all_names:
         if name in plan.changed:
             pkg = plan.changed[name]
             baseline = f"{name}/v{pkg.current_version}-base"
-            changes, commits = diff_stat(
+            changes, commits, diff_tag = diff_stat(
                 baseline, pkg.path, fallback_tag=pkg.last_release_tag
             )
             prev = (
@@ -104,6 +103,7 @@ def _print_packages(plan: ReleasePlan) -> None:
                     pkg.current_version,
                     pkg.release_version,
                     prev,
+                    diff_tag,
                     changes,
                     commits,
                 )
@@ -118,6 +118,7 @@ def _print_packages(plan: ReleasePlan) -> None:
                     "-",
                     "-",
                     "-",
+                    "-",
                 )
             )
 
@@ -127,6 +128,7 @@ def _print_packages(plan: ReleasePlan) -> None:
         "CURRENT",
         "WILL RELEASE",
         "PREVIOUS",
+        "DIFF FROM",
         "CHANGES",
         "COMMITS",
     )
