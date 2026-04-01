@@ -6,6 +6,7 @@ import argparse
 
 from ..shared.utils.cli import __version__
 from .bump import cmd_bump
+from .clean import cmd_clean
 from .init import cmd_init_dispatch, cmd_validate
 from .install import cmd_install
 from .release import cmd_release
@@ -28,6 +29,7 @@ Commands:
   bump             Bump package versions in the workspace
   install          Install a package from GitHub releases (org/repo/pkg)
   download         Download wheels from GitHub releases or CI artifacts
+  clean            Remove uvr caches and ephemeral files
   workflow init    Scaffold the GitHub Actions workflow
   workflow validate  Validate an existing release.yml
   workflow runners Manage per-package build runners
@@ -353,6 +355,10 @@ Run 'uvr <command> --help' for details on a specific command.
         help="Directory to save wheels into (default: dist/).",
     )
     download_parser.set_defaults(func=cmd_wheels)
+
+    # clean
+    clean_parser = subparsers.add_parser("clean", help=_H)
+    clean_parser.set_defaults(func=cmd_clean)
 
     # -- workflow (init, validate, runners) ---------------------------------
 
