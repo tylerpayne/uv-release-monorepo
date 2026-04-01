@@ -91,7 +91,7 @@ class TestCmdInstall:
 
         install_calls = [c for c in calls if c[:3] == ["uv", "pip", "install"]]
         assert len(install_calls) == 1
-        assert len(install_calls[0]) == 7  # uv pip install --no-project --find-links <tmp> <beta.whl>
+        assert len(install_calls[0]) == 6  # uv pip install --find-links <tmp> <beta.whl>
 
     def test_fails_for_bare_package(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
