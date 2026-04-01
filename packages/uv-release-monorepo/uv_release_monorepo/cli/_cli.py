@@ -309,7 +309,12 @@ Run 'uvr <command> --help' for details on a specific command.
     install_parser = subparsers.add_parser("install", help=_H)
     install_parser.add_argument(
         "package",
-        help="Install spec: ORG/REPO/PKG[@VERSION]",
+        help="Package name, optionally with version: PKG[@VERSION]",
+    )
+    install_parser.add_argument(
+        "--repo",
+        default=None,
+        help="GitHub repository (ORG/REPO). Inferred from cwd if omitted.",
     )
     install_parser.set_defaults(func=cmd_install)
 
@@ -319,7 +324,12 @@ Run 'uvr <command> --help' for details on a specific command.
         "package",
         nargs="?",
         default=None,
-        help="Install spec: ORG/REPO/PKG[@VERSION]. Optional with --run-id.",
+        help="Package name, optionally with version: PKG[@VERSION]. Optional with --run-id.",
+    )
+    download_parser.add_argument(
+        "--repo",
+        default=None,
+        help="GitHub repository (ORG/REPO). Inferred from cwd if omitted.",
     )
     download_parser.add_argument(
         "--release-tag",

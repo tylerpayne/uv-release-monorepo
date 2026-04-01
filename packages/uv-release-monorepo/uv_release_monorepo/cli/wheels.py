@@ -7,7 +7,7 @@ from pathlib import Path
 
 from packaging.utils import canonicalize_name
 
-from ..shared.utils.cli import fatal, parse_install_spec
+from ..shared.utils.cli import fatal, parse_install_spec, resolve_gh_repo
 from ..shared.utils.tags import find_latest_remote_release_tag
 
 
@@ -36,8 +36,9 @@ def cmd_wheels(args: argparse.Namespace) -> None:
         )
     else:
         if not args.package:
-            fatal("Package spec required (e.g. ORG/REPO/PKG[@VERSION]).")
-        gh_repo, package, version = parse_install_spec(args.package)
+            fatal("Package name required (e.g. my-pkg or my-pkg@1.0.0).")
+        spec_repo, package, version = parse_install_spec(args.package)
+        gh_repo = resolve_gh_repo(getattr(args, "repo", None), spec_repo)
         dist_name = canonicalize_name(package).replace("-", "_")
 
         if args.release_tag:

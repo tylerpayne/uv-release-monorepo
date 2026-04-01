@@ -176,13 +176,17 @@ class TestCmdInstallRemote:
 class TestParseInstallSpec:
     """Tests for parse_install_spec()."""
 
-    def test_bare_package_raises(self) -> None:
-        with pytest.raises(SystemExit):
-            parse_install_spec("pkg-alpha")
+    def test_bare_package(self) -> None:
+        gh_repo, package, version = parse_install_spec("pkg-alpha")
+        assert gh_repo is None
+        assert package == "pkg-alpha"
+        assert version is None
 
-    def test_bare_package_with_version_raises(self) -> None:
-        with pytest.raises(SystemExit):
-            parse_install_spec("pkg-alpha@1.2.3")
+    def test_bare_package_with_version(self) -> None:
+        gh_repo, package, version = parse_install_spec("pkg-alpha@1.2.3")
+        assert gh_repo is None
+        assert package == "pkg-alpha"
+        assert version == "1.2.3"
 
     def test_remote_package(self) -> None:
         gh_repo, package, version = parse_install_spec("acme/my-monorepo/pkg-alpha")

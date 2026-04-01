@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ..shared.utils.cli import fatal, parse_install_spec
+from ..shared.utils.cli import fatal, parse_install_spec, resolve_gh_repo
 from ..shared.utils.tags import find_latest_remote_release_tag
 
 
@@ -18,7 +18,8 @@ def cmd_install(args: argparse.Namespace) -> None:
 
     from ..shared.models import FetchGithubReleaseCommand
 
-    gh_repo, package, version = parse_install_spec(args.package)
+    spec_repo, package, version = parse_install_spec(args.package)
+    gh_repo = resolve_gh_repo(getattr(args, "repo", None), spec_repo)
 
     # For now, install only the requested package; pip resolves external deps
     order = [package]

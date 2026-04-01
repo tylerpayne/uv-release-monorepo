@@ -97,10 +97,12 @@ def resolve_plan_json(raw: str | None) -> str:
     return value
 
 
-def parse_install_spec(spec: str) -> tuple[str, str, str | None]:
+def parse_install_spec(spec: str) -> tuple[str | None, str, str | None]:
     """Parse an install spec into (gh_repo, package, version).
 
-    Required form: ``org/repo/package[@version]``
+    Accepted forms:
+    - ``package[@version]`` — repo inferred from cwd or ``--repo``
+    - ``org/repo/package[@version]`` — legacy form, still supported
     """
     version: str | None = None
     if "@" in spec:
@@ -110,12 +112,56 @@ def parse_install_spec(spec: str) -> tuple[str, str, str | None]:
     if len(parts) == 3:
         org, repo, package = parts
         return f"{org}/{repo}", package, version
-    else:
+    if len(parts) == 1:
+        return None, spec, version
+    fatal(
+        f"Invalid install spec '{spec}'. "
+        "Expected 'package[@version]' or 'org/repo/package[@version]'.\n"
+        "  Use --repo ORG/REPO to specify the repository."
+    )
+
+
+def infer_gh_repo() -> str | None:
+    """Infer the GitHub ORG/REPO from the git remote origin URL.
+
+    Returns None if not in a git repo or the remote can't be parsed.
+    """
+    import subprocess as _sp
+
+    result = _sp.run(
+        ["git", "remote", "get-url", "origin"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    import re
+
+    url = result.stdout.strip()
+    m = re.search(r"github\.com[:/](.+?)(?:\.git)?$", url)
+    return m.group(1) if m else None
+
+
+def resolve_gh_repo(cli_repo: str | None, spec_repo: str | None) -> str:
+    """Resolve the GitHub repo from CLI --repo, install spec, or git remote.
+
+    Args:
+        cli_repo: Value of --repo flag (highest priority).
+        spec_repo: Repo parsed from org/repo/pkg install spec.
+
+    Returns:
+        The resolved ORG/REPO string.
+
+    Raises:
+        SystemExit: If no repo can be determined.
+    """
+    repo = cli_repo or spec_repo or infer_gh_repo()
+    if not repo:
         fatal(
-            f"Invalid install spec '{spec}'. "
-            "Expected 'org/repo/package', optionally with '@version'.\n"
-            "  Example: uvr install myorg/myrepo/my-pkg@1.0.0"
+            "Cannot determine GitHub repository. Use --repo ORG/REPO "
+            "or run from inside a git repo with a GitHub origin."
         )
+    return repo
 
 
 def discover_packages(root: Path | None = None) -> dict[str, tuple[str, list[str]]]:
