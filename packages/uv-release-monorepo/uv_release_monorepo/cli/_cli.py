@@ -5,15 +5,15 @@ from __future__ import annotations
 import argparse
 
 from ..shared.utils.cli import __version__
+from .build import cmd_build
 from .bump import cmd_bump
 from .clean import cmd_clean
-from .init import cmd_init_dispatch, cmd_validate
+from .download import cmd_download
 from .install import cmd_install
 from .release import cmd_release
-from .runners import cmd_runners
 from .skill import cmd_skill_dispatch
 from .status import cmd_status
-from .download import cmd_download
+from .workflow import cmd_init_dispatch, cmd_runners, cmd_validate
 
 
 def cli() -> None:
@@ -25,6 +25,7 @@ Lazy monorepo wheel builder — only rebuilds what changed.
 
 Commands:
   release          Plan and execute a release (locally or via CI)
+  build            Build changed packages locally (layered dependency order)
   status           Preview the release plan (allows dirty working tree)
   bump             Bump package versions in the workspace
   install          Install a package from GitHub releases (org/repo/pkg)
@@ -192,6 +193,30 @@ Run 'uvr <command> --help' for details on a specific command.
         help="Set release notes for a package. NOTES is inline text or @file.",
     )
     release_parser.set_defaults(func=cmd_release)
+
+    # build
+    build_parser = subparsers.add_parser(
+        "build",
+        help=_H,
+        description=(
+            "Build changed workspace packages locally using layered "
+            "dependency ordering. Skips versioning, tagging, and publishing."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    build_parser.add_argument(
+        "--rebuild-all",
+        action="store_true",
+        help="Build all packages, not just changed ones.",
+    )
+    build_parser.add_argument(
+        "--python",
+        default="3.12",
+        metavar="VER",
+        dest="python_version",
+        help="Python version for build isolation (default: %(default)s).",
+    )
+    build_parser.set_defaults(func=cmd_build)
 
     # status
     status_parser = subparsers.add_parser("status", help=_H)
@@ -492,11 +517,11 @@ Run 'uvr <command> --help' for details on a specific command.
     )
 
     from .jobs import (
-        cmd_validate_plan,
-        cmd_build,
+        cmd_build as cmd_job_build,
+        cmd_bump as cmd_job_bump,
         cmd_download as cmd_job_download,
         cmd_release as cmd_job_release,
-        cmd_bump as cmd_job_bump,
+        cmd_validate_plan,
     )
 
     vp_parser = jobs_sub.add_parser(
@@ -509,14 +534,14 @@ Run 'uvr <command> --help' for details on a specific command.
     )
     vp_parser.set_defaults(func=cmd_validate_plan)
 
-    build_parser = jobs_sub.add_parser("build", help="Build packages for a runner.")
-    build_parser.add_argument(
+    build_job_parser = jobs_sub.add_parser("build", help="Build packages for a runner.")
+    build_job_parser.add_argument(
         "--plan",
         default=None,
         help="Plan JSON, @file path, or omit to use UVR_PLAN env var.",
     )
-    build_parser.add_argument("--runner", required=True)
-    build_parser.set_defaults(func=cmd_build)
+    build_job_parser.add_argument("--runner", required=True)
+    build_job_parser.set_defaults(func=cmd_job_build)
 
     download_job_parser = jobs_sub.add_parser(
         "download", help="Download wheels for changed packages."

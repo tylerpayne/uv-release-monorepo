@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ._args import CommandArgs
 from ..shared.utils.cli import fatal
 from ..shared.utils.dependencies import pin_dependencies, set_version
 from ..shared.utils.versions import (
@@ -24,6 +25,17 @@ from ..shared.utils.versions import (
     strip_dev,
     validate_bump,
 )
+
+
+class BumpArgs(CommandArgs):
+    """Typed arguments for ``uvr bump``."""
+
+    bump_all: bool = False
+    changed: bool = False
+    packages: list[str] | None = None
+    force: bool = False
+    bump_type: str | None = None
+
 
 # Map CLI names (matching uv's --bump) to PEP 440 short pre-release kinds.
 _PRE_KIND_MAP = {"alpha": "a", "beta": "b", "rc": "rc"}
@@ -100,6 +112,8 @@ def cmd_bump(args: argparse.Namespace) -> None:
     """Bump package versions in the workspace."""
     from ..shared.utils.packages import find_packages
 
+    parsed = BumpArgs.from_namespace(args)
+
     # Suppress discovery output
     import io
 
@@ -111,11 +125,9 @@ def cmd_bump(args: argparse.Namespace) -> None:
         sys.stdout = old_stdout
 
     # Resolve scope
-    bump_all = getattr(args, "bump_all", False)
-    changed = getattr(args, "changed", False)
-    package_names: list[str] | None = getattr(args, "packages", None)
+    package_names: list[str] | None = parsed.packages
 
-    if bump_all:
+    if parsed.bump_all:
         targets = packages
     elif package_names:
         targets = {}
@@ -123,7 +135,7 @@ def cmd_bump(args: argparse.Namespace) -> None:
             if name not in packages:
                 fatal(f"Unknown package: {name!r}")
             targets[name] = packages[name]
-    elif changed:
+    elif parsed.changed:
         targets = _resolve_changed(packages)
     else:
         fatal("Specify --all, --changed, or --package PKG.")
@@ -134,8 +146,7 @@ def cmd_bump(args: argparse.Namespace) -> None:
 
     # Guard: when targeting specific packages, fail if other packages also
     # have unreleased changes (unless --force is passed).
-    force = getattr(args, "force", False)
-    if package_names and not force:
+    if package_names and not parsed.force:
         all_changed = _resolve_changed(packages)
         missed = sorted(set(all_changed) - set(targets))
         if missed:
@@ -146,7 +157,7 @@ def cmd_bump(args: argparse.Namespace) -> None:
             )
 
     # Determine bump type
-    bump_type: str = getattr(args, "bump_type", None) or ""
+    bump_type: str = parsed.bump_type or ""
     if not bump_type:
         fatal(
             "Specify a bump type: --minor, --major, --alpha, --beta, --rc, --post, --dev, or --stable."

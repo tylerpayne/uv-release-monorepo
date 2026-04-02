@@ -7,20 +7,47 @@ import json
 import sys
 from pathlib import Path
 
+from pydantic import Field
+
+from ._args import CommandArgs
 from ..shared.models import ReleasePlan
 from ..shared.utils.cli import __version__
 from ..shared.utils.cli import fatal, read_matrix, resolve_plan_json
+
+
+class ReleaseArgs(CommandArgs):
+    """Typed arguments for ``uvr release``."""
+
+    where: str = "ci"
+    dry_run: bool = False
+    plan: str | None = None
+    rebuild_all: bool = False
+    allow_dirty: bool = False
+    python_version: str = "3.12"
+    release_type: str | None = None
+    bump: str | None = None
+    yes: bool = False
+    skip: list[str] | None = None
+    skip_to: str | None = None
+    reuse_run: str | None = None
+    reuse_release: bool = False
+    workflow_dir: str = ".github/workflows"
+    no_push: bool = False
+    json_output: bool = Field(False, alias="json")
+    release_notes: list[list[str]] | None = None
+    pip_args: list[str] = []
+
 
 # Executor pipeline phases — the order ReleaseExecutor.run() executes them.
 # These are skip-condition names (what appears in plan.skip) and YAML job keys.
 _PIPELINE = ("uvr-build", "uvr-release", "uvr-bump")
 
 
-def _compute_skipped(args: argparse.Namespace) -> set[str]:
+def _compute_skipped(parsed: ReleaseArgs) -> set[str]:
     """Merge --skip and --skip-to into a single set of job names to skip."""
-    skipped: set[str] = set(args.skip or [])
+    skipped: set[str] = set(parsed.skip or [])
 
-    skip_to = getattr(args, "skip_to", None)
+    skip_to = parsed.skip_to
     if skip_to:
         if skip_to not in _PIPELINE:
             fatal(f"--skip-to requires a pipeline phase: {', '.join(_PIPELINE)}")
@@ -243,14 +270,14 @@ def cmd_release(args: argparse.Namespace) -> None:
 
     import subprocess
 
-    where = getattr(args, "where", "ci")
+    parsed = ReleaseArgs.from_namespace(args)
+    where = parsed.where
 
     # --plan: execute a pre-computed plan locally
-    raw_plan = getattr(args, "plan", None)
-    if raw_plan:
+    if parsed.plan:
         from ..shared.hooks import load_hook
 
-        plan_json = resolve_plan_json(raw_plan)
+        plan_json = resolve_plan_json(parsed.plan)
         plan = ReleasePlan.model_validate_json(plan_json)
         hook = load_hook(Path.cwd())
         _cli.ReleaseExecutor(plan, hook).run()
@@ -258,8 +285,8 @@ def cmd_release(args: argparse.Namespace) -> None:
 
     # For CI mode, ensure clean worktree and workflow exists
     root = Path.cwd()
-    json_only = getattr(args, "json", False)
-    allow_dirty = getattr(args, "allow_dirty", False)
+    json_only = parsed.json_output
+    allow_dirty = parsed.allow_dirty
     if where == "ci" and not json_only:
         result = subprocess.run(
             ["git", "status", "--porcelain"], capture_output=True, text=True
@@ -304,14 +331,14 @@ def cmd_release(args: argparse.Namespace) -> None:
                     "  Use --allow-dirty to proceed anyway."
                 )
 
-        workflow_path = root / args.workflow_dir / "release.yml"
+        workflow_path = root / parsed.workflow_dir / "release.yml"
         if not workflow_path.exists():
             fatal("No release workflow found. Run `uvr workflow init` first.")
 
     # Compute and validate skip/reuse
-    skipped = _compute_skipped(args)
-    reuse_run: str | None = getattr(args, "reuse_run", None)
-    reuse_release: bool = getattr(args, "reuse_release", False)
+    skipped = _compute_skipped(parsed)
+    reuse_run = parsed.reuse_run
+    reuse_release = parsed.reuse_release
     _validate_skip_reuse(skipped, reuse_run, reuse_release)
 
     # Read stored matrix from pyproject.toml
@@ -336,7 +363,7 @@ def cmd_release(args: argparse.Namespace) -> None:
     try:
         ctx = build_context(progress=progress)
 
-        dry_run = getattr(args, "dry_run", False) or json_only
+        dry_run = parsed.dry_run or json_only
 
         # Check for version conflicts (dev version of already-released version)
         from ..shared.utils.versions import find_version_conflicts
@@ -349,7 +376,7 @@ def cmd_release(args: argparse.Namespace) -> None:
             fatal(f"Version conflicts detected:\n{lines}")
 
         # Apply --bump if provided (bump all packages before planning)
-        bump_type = getattr(args, "bump", None)
+        bump_type = parsed.bump
         if bump_type:
             from .bump import compute_bumped_version
             from ..shared.utils.versions import strip_dev
@@ -373,7 +400,7 @@ def cmd_release(args: argparse.Namespace) -> None:
 
         # Parse --release-notes before planning so notes are baked into commands
         user_notes: dict[str, str] = {}
-        for pkg_name, notes_value in getattr(args, "release_notes", None) or []:
+        for pkg_name, notes_value in parsed.release_notes or []:
             if notes_value.startswith("@"):
                 notes_path = Path(notes_value[1:])
                 if not notes_path.exists():
@@ -383,12 +410,12 @@ def cmd_release(args: argparse.Namespace) -> None:
                 user_notes[pkg_name] = notes_value
 
         config = _cli.PlanConfig(
-            rebuild_all=args.rebuild_all,
+            rebuild_all=parsed.rebuild_all,
             matrix=package_runners,
             uvr_version=__version__,
-            python_version=getattr(args, "python_version", "3.12"),
+            python_version=parsed.python_version,
             ci_publish=(where == "ci"),
-            dev_release=getattr(args, "release_type", None) == "dev",
+            dev_release=parsed.release_type == "dev",
             dry_run=dry_run,
             release_notes=user_notes,
         )
@@ -404,7 +431,7 @@ def cmd_release(args: argparse.Namespace) -> None:
     progress.finish(release_count=len(plan.changed))
 
     if not plan.changed:
-        if getattr(args, "json", False):
+        if json_only:
             print(plan.model_dump_json(indent=2))
         else:
             _print_packages(plan)
@@ -454,12 +481,12 @@ def cmd_release(args: argparse.Namespace) -> None:
         plan = hook.post_plan(plan)
 
     # --json: print only plan JSON to stdout and exit
-    if getattr(args, "json", False):
+    if json_only:
         print(plan.model_dump_json(indent=2))
         return
 
     # Dry run: print summary and exit
-    if getattr(args, "dry_run", False):
+    if parsed.dry_run:
         _print_plan(plan, skipped)
         return
 
@@ -529,7 +556,7 @@ def cmd_release(args: argparse.Namespace) -> None:
         f"plan={plan_json}",
     ]
 
-    if not getattr(args, "yes", False):
+    if not parsed.yes:
         print()
         print("Dispatch release")
         print("----------------")

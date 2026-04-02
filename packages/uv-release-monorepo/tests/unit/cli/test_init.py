@@ -51,7 +51,8 @@ def _init_and_get_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     import subprocess as _sp
 
     from uv_release_monorepo.shared.utils.cli import __version__
-    from uv_release_monorepo.cli.init import _load_template, _write_base
+    from uv_release_monorepo.cli.workflow.init import _load_template
+    from uv_release_monorepo.cli._upgrade import write_base
 
     _write_workspace_repo(tmp_path, ["pkg-alpha"])
     monkeypatch.chdir(tmp_path)
@@ -70,7 +71,7 @@ def _init_and_get_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     wf_dir.mkdir(parents=True, exist_ok=True)
     wf = wf_dir / "release.yml"
     wf.write_text(template_text)
-    _write_base(tmp_path, ".github/workflows/release.yml", template_text)
+    write_base(tmp_path, ".github/workflows/release.yml", template_text)
 
     # Store workflow_version in pyproject.toml
     pyproject = tmp_path / "pyproject.toml"

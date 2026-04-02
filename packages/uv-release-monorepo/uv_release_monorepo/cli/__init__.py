@@ -8,12 +8,11 @@ from ..shared.executor import ReleaseExecutor
 from ..shared.utils.cli import __version__
 from ..shared.utils.yaml import MISSING, yaml_delete, yaml_get, yaml_set
 from ._cli import cli
-from .init import cmd_init, cmd_upgrade, cmd_validate
-from .install import cmd_install
 from .bump import cmd_bump
-from .release import cmd_release
-from .runners import cmd_runners
 from .download import cmd_download
+from .install import cmd_install
+from .release import cmd_release
+from .workflow import cmd_init, cmd_runners, cmd_upgrade, cmd_validate
 
 __all__ = [
     "MISSING",

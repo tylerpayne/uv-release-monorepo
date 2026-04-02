@@ -10,10 +10,10 @@ from unittest.mock import patch
 import pytest
 
 from uv_release_monorepo.cli import cli
-from uv_release_monorepo.cli.skill import cmd_skill_init
-from uv_release_monorepo.cli.skill import (
+from uv_release_monorepo.cli.skill.init import (
     _SKILL_FILES,
     _load_skill_file,
+    cmd_skill_init,
 )
 
 
