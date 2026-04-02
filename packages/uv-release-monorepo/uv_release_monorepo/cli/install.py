@@ -10,6 +10,7 @@ from zipfile import ZipFile
 from packaging.metadata import Metadata
 from packaging.utils import canonicalize_name
 
+from ._args import CommandArgs
 from ..shared.utils.cli import (
     fatal,
     infer_gh_repo,
@@ -17,6 +18,15 @@ from ..shared.utils.cli import (
     resolve_gh_repo,
 )
 from ..shared.utils.tags import find_latest_remote_release_tag
+
+
+class InstallArgs(CommandArgs):
+    """Typed arguments for ``uvr install``."""
+
+    packages: list[str] | None = None
+    run_id: str | None = None
+    repo: str | None = None
+    pip_args: list[str] = []
 
 
 def _read_internal_deps(wheel_path: Path, known_packages: set[str]) -> list[str]:
@@ -83,8 +93,10 @@ def cmd_install(args: argparse.Namespace) -> None:
 
     from ..shared.models import FetchGithubReleaseCommand
 
+    parsed = InstallArgs.from_namespace(args)
+
     # Parse all package specs
-    package_specs = getattr(args, "packages", []) or []
+    package_specs = parsed.packages or []
     pinned_versions: dict[str, str] = {}  # canon name → version
     root_packages: list[str] = []
     spec_repo: str | None = None
@@ -97,7 +109,7 @@ def cmd_install(args: argparse.Namespace) -> None:
         if ver:
             pinned_versions[canonicalize_name(pkg)] = ver
 
-    run_id: str | None = getattr(args, "run_id", None)
+    run_id: str | None = parsed.run_id
 
     if not root_packages and not run_id:
         fatal("Specify at least one package, or use --run-id to install all.")
@@ -107,9 +119,9 @@ def cmd_install(args: argparse.Namespace) -> None:
     cache = str(cache_dir)
 
     if run_id:
-        gh_repo = getattr(args, "repo", None) or spec_repo or infer_gh_repo() or ""
+        gh_repo = parsed.repo or spec_repo or infer_gh_repo() or ""
     else:
-        gh_repo = resolve_gh_repo(getattr(args, "repo", None), spec_repo)
+        gh_repo = resolve_gh_repo(parsed.repo, spec_repo)
 
     # If --run-id, download all wheels from the run upfront into cache
     if run_id:
@@ -142,7 +154,7 @@ def cmd_install(args: argparse.Namespace) -> None:
             for w in wheels:
                 print(f"  {Path(w).name}")
 
-            extra = getattr(args, "pip_args", [])
+            extra = list(parsed.pip_args)
             if extra and extra[0] == "--":
                 extra = extra[1:]
 
@@ -226,7 +238,7 @@ def cmd_install(args: argparse.Namespace) -> None:
         names = ", ".join(root_packages)
         fatal(f"No wheels found for: {names}")
 
-    extra = getattr(args, "pip_args", [])
+    extra = list(parsed.pip_args)
     if extra and extra[0] == "--":
         extra = extra[1:]
 

@@ -1,9 +1,5 @@
 # Troubleshooting
 
-## `uvr release --dry-run` shows unexpected packages
-
-A package may have been modified without a version bump. Check `git log --oneline -- packages/<name>` since the last release tag to confirm the changes are real. If a package changed only in dev files (tests, docs), consider whether it truly needs a release.
-
 ## Pin updates block the release
 
 If `uvr release` says pins were updated, it exits without dispatching. Commit the pin changes and re-run:
@@ -102,7 +98,7 @@ Custom jobs must check the plan's skip list in their `if` condition for this to 
 
 ## Main moved ahead of the release branch
 
-If other work was merged to main between when you branched and when the release bumpd, you'll see conflicts when merging back.
+If other work was merged to main between when you branched and when the release completed, you'll see conflicts when merging back.
 
 **What happened:** The bump job bumps versions and pins deps on the release branch. Meanwhile, main may have new commits that touch pyproject.toml, uv.lock, or the same source files.
 
@@ -123,7 +119,7 @@ git commit
 git push
 ```
 
-After merging, verify with `uvr release --dry-run` — it should show no changed packages. If it does, the version bumps from the bump phase didn't land cleanly. Check pyproject.toml versions match what the bump phase set.
+After merging, verify the version bumps from the bump job landed cleanly. Check pyproject.toml versions match what the bump job set.
 
 **If the merge is too messy**, an alternative is to skip the merge and cherry-pick only your pre-release commits onto main, then let the next release pick up the changes naturally.
 

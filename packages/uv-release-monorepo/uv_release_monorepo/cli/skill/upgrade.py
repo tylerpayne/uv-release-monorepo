@@ -1,136 +1,28 @@
-"""The ``uvr skill init`` and ``uvr skill init --upgrade`` commands."""
+"""The ``uvr skill init --upgrade`` command."""
 
 from __future__ import annotations
 
 import argparse
 import subprocess
 import tempfile
-from importlib.resources import files
 from pathlib import Path
 
-from ..shared.utils.toml import get_path, read_pyproject, write_pyproject
-from ..shared.utils.cli import fatal
-from .init import _editor_cmd, _read_base, _resolve_editor, _write_base
+from ...shared.utils.cli import fatal
+from ...shared.utils.toml import get_path, read_pyproject
+from .._args import CommandArgs
+from .._upgrade import editor_cmd, read_base, resolve_editor, write_base
+from .init import _SKILL_FILES, _load_skill_file, _store_skill_version
 
 
-_SKILL_FILES: dict[str, list[str]] = {
-    "release": [
-        "SKILL.md",
-        "references/cmd-init.md",
-        "references/cmd-install.md",
-        "references/cmd-release.md",
-        "references/cmd-runners.md",
-        "references/cmd-skill-init.md",
-        "references/cmd-status.md",
-        "references/cmd-validate.md",
-        "references/custom-jobs.md",
-        "references/dev-releases.md",
-        "references/pipeline.md",
-        "references/post-releases.md",
-        "references/pre-releases.md",
-        "references/release-plan.md",
-        "references/troubleshooting.md",
-    ],
-}
+class SkillUpgradeArgs(CommandArgs):
+    """Typed arguments for ``uvr skill init --upgrade``."""
 
-_SKILLS_TEMPLATE_DIR = files("uv_release_monorepo").joinpath("templates/skills")
-
-
-def _load_skill_file(skill_name: str, rel_path: str) -> str:
-    """Load a skill file from the bundled template directory."""
-    base = Path(str(_SKILLS_TEMPLATE_DIR))
-    path = base / skill_name / rel_path
-    return path.read_text(encoding="utf-8")
-
-
-def _store_skill_version(root: Path) -> None:
-    """Store the current uvr package version as skill_version in [tool.uvr.config]."""
-    from ..shared.utils.cli import __version__
-
-    pyproject = root / "pyproject.toml"
-    if not pyproject.exists():
-        return
-    doc = read_pyproject(pyproject)
-    tool = doc.setdefault("tool", {})
-    uvr = tool.setdefault("uvr", {})
-    config = uvr.setdefault("config", {})
-    config["skill_version"] = __version__
-    # Remove legacy key if present
-    config.pop("skill_init_commit", None)
-    write_pyproject(pyproject, doc)
-
-
-def cmd_skill_dispatch(args: argparse.Namespace) -> None:
-    """Route to cmd_skill_init or cmd_skill_upgrade based on --upgrade flag."""
-    if getattr(args, "upgrade", False):
-        cmd_skill_upgrade(args)
-    else:
-        cmd_skill_init(args)
-
-
-def cmd_skill_init(args: argparse.Namespace) -> None:
-    """Copy bundled Claude Code skills into the current project."""
-    from ..shared.utils.cli import __version__
-
-    root = Path.cwd()
-    base_only = getattr(args, "base_only", False)
-
-    if base_only:
-        # --base-only: write merge bases without touching actual files
-        count = 0
-        for skill_name in _SKILL_FILES:
-            for rel_path in _SKILL_FILES[skill_name]:
-                rel_dest = f".claude/skills/{skill_name}/{rel_path}"
-                _write_base(root, rel_dest, _load_skill_file(skill_name, rel_path))
-                count += 1
-        print(f"OK: Wrote {count} merge bases for skills (uvr v{__version__})")
-        return
-
-    if not (root / ".git").exists():
-        fatal("Not a git repository. Run from the repo root.")
-
-    dest_base = root / ".claude" / "skills"
-    force = getattr(args, "force", False)
-
-    written = 0
-    skipped = 0
-    for skill_name in _SKILL_FILES:
-        for rel_path in _SKILL_FILES[skill_name]:
-            dest = dest_base / skill_name / rel_path
-            if dest.exists() and not force:
-                print(f"  skip  {skill_name}/{rel_path} (exists)")
-                skipped += 1
-                continue
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            content = _load_skill_file(skill_name, rel_path)
-            dest.write_text(content, encoding="utf-8")
-            # Save merge base
-            rel_dest = f".claude/skills/{skill_name}/{rel_path}"
-            _write_base(root, rel_dest, content)
-            print(f"  write {skill_name}/{rel_path}")
-            written += 1
-
-    print()
-    if written:
-        _store_skill_version(root)
-        from ..shared.utils.cli import __version__
-
-        print(f"OK: Wrote {written} file(s) to .claude/skills/ (uvr v{__version__})")
-    if skipped:
-        print(f"  Skipped {skipped} existing file(s). Use --force to overwrite.")
-    if not written and not skipped:
-        print("Nothing to do.")
-        return
-
-    print()
-    print("Next steps:")
-    print("  1. Review .claude/skills/release/SKILL.md and tailor to your project")
-    print("  2. Commit the skill files")
-    print("  3. Use /release in Claude Code to start a release")
+    editor: str | None = None
 
 
 def cmd_skill_upgrade(args: argparse.Namespace) -> None:
     """Upgrade skill files using three-way merge from bundled templates."""
+    parsed = SkillUpgradeArgs.from_namespace(args)
     root = Path.cwd()
 
     if not (root / ".git").exists():
@@ -159,7 +51,7 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
     # Check if any existing skill files are missing merge bases
     any_missing_base = any(
         (dest_base / name / rel_path).exists()
-        and not _read_base(root, f".claude/skills/{name}/{rel_path}")
+        and not read_base(root, f".claude/skills/{name}/{rel_path}")
         for name in _SKILL_FILES
         for rel_path in _SKILL_FILES[name]
     )
@@ -189,10 +81,10 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
             if run_it == "y":
                 result = subprocess.run(uvx_cmd, shell=True)
                 if result.returncode == 0:
-                    # Re-check — if bases now exist, three-way merge will be used
+                    # Re-check -- if bases now exist, three-way merge will be used
                     any_still_missing = any(
                         (dest_base / name / rel_path).exists()
-                        and not _read_base(root, f".claude/skills/{name}/{rel_path}")
+                        and not read_base(root, f".claude/skills/{name}/{rel_path}")
                         for name in _SKILL_FILES
                         for rel_path in _SKILL_FILES[name]
                     )
@@ -223,7 +115,7 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
             if not dest.exists():
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_text(fresh_text, encoding="utf-8")
-                _write_base(root, rel_dest, fresh_text)
+                write_base(root, rel_dest, fresh_text)
                 print(f"  new   {rel_dest}")
                 new_files += 1
                 written_files.append(str(dest))
@@ -234,8 +126,8 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
                 up_to_date += 1
                 continue
 
-            # Read merge base from .uvr/bases/ (empty string → two-way merge)
-            base_text = _read_base(root, rel_dest)
+            # Read merge base from .uvr/bases/ (empty string -> two-way merge)
+            base_text = read_base(root, rel_dest)
 
             # Three-way merge (falls back to two-way if base is empty)
             with (
@@ -288,7 +180,7 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
                 continue
 
             dest.write_text(merged_text)
-            _write_base(root, rel_dest, fresh_text)
+            write_base(root, rel_dest, fresh_text)
             marker = " (conflicts)" if has_conflicts else ""
             print(f"  merge {rel_dest}{marker}")
             upgraded += 1
@@ -313,7 +205,8 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
     if has_any_conflicts:
         # Offer editor for conflict resolution
         conflict_files = [f for f in written_files if "<<<<<<" in Path(f).read_text()]
-        editor = _resolve_editor(args, root)
+        cli_editor = parsed.editor
+        editor = resolve_editor(cli_editor, root)
         for f in conflict_files:
             rel = str(Path(f).relative_to(root))
             print(f"\n  Conflicts in {rel}")
@@ -329,9 +222,9 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
             if answer.lower() not in ("n", "no", ""):
                 chosen = editor if answer.lower() in ("y", "yes") else answer
                 if chosen:
-                    subprocess.run([*_editor_cmd(chosen), f])
+                    subprocess.run([*editor_cmd(chosen), f])
             elif editor and answer == "":
-                subprocess.run([*_editor_cmd(editor), f])
+                subprocess.run([*editor_cmd(editor), f])
 
         # Check if all conflicts resolved
         still_conflicted = [
@@ -357,6 +250,6 @@ def cmd_skill_upgrade(args: argparse.Namespace) -> None:
                 return
 
     _store_skill_version(root)
-    from ..shared.utils.cli import __version__
+    from ...shared.utils.cli import __version__
 
     print(f"\nUpgraded skills (uvr v{__version__}). Review and commit the changes.")

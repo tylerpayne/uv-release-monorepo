@@ -1,19 +1,30 @@
-"""The ``uvr runners`` command."""
+"""The ``uvr workflow runners`` command."""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
-from ..shared.utils.config import get_matrix, set_matrix
-from ..shared.utils.toml import read_pyproject, write_pyproject
-from ..shared.utils.cli import discover_package_names, fatal, print_matrix_status
+from ...shared.utils.cli import discover_package_names, fatal, print_matrix_status
+from ...shared.utils.config import get_matrix, set_matrix
+from ...shared.utils.toml import read_pyproject, write_pyproject
+from .._args import CommandArgs
 
 _DEFAULT_RUNNERS: list[list[str]] = [["ubuntu-latest"]]
 
 
+class RunnersArgs(CommandArgs):
+    """Typed arguments for ``uvr workflow runners``."""
+
+    package: str | None = None
+    add_value: str | None = None
+    remove_value: str | None = None
+    clear: bool = False
+
+
 def cmd_runners(args: argparse.Namespace) -> None:
     """Manage per-package build runners in [tool.uvr.matrix]."""
+    parsed = RunnersArgs.from_namespace(args)
     root = Path.cwd()
     pyproject = root / "pyproject.toml"
     if not pyproject.exists():
@@ -22,10 +33,10 @@ def cmd_runners(args: argparse.Namespace) -> None:
     doc = read_pyproject(pyproject)
     matrix = get_matrix(doc)
 
-    pkg: str | None = getattr(args, "package", None)
-    add_val: str | None = getattr(args, "add_value", None)
-    remove_val: str | None = getattr(args, "remove_value", None)
-    clear: bool = getattr(args, "clear", False)
+    pkg = parsed.package
+    add_val = parsed.add_value
+    remove_val = parsed.remove_value
+    clear = parsed.clear
 
     # No package -> show all (fill in defaults for unconfigured packages)
     if not pkg:

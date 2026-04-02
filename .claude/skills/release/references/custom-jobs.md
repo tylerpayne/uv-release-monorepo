@@ -28,7 +28,7 @@ For example, publishing to PyPI:
 
 ```yaml
 pypi-publish:
-  needs: [uvr-bump]
+  needs: [bump]
   runs-on: ubuntu-latest
   if: ${{ always() && !failure() && !cancelled() && !contains(fromJSON(inputs.plan).skip, 'pypi-publish') }}
   environment: pypi

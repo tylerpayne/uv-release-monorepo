@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ._args import CommandArgs
 from ..shared.utils.cli import __version__, diff_stat, read_matrix
 from ..shared.models import PlanConfig
 from ..shared.planner import ReleasePlanner
@@ -15,8 +16,16 @@ from ..shared.context import build_context
 from ..shared.utils.versions import find_version_conflicts
 
 
+class StatusArgs(CommandArgs):
+    """Typed arguments for ``uvr status``."""
+
+    rebuild_all: bool = False
+
+
 def cmd_status(args: argparse.Namespace) -> None:
     """Show workspace package status from the release planner."""
+    parsed = StatusArgs.from_namespace(args)
+
     # Warn on dirty working tree
     result = subprocess.run(
         ["git", "status", "--short"], capture_output=True, text=True
@@ -31,7 +40,7 @@ def cmd_status(args: argparse.Namespace) -> None:
     try:
         ctx = build_context()
         config = PlanConfig(
-            rebuild_all=getattr(args, "rebuild_all", False),
+            rebuild_all=parsed.rebuild_all,
             matrix=read_matrix(Path.cwd()),
             uvr_version=__version__,
             ci_publish=True,
