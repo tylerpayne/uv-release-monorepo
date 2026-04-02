@@ -456,6 +456,15 @@ def cmd_release(args: argparse.Namespace) -> None:
             notes_text = notes_value
         plan.changed[pkg_name].release_notes = notes_text
 
+        # Also update the pre-computed PublishGithubReleaseCommand
+        from ..shared.models import PublishGithubReleaseCommand
+
+        tag = f"{pkg_name}/v{plan.changed[pkg_name].release_version}"
+        for cmd in plan.release_commands:
+            if isinstance(cmd, PublishGithubReleaseCommand) and cmd.tag == tag:
+                cmd.notes = notes_text
+                break
+
     # --json: print only plan JSON to stdout and exit
     if getattr(args, "json", False):
         print(plan.model_dump_json(indent=2))
