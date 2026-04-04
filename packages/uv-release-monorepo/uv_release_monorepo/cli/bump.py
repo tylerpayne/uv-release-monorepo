@@ -151,7 +151,7 @@ def cmd_bump(args: argparse.Namespace) -> None:
             names = ", ".join(missed)
             fatal(
                 f"Other packages also have unreleased changes: {names}\n"
-                f"  Include them with --package or use --force to skip this check."
+                f"  Include them with --packages or use --force to skip this check."
             )
 
     # Determine bump type

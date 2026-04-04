@@ -258,7 +258,7 @@ Run 'uvr <command> --help' for details on a specific command.
         "--force",
         action="store_true",
         default=False,
-        help="Skip the changed-package guard when using --package.",
+        help="Skip the changed-package guard when using --packages.",
     )
     _btype = bump_parser.add_argument_group("bump type (required)")
     _btype_mut = _btype.add_mutually_exclusive_group(required=True)
