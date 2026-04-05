@@ -5,6 +5,7 @@ export default withMermaid(
   defineConfig({
     title: 'uv-release',
     description: 'Release management for uv workspaces',
+    base: '/uv-release-monorepo/',
     srcExclude: ['adr/**'],
 
     themeConfig: {
