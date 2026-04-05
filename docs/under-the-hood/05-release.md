@@ -18,7 +18,7 @@ The plan encodes everything CI needs.
 | `skip` | Job names to skip |
 | `reuse_run_id` | Workflow run ID to reuse artifacts from |
 
-The plan is serialized as JSON and passed via `gh workflow run release.yml -f plan=<json>`. CI accesses fields via `${{ fromJSON(inputs.plan).field }}`.
+The plan is serialized as JSON and passed via `gh workflow run release.yml -f plan=<json>`. CI accesses fields via <code v-pre>${{ fromJSON(inputs.plan).field }}</code>.
 
 ## The CI pipeline
 
