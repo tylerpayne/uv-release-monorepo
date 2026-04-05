@@ -28,13 +28,16 @@ if [[ -z "$REPO_SECTION" ]]; then
 fi
 
 # Combine package README + repo section, rewriting guide link for root context
+# Insert badges after the title line for the root README
 {
-    sed 's|(../../docs/guide.md)|(docs/guide.md)|g' "$PKG_README"
+    head -1 "$PKG_README"
+    echo ""
+    echo '[![Docs](https://github.com/tylerpayne/uv-release-monorepo/actions/workflows/docs.yml/badge.svg)](https://tylerpayne.github.io/uv-release-monorepo/)'
+    echo '[![PyPI](https://img.shields.io/pypi/v/uv-release-monorepo)](https://pypi.org/project/uv-release-monorepo/)'
+    tail -n +2 "$PKG_README" | sed 's|(../../docs/guide.md)|(docs/guide.md)|g'
     echo ""
     echo "$REPO_SECTION"
-} > "$ROOT_README.tmp"
-
-mv "$ROOT_README.tmp" "$ROOT_README"
+} > "$ROOT_README"
 
 # Stage the updated root README if it changed
 git add "$ROOT_README"
