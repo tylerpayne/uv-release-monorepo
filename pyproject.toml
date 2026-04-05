@@ -14,6 +14,11 @@ init_version = "0.18.0"
 skill_version = "0.21.8.dev0"
 workflow_version = "0.18.2.dev0"
 
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple/"
+publish-url = "https://upload.pypi.org/legacy/"
+
 [tool.uvr.publish]
 index = "pypi"
 environment = "pypi"

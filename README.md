@@ -3,7 +3,7 @@
 [![Docs](https://github.com/tylerpayne/uv-release-monorepo/actions/workflows/docs.yml/badge.svg)](https://tylerpayne.github.io/uv-release-monorepo/)
 [![PyPI](https://img.shields.io/pypi/v/uv-release-monorepo)](https://pypi.org/project/uv-release-monorepo/)
 
-Release management for [uv](https://github.com/astral-sh/uv) workspaces. Bump, build, and release only what changed. You manage major/minor versions, uvr manages the rest.
+Footgun-free release management for [uv](https://github.com/astral-sh/uv) workspaces.
 
 ## Quick Start
 
@@ -30,13 +30,13 @@ uvr release --where local
 
 ```bash
 uvr bump --minor             # bump changed packages to next minor
-uvr bump --all --alpha       # enter alpha cycle for all packages
-uvr bump --all --rc          # promote alpha → rc
-uvr bump --all --stable      # exit pre-release → stable
+uvr bump --alpha             # enter alpha pre-release cycle
+uvr bump --rc                # promote alpha → rc
+uvr bump --stable            # exit pre-release → stable
 uvr bump --packages my-pkg --patch  # bump specific package(s)
 ```
 
-`uvr release` auto-detects from the version — just strip `.devN` and publish:
+`uvr release` auto-detects from the version. It strips `.devN` and publishes whatever is underneath.
 
 ```bash
 uvr release              # 1.0.1.dev0 → release 1.0.1
@@ -98,24 +98,26 @@ file = "uvr_hooks.py"          # default class: Hook
 # or: file = "path/to/file.py:MyHook"
 ```
 
-Or just drop a `uvr_hooks.py` with a `Hook` class at the workspace root — it's discovered automatically.
+Or just drop a `uvr_hooks.py` with a `Hook` class at the workspace root. It's discovered automatically.
 
-**Hook points:** `pre_plan` / `post_plan` (local), `pre_build` / `post_build`, `pre_build_stage` / `post_build_stage`, `pre_build_package` / `post_build_package`, `pre_release` / `post_release`, `pre_bump` / `post_bump` (CI).
+**Hook points.** `pre_plan` / `post_plan` (local), `pre_build` / `post_build`, `pre_build_stage` / `post_build_stage`, `pre_build_package` / `post_build_package`, `pre_release` / `post_release`, `pre_publish` / `post_publish`, `pre_bump` / `post_bump` (CI).
 
 ## How it works
 
-`uvr release` scans your workspace, diffs each package against its last baseline tag, walks the dependency graph, and builds a plan containing every shell command needed for the release. It dispatches this plan to GitHub Actions, which runs eight jobs:
+All intelligence lives in `uvr release` on your machine. The CLI scans your workspace, diffs against baseline tags, walks the dependency graph, pins internal dependencies, expands the build matrix, and assembles a single JSON plan. CI receives the plan and follows it mechanically. No decisions, no debugging.
 
 ```
-validate → build → release → bump
+your machine:  scan → diff → pin → plan → [confirm]
+                                              │
+CI:                                    validate → build → release → publish → bump
 ```
 
-Hook jobs (pre-build, post-build, pre-release, post-release) are no-ops by default — edit `release.yml` directly to add tests, linting, PyPI publish, or notifications. Release assets are uploaded via `gh release create`.
+You debug locally with `--dry-run`. CI stays stable across repo changes. Plans are inspectable JSON. Add your own jobs to the workflow by editing the YAML directly.
 
 ## Documentation
 
-- **[User Guide](../../docs/user-guide/index.md)** — setup, releasing, hooks, PyPI, skip/reuse, package filtering
-- **[Under the Hood](../../docs/under-the-hood/index.md)** — change detection, dependency pinning, build matrix, workflow model
+- **[User Guide](docs/user-guide/).** Setup, releasing, hooks, PyPI, skip/reuse, package filtering.
+- **[Under the Hood](docs/under-the-hood/architecture.md).** The plan+execute model, dependency pinning, layered builds, workflow design.
 
 ## Repository Structure
 

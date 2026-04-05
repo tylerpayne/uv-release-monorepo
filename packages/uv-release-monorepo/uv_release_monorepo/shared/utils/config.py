@@ -50,6 +50,38 @@ def get_config(doc: tomlkit.TOMLDocument) -> dict:
     }
 
 
+def set_config(doc: tomlkit.TOMLDocument, config: dict) -> None:
+    """Write workspace configuration into [tool.uvr.config].
+
+    Accepts the same dict shape returned by :func:`get_config`.
+    """
+    if "tool" not in doc:
+        doc["tool"] = tomlkit.table()
+    tool = doc["tool"]
+    assert isinstance(tool, (Table, OutOfOrderTableProxy))
+    if "uvr" not in tool:
+        tool["uvr"] = tomlkit.table()
+    uvr = tool["uvr"]
+    assert isinstance(uvr, Table)
+
+    cfg = tomlkit.table()
+    if config.get("include"):
+        inc = tomlkit.array()
+        for item in config["include"]:
+            inc.append(item)
+        cfg["include"] = inc
+    if config.get("exclude"):
+        exc = tomlkit.array()
+        for item in config["exclude"]:
+            exc.append(item)
+        cfg["exclude"] = exc
+    if config.get("latest"):
+        cfg["latest"] = config["latest"]
+    if config.get("editor"):
+        cfg["editor"] = config["editor"]
+    uvr["config"] = cfg
+
+
 def get_hooks(doc: tomlkit.TOMLDocument) -> dict[str, str]:
     """Extract [tool.uvr.hooks] as a dict.
 

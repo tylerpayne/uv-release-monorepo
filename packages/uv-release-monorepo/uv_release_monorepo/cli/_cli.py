@@ -13,7 +13,13 @@ from .install import cmd_install
 from .release import cmd_release
 from .skill import cmd_skill_dispatch
 from .status import cmd_status
-from .workflow import cmd_init_dispatch, cmd_publish_config, cmd_runners, cmd_validate
+from .workflow import (
+    cmd_config,
+    cmd_init_dispatch,
+    cmd_publish_config,
+    cmd_runners,
+    cmd_validate,
+)
 
 
 def cli() -> None:
@@ -515,6 +521,46 @@ Run 'uvr <command> --help' for details on a specific command.
         help="Remove packages from include/exclude lists (combinable with --include/--exclude).",
     )
     wf_publish_parser.set_defaults(func=cmd_publish_config)
+
+    wf_config_parser = workflow_sub.add_parser(
+        "config", help="Manage workspace config."
+    )
+    wf_config_parser.add_argument(
+        "--editor",
+        metavar="EDITOR",
+        help="Set preferred editor for conflict resolution.",
+    )
+    wf_config_parser.add_argument(
+        "--latest",
+        metavar="PKG",
+        help="Set which package gets the GitHub 'Latest' badge.",
+    )
+    _cmut = wf_config_parser.add_mutually_exclusive_group()
+    _cmut.add_argument(
+        "--include",
+        dest="include_packages",
+        nargs="+",
+        metavar="PKG",
+        help="Add packages to the include list.",
+    )
+    _cmut.add_argument(
+        "--exclude",
+        dest="exclude_packages",
+        nargs="+",
+        metavar="PKG",
+        help="Add packages to the exclude list.",
+    )
+    _cmut.add_argument(
+        "--clear", action="store_true", help="Remove entire workspace config."
+    )
+    wf_config_parser.add_argument(
+        "--remove",
+        dest="remove_packages",
+        nargs="+",
+        metavar="PKG",
+        help="Remove packages from include/exclude lists.",
+    )
+    wf_config_parser.set_defaults(func=cmd_config)
 
     # skill
     skill_parser = subparsers.add_parser(
