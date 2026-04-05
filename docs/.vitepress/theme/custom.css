@@ -47,13 +47,30 @@
   --vp-home-hero-name-background: linear-gradient(135deg, #A855F7 0%, #C084FC 50%, #E9D5FF 100%);
 }
 
+/* Site title in nav bar */
+.VPNavBarTitle .title {
+  background: var(--vp-home-hero-name-background);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 700;
+  font-size: 1.25em;
+}
+
 .brand-code {
   background: var(--vp-c-brand-soft);
   color: var(--vp-c-brand-1);
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 0.9em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: inherit;
   font-weight: 600;
+}
+
+/* standalone badge variant for homepage feature cards */
+.VPFeature .brand-code {
   display: inline-block;
   margin-bottom: 8px;
+  font-size: 0.9em;
+  padding: 2px 8px;
+  border-radius: 6px;
 }

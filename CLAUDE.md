@@ -39,5 +39,9 @@ ask the user whether to document it with `/adr` before writing code.
 - Python >=3.11. Ruff + ty config in root `pyproject.toml`.
 - Single changelog at `docs/CHANGELOG.md` using [Keep a Changelog](https://keepachangelog.com/). ADRs use MADR format in `docs/adr/`.
 - Version management: you own major.minor (`uv version --bump minor --directory packages/<pkg>`). CI owns patch.
-- Release process: see `/release` skill. Tag format: `{pkg}/v{version}` (release), `{pkg}/v{version}-dev` (dev baseline).
+- Release process: see `/release` skill. Tag format: `{pkg}/v{version}` (release), `{pkg}/v{version}-base` (dev baseline).
 - `uv-release-monorepo` publishes to PyPI via a `post-release` hook in the release workflow.
+
+## Writing Style (docs and prose)
+
+- Never use emdashes, colons, or semicolons in prose. Only use full sentences. Colons in titles and headings are fine.

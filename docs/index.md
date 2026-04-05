@@ -2,29 +2,29 @@
 layout: home
 
 hero:
-  name: uv-release
-  tagline: <span>Release management for <a href="https://github.com/astral-sh/uv">uv</a> workspaces. Bump, build, and release only what changed. You manage major/minor versions, uvr manages the rest.</span>
+  name: uvr
+  tagline: <span>Footgun-free release management for <a href="https://github.com/astral-sh/uv">uv</a> workspaces.</span>
   actions:
     - theme: brand
       text: Get Started
-      link: /user-guide/01-setup
+      link: /user-guide/01-getting-started
     - theme: alt
       text: Go Under the Hood
-      link: /under-the-hood/
+      link: /under-the-hood/architecture
 
 features:
-  - title: 🔄 Bump
-    details: "<code class=\"brand-code\">uvr bump</code><br>You own major and minor versions. uvr manages patch bumps, dev suffixes, and pre-release cycles. Dependency pins update automatically."
-    link: /user-guide/03-bumping
-  - title: 🔨 Build
-    details: "<code class=\"brand-code\">uvr build</code><br>Cross-platform build matrix with topologically-sorted parallel builds. Change detection rebuilds only what's needed."
-    link: /user-guide/04-building
-  - title: 📦 Release
-    details: "<code class=\"brand-code\">uvr release</code><br>One GitHub release per package with auto-generated notes. Plan locally, execute on CI. Install wheels directly from releases."
-    link: /user-guide/05-releasing
+  - title: 🏗️ Scaffold
+    details: "<code class=\"brand-code\">uvr workflow init</code><br>Generate a complete release workflow in one command. Runner matrices, PyPI publishing, and hooks built in."
+    link: /user-guide/01-getting-started#scaffold-the-release-workflow
+  - title: ⬆️ Bump
+    details: "<code class=\"brand-code\">uvr bump</code><br>Bump versions without breaking internal dependencies. Downstream pins update automatically."
+    link: /user-guide/04-versions
+  - title: 🚀 Release
+    details: "<code class=\"brand-code\">uvr release</code><br>Release with confidence. Catch errors before dispatch, only rebuild what changed, and recover from failures without starting over."
+    link: /user-guide/02-releasing
   - title: 🤖 Claude
-    details: "<code class=\"brand-code\">/release</code><br>Ship with the /release skill. Claude reads your workspace, runs uvr, and handles the entire release flow interactively."
-    link: /user-guide/01-setup
+    details: "<code class=\"brand-code\">/release</code><br>Ship interactively. Claude handles branching, release notes, dispatch, and failure recovery."
+    link: /user-guide/03-claude
 ---
 
 ## Quick Start
@@ -32,7 +32,7 @@ features:
 Install uv-release and scaffold your first workflow:
 
 ```bash
-uv add --dev uv-release
+uv add --dev uv-release-monorepo
 uvr workflow init
 ```
 
@@ -42,10 +42,10 @@ Check what would be released:
 uvr release --dry-run
 ```
 
-Release changed packages — generates a plan, prompts for confirmation, and dispatches to GitHub Actions:
+Release changed packages. Generates a plan, prompts for confirmation, and dispatches to GitHub Actions.
 
 ```bash
 uvr release
 ```
 
-That's it. One CLI, one workflow file, one command to ship. See the [setup guide](/user-guide/01-setup) for the full walkthrough.
+That's it. One CLI, one workflow file, one command to ship. See the [setup guide](/user-guide/01-getting-started) for the full walkthrough.
