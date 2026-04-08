@@ -47,7 +47,11 @@ def test_template_job_needs_chain() -> None:
 
 def test_template_default_permissions() -> None:
     doc = _template_workflow()
-    assert doc["permissions"] == {"actions": "read", "contents": "write", "id-token": "write"}
+    assert doc["permissions"] == {
+        "actions": "read",
+        "contents": "write",
+        "id-token": "write",
+    }
 
 
 def test_template_core_jobs_have_executor_steps() -> None:
