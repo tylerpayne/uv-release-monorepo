@@ -114,6 +114,9 @@ Run 'uvr <command> --help' for details on a specific command.
         "--rebuild-all", action="store_true", help="Rebuild all packages."
     )
     _build.add_argument(
+        "--rebuild", nargs="+", metavar="PKG", help="Force rebuild specific packages."
+    )
+    _build.add_argument(
         "--allow-dirty",
         action="store_true",
         help="Proceed even if the working tree has uncommitted changes.",
@@ -216,6 +219,9 @@ Run 'uvr <command> --help' for details on a specific command.
         help="Build all packages, not just changed ones.",
     )
     build_parser.add_argument(
+        "--rebuild", nargs="+", metavar="PKG", help="Force rebuild specific packages."
+    )
+    build_parser.add_argument(
         "--python",
         default="3.12",
         metavar="VER",
@@ -230,6 +236,12 @@ Run 'uvr <command> --help' for details on a specific command.
         "--rebuild-all",
         action="store_true",
         help="Show all packages as changed.",
+    )
+    status_parser.add_argument(
+        "--rebuild",
+        nargs="+",
+        metavar="PKG",
+        help="Force specific packages to show as changed.",
     )
     status_parser.add_argument(
         "--workflow-dir",

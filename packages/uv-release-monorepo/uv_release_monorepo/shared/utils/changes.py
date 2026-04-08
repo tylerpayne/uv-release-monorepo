@@ -23,6 +23,7 @@ def detect_changes(
     baselines: Mapping[str, str | None],
     rebuild_all: bool,
     *,
+    rebuild: list[str] | None = None,
     ctx: RepositoryContext | None = None,
     repo: pygit2.Repository | None = None,
 ) -> list[str]:
@@ -30,9 +31,10 @@ def detect_changes(
 
     A package is "dirty" and needs rebuilding if:
     1. rebuild_all is True (rebuild everything)
-    2. No previous baseline tag exists for the package (first release)
-    3. Any file in the package directory changed since its baseline
-    4. Any of its dependencies are dirty (transitive dirtiness)
+    2. The package is in the rebuild list
+    3. No previous baseline tag exists for the package (first release)
+    4. Any file in the package directory changed since its baseline
+    5. Any of its dependencies are dirty (transitive dirtiness)
 
     Uses subtree comparison for O(depth) per package instead of full repo
     diffs. Caches baseline commit resolution to avoid redundant work when
@@ -42,6 +44,7 @@ def detect_changes(
         packages: Map of package name -> PackageInfo.
         baselines: Map of package name -> baseline tag (or None).
         rebuild_all: If True, mark all packages as dirty.
+        rebuild: List of specific package names to force-rebuild.
         ctx: RepositoryContext providing the repo. Preferred over *repo*.
         repo: Pre-opened pygit2 Repository. Opened automatically if None.
 
@@ -62,6 +65,16 @@ def detect_changes(
         print("  Force rebuild: all packages marked dirty")
     else:
         dirty: set[str] = set()
+
+        # --rebuild: force specific packages dirty before normal detection
+        if rebuild:
+            for name in rebuild:
+                if name not in packages:
+                    from .shell import exit_fatal
+
+                    exit_fatal(f"Unknown package for --rebuild: {name!r}")
+                dirty.add(name)
+                print(f"  {name}: force rebuild")
 
         # Packages without baselines are automatically dirty (first release)
         to_check: list[tuple[str, PackageInfo, str]] = []

@@ -1,11 +1,11 @@
 # uvr
 
-Footgun-free release management for [uv](https://github.com/astral-sh/uv) workspaces.
+Release management for [uv](https://github.com/astral-sh/uv) workspaces.
 
 ## Quick Start
 
 ```bash
-pip install uv-release
+uv add --dev uv-release
 uvr workflow init        # generate .github/workflows/release.yml
 uvr release     # detect changes, show plan, dispatch to CI
 ```

@@ -120,7 +120,11 @@ class ReleasePlanner:
         if self.progress:
             self.progress.update("Detecting changes")
         changed_names = detect_changes(
-            packages, baselines, self.config.rebuild_all, ctx=self.ctx
+            packages,
+            baselines,
+            self.config.rebuild_all,
+            rebuild=self.config.rebuild or None,
+            ctx=self.ctx,
         )
         raw_changed = {name: packages[name] for name in changed_names}
         unchanged = {
@@ -554,16 +558,22 @@ class ReleasePlanner:
         """Find planned tags that already exist locally.
 
         Returns a list of conflicting tag names. Does not abort.
+        Skips release tag checks when uvr-release is being skipped
+        (tags already exist from a previous run).
         """
         repo = self.ctx.repo
+        check_release_tags = "uvr-release" not in self.config.skip
         conflicts: list[str] = []
         for name, pkg in changed.items():
-            for tag in (
-                f"{name}/v{pkg.release_version}",
-                f"{name}/v{pkg.next_version}-base",
-            ):
-                if repo.references.get(f"refs/tags/{tag}") is not None:
-                    conflicts.append(tag)
+            # Baseline tags are always checked (created during bump)
+            base_tag = f"{name}/v{pkg.next_version}-base"
+            if repo.references.get(f"refs/tags/{base_tag}") is not None:
+                conflicts.append(base_tag)
+            # Release tags only checked when uvr-release will actually run
+            if check_release_tags:
+                release_tag = f"{name}/v{pkg.release_version}"
+                if repo.references.get(f"refs/tags/{release_tag}") is not None:
+                    conflicts.append(release_tag)
         return conflicts
 
     def _check_tag_conflicts(

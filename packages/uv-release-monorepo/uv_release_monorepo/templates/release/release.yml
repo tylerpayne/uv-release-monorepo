@@ -7,6 +7,7 @@ on:
         type: string
         required: true
 permissions:
+  actions: read
   contents: write
   id-token: write
 jobs:
@@ -80,7 +81,7 @@ jobs:
       run: uv run uvr jobs release
   uvr-publish:
     runs-on: ubuntu-latest
-    if: ${{ always() && !failure() && !cancelled() && !contains(fromJSON(inputs.plan).skip, 'uvr-publish') && fromJSON(inputs.plan).publish_commands[0] != null }}
+    if: ${{ always() && !failure() && !cancelled() && !contains(fromJSON(inputs.plan).skip, 'uvr-publish') }}
     needs:
     - uvr-release
     environment: ${{ fromJSON(inputs.plan).publish_environment || null }}

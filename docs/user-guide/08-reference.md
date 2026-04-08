@@ -11,6 +11,7 @@ uvr release [options]
 | `--where {ci\|local}` | `ci` dispatches to GitHub Actions (default). `local` runs in your shell. |
 | `--dry-run` | Preview the plan without making changes. |
 | `--plan JSON` | Execute a pre-computed plan instead of generating one. |
+| `--rebuild PKG [...]` | Force specific packages to be treated as changed. |
 | `--rebuild-all` | Treat all packages as changed. |
 | `--allow-dirty` | Proceed with uncommitted changes. |
 | `--python VER` | Python version for CI builds (default `3.12`). |
@@ -29,7 +30,7 @@ uvr release [options]
 ## <code class="brand-code">uvr status</code>
 
 ```
-uvr status [--rebuild-all] [--workflow-dir DIR]
+uvr status [--rebuild-all] [--rebuild PKG [...]] [--workflow-dir DIR]
 ```
 
 ## <code class="brand-code">uvr bump</code>
@@ -55,7 +56,7 @@ uvr bump <type> [scope] [options]
 ## <code class="brand-code">uvr build</code>
 
 ```
-uvr build [--rebuild-all] [--python VER]
+uvr build [--rebuild-all] [--rebuild PKG [...]] [--python VER]
 ```
 
 ## <code class="brand-code">uvr install</code>

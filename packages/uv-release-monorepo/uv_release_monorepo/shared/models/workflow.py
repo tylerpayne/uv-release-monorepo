@@ -209,7 +209,11 @@ class ReleaseWorkflow(BaseModel):
     name: str = "Release Wheels"
     on: WorkflowTrigger = Field(default_factory=WorkflowTrigger)
     permissions: dict[str, str] = Field(
-        default_factory=lambda: {"contents": "write", "id-token": "write"}
+        default_factory=lambda: {
+            "actions": "read",
+            "contents": "write",
+            "id-token": "write",
+        }
     )
     jobs: WorkflowJobs = Field(default_factory=WorkflowJobs)
 

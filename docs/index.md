@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: uvr
-  tagline: <span>Footgun-free release management for <a href="https://github.com/astral-sh/uv">uv</a> workspaces.</span>
+  tagline: <span>Release management for <a href="https://github.com/astral-sh/uv">uv</a> workspaces.</span>
   actions:
     - theme: brand
       text: Get Started
@@ -29,23 +29,41 @@ features:
 
 ## Quick Start
 
-Install uv-release and scaffold your first workflow:
+You have a uv workspace with three packages. `auth` is a leaf. `api` depends on it. `cli` hasn't changed.
 
 ```bash
-pip install uv-release
+uv add --dev uv-release
 uvr workflow init
-```
-
-Check what would be released:
-
-```bash
-uvr release --dry-run
-```
-
-Release changed packages. Generates a plan, prompts for confirmation, and dispatches to GitHub Actions.
-
-```bash
 uvr release
 ```
 
-That's it. One CLI, one workflow file, one command to ship. See the [setup guide](/user-guide/01-getting-started) for the full walkthrough.
+```
+Packages
+--------
+  STATUS     PACKAGE  VERSION      PREVIOUS  CHANGES  COMMITS
+  changed    auth     0.2.0.dev0   0.1.0     3        2
+  changed    api      0.1.1.dev0   0.1.0     1        1
+  unchanged  cli      1.0.0        1.0.0     -        -
+
+Pipeline
+--------
+  run   uvr-build
+          [ubuntu-latest]
+            layer 0
+              auth  0.2.0
+            layer 1
+              api   0.1.1
+  run   uvr-release
+          auth/v0.2.0
+          api/v0.1.1
+  run   uvr-publish
+          auth → pypi
+          api  → pypi
+  run   uvr-bump
+          auth → 0.2.1.dev0
+          api  → 0.1.2.dev0
+
+Dispatch release? [y/N]
+```
+
+Change detection, topological build ordering, GitHub releases, PyPI publishing, and version bumping. All planned locally before anything touches CI. See the [setup guide](/user-guide/01-getting-started) for the full walkthrough.

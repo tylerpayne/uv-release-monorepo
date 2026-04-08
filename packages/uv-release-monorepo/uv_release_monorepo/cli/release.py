@@ -22,6 +22,7 @@ class ReleaseArgs(CommandArgs):
     dry_run: bool = False
     plan: str | None = None
     rebuild_all: bool = False
+    rebuild: list[str] | None = None
     allow_dirty: bool = False
     python_version: str = "3.12"
     release_type: str | None = None
@@ -469,6 +470,8 @@ def cmd_release(args: argparse.Namespace) -> None:
             matrix=package_runners,
             uvr_version=__version__,
             python_version=parsed.python_version,
+            rebuild=parsed.rebuild or [],
+            skip=skipped,
             ci_publish=(where == "ci"),
             dev_release=parsed.release_type == "dev",
             dry_run=dry_run,
@@ -524,6 +527,10 @@ def cmd_release(args: argparse.Namespace) -> None:
                 f"Use 'uvr release' (CI mode) instead, or remove custom runners:\n"
                 f"  uvr runners <pkg> --clear"
             )
+
+    # Auto-skip publish if no [tool.uvr.publish] configured
+    if not plan.publish_commands and "uvr-publish" not in skipped:
+        skipped.add("uvr-publish")
 
     # Set skip/reuse fields on the plan
     if skipped:
