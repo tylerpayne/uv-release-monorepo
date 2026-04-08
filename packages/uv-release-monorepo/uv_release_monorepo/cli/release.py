@@ -79,7 +79,11 @@ def _validate_skip_reuse(
     build_skipped = "uvr-build" in skipped
     has_reuse = reuse_run is not None or reuse_release
 
-    if build_skipped and not has_reuse:
+    # Only require artifact source if a downstream job that needs wheels will run
+    needs_artifacts = build_skipped and (
+        "uvr-release" not in skipped or "uvr-publish" not in skipped
+    )
+    if needs_artifacts and not has_reuse:
         fatal(
             "Build is being skipped but no artifact source specified.\n"
             "  Add --reuse-run RUN_ID or --reuse-release."
