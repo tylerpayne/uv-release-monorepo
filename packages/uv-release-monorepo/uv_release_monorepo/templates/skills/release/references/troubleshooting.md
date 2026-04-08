@@ -130,6 +130,16 @@ After merging, verify the version bumps from the bump job landed cleanly. Check 
 
 **If the merge is too messy**, an alternative is to skip the merge and cherry-pick only your pre-release commits onto main, then let the next release pick up the changes naturally.
 
+## Package shows "changed" with +0 / -0, 0 commits
+
+A package can be marked changed even with no file changes. This happens for two reasons.
+
+**Transitive propagation.** If package B depends on package A (via `[project].dependencies` or `[build-system].requires`), and A has changes, B is marked dirty too. This ensures B is rebuilt against A's new version. The dependency graph includes both runtime and build-time dependencies.
+
+**Missing baseline tag.** If no `-base` tag exists for the package (first release, or tags were deleted), it is treated as a new package and always included.
+
+To see why a specific package was marked dirty, check its dependency graph. If it depends on a package that has real changes, the propagation is correct and the package needs rebuilding.
+
 ## Rolling back a bad release
 
 GitHub releases can be deleted, but published packages (e.g., on PyPI) generally cannot. If a broken version was published:
