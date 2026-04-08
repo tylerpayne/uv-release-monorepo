@@ -414,8 +414,18 @@ def resolve_baseline(
     # Pre-release → incremental from dev0 baseline (kind is in the version)
     if has_pre and release_type == "pre":
         if v.dev is not None and v.dev > 0:
-            return f"{name}/v{strip_dev(current_version)}.dev0-base"
-        return f"{name}/v{current_version}-base"
+            tag = f"{name}/v{strip_dev(current_version)}.dev0-base"
+        else:
+            tag = f"{name}/v{current_version}-base"
+        # If the pre-release baseline doesn't exist, fall back to the
+        # stable dev baseline (e.g. entering alpha from 0.27.1.dev0 →
+        # 0.27.1a0.dev0, the -base tag is still v0.27.1.dev0-base).
+        if repo.references.get(f"refs/tags/{tag}") is None:  # type: ignore[union-attr]
+            base = get_base_version(current_version)
+            fallback = f"{name}/v{base}.dev0-base"
+            if repo.references.get(f"refs/tags/{fallback}") is not None:  # type: ignore[union-attr]
+                return fallback
+        return tag
 
     # Final/minor/major from pre-release dev → cumulative since last final
     if has_pre and release_type in ("stable",):
