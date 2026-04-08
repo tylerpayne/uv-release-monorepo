@@ -3,7 +3,7 @@
 ## Install
 
 ```bash
-pip install uv-release
+uv add --dev uv-release
 ```
 
 ## Prerequisites

@@ -20,6 +20,7 @@ class StatusArgs(CommandArgs):
     """Typed arguments for ``uvr status``."""
 
     rebuild_all: bool = False
+    rebuild: list[str] | None = None
 
 
 def cmd_status(args: argparse.Namespace) -> None:
@@ -42,6 +43,7 @@ def cmd_status(args: argparse.Namespace) -> None:
         config = PlanConfig(
             rebuild_all=parsed.rebuild_all,
             matrix=read_matrix(Path.cwd()),
+            rebuild=parsed.rebuild or [],
             uvr_version=__version__,
             ci_publish=True,
             dry_run=True,

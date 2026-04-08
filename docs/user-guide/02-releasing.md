@@ -6,7 +6,7 @@
 uvr release
 ```
 
-<code class="brand-code">uvr release</code> detects what changed, sets release versions, commits, and dispatches a plan to GitHub Actions. CI then builds, creates GitHub releases with wheels, publishes to configured indexes, and bumps to the next dev version. See [Architecture](../under-the-hood/architecture.md) for the full pipeline.
+<code class="brand-code">uvr release</code> detects changes, pins dependencies, and plans a topologically ordered build, publish, and bump. Validates everything locally before dispatch. Version conflicts, stale pins, and dirty working trees are caught on your machine, not in CI. See [Architecture](../under-the-hood/architecture.md) for the full pipeline.
 
 ## Preview without releasing
 
@@ -68,6 +68,14 @@ uvr release --allow-dirty
 ```
 
 Turns clean-tree and remote-match checks into warnings instead of errors.
+
+## Rebuild specific packages
+
+```bash
+uvr release --rebuild pkg-alpha pkg-beta
+```
+
+Force specific packages to be treated as changed (and their dependents).
 
 ## Rebuild all packages
 

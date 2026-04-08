@@ -86,6 +86,8 @@ class PlanConfig:
     matrix: dict[str, list[list[str]]]
     uvr_version: str
     python_version: str = "3.12"
+    rebuild: list[str] = field(default_factory=list)
+    skip: set[str] = field(default_factory=set)
     ci_publish: bool = True
     dev_release: bool = False
     dry_run: bool = False
