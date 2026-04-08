@@ -10,12 +10,18 @@ uvr release --skip-to uvr-release --reuse-run <RUN_ID>
 
 Get the run ID from the GitHub Actions URL or `gh run list`.
 
-## Release succeeded, bump failed
+## Release succeeded, publish or bump failed
 
-GitHub releases already exist.
+Skip straight to bump. No `--reuse-*` needed since bump doesn't use wheel artifacts. Use `--rebuild-all` so the planner treats packages with clean versions as changed.
 
 ```bash
-uvr release --skip-to uvr-bump --reuse-release
+uvr release --skip-to uvr-bump --rebuild-all
+```
+
+If publish failed and you want to retry it before bump.
+
+```bash
+uvr release --skip-to uvr-publish --reuse-release --rebuild-all
 ```
 
 ## Build failed
@@ -44,6 +50,9 @@ Or re-dispatch via the GitHub Actions UI with the original plan JSON.
 | `--skip-to JOB` | Skip all jobs before JOB (except `uvr-validate`) |
 | `--reuse-run RUN_ID` | Download artifacts from a prior CI run instead of building |
 | `--reuse-release` | Download wheels from existing GitHub releases instead of CI artifacts |
+| `--rebuild-all` | Treat all packages as changed (needed when versions are clean after a prior release commit) |
+
+`--reuse-run` and `--reuse-release` are only required when `uvr-release` or `uvr-publish` will run. `--skip-to uvr-bump` does not need any `--reuse-*` flag.
 
 `--reuse-run` and `--reuse-release` are mutually exclusive.
 
