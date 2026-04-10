@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import platform
 import sys
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -14,6 +15,54 @@ from .models import (
     ShellCommand,
     _validate_runner_key,
 )
+
+
+def _runner_matches_local(labels: list[str]) -> bool:
+    """Check if a runner label set is compatible with the local platform."""
+    system = platform.system().lower()  # "darwin", "linux", "windows"
+    machine = platform.machine().lower()  # "arm64", "x86_64", "amd64"
+
+    # Normalize arch
+    is_arm = machine in ("arm64", "aarch64")
+    is_x64 = machine in ("x86_64", "amd64")
+
+    for label in labels:
+        label = label.lower()
+
+        # Self-hosted composite labels (e.g. ["self-hosted", "linux", "arm64"])
+        if label in ("linux", "macos", "windows"):
+            if label == "macos" and system != "darwin":
+                return False
+            if label == "linux" and system != "linux":
+                return False
+            if label == "windows" and system != "windows":
+                return False
+            continue
+        if label in ("arm64", "aarch64"):
+            if not is_arm:
+                return False
+            continue
+        if label in ("x64", "x86_64", "amd64"):
+            if not is_x64:
+                return False
+            continue
+
+        # GitHub-hosted runner names
+        if label.startswith("ubuntu") or label.startswith("linux"):
+            return system == "linux"
+        if label.startswith("macos"):
+            if system != "darwin":
+                return False
+            # macos-13 is x86_64, macos-14+ is arm64
+            if label in ("macos-13", "macos-13-large", "macos-13-xlarge"):
+                return is_x64
+            # macos-14, macos-15, macos-latest → arm64
+            return is_arm
+        if label.startswith("windows"):
+            return system == "windows"
+
+    # Unknown labels (e.g. "self-hosted" alone) → assume compatible
+    return True
 
 
 class ReleaseExecutor:
@@ -40,19 +89,23 @@ class ReleaseExecutor:
             runner_list = list(key)
             stages = self.plan.build_commands.get(key, [])
         else:
-            # Local mode: merge stages across runners, deduplicating packages
-            # that appear in multiple runner entries.
+            # Local mode: only build for runners matching the local platform,
+            # deduplicating packages across runner entries.
+            import json
+
             runner_list = []
             seen_packages: set[str] = set()
             stages = []
             for key in self.plan.build_commands:
+                labels = json.loads(key) if isinstance(key, str) else list(key)
+                if not _runner_matches_local(labels):
+                    continue
                 for stage in self.plan.build_commands[key]:
                     deduped_pkgs = {
                         pkg: cmds
                         for pkg, cmds in stage.packages.items()
                         if pkg not in seen_packages
                     }
-                    # Always include setup/cleanup from first runner only
                     if deduped_pkgs or (not seen_packages and stage.setup):
                         seen_packages.update(deduped_pkgs)
                         stages.append(
