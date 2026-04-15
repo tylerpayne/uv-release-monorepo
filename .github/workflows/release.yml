@@ -23,6 +23,11 @@ jobs:
         name: Set up Python
         run: |
           uv python install ${{ fromJSON(inputs.plan).python_version }}
+      - id: git-config
+        name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
       - id: validate-plan
         name: Validate release plan
         env:
@@ -89,6 +94,11 @@ jobs:
       name: Set up Python
       run: |
         uv python install ${{ fromJSON(inputs.plan).python_version }}
+    - id: git-config
+      name: Configure git identity
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
     - id: download
       name: Download wheels
       env:
@@ -143,6 +153,11 @@ jobs:
         name: Set up Python
         run: |
           uv python install ${{ fromJSON(inputs.plan).python_version }}
+      - id: git-config
+        name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
       - id: finalize
         name: Finalize release
         env:
