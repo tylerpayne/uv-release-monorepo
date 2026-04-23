@@ -13,14 +13,14 @@ You're releasing both simultaneously. pkg-alpha `0.1.5` doesn't exist on PyPI ye
 
 ```bash
 # Layer 0 — no internal deps
-uv build packages/pkg-alpha --out-dir dist/ --find-links dist/
+uv build packages/pkg-alpha --out-dir dist/ --find-links dist/ --find-links deps/ --no-sources
 
-# Layer 1 — depends on layer 0 (concurrent)
-uv build packages/pkg-beta  --out-dir dist/ --find-links dist/
-uv build packages/pkg-delta --out-dir dist/ --find-links dist/
+# Layer 1 — depends on layer 0
+uv build packages/pkg-beta  --out-dir dist/ --find-links dist/ --find-links deps/ --no-sources
+uv build packages/pkg-delta --out-dir dist/ --find-links dist/ --find-links deps/ --no-sources
 
 # Layer 2 — depends on layer 1
-uv build packages/pkg-gamma --out-dir dist/ --find-links dist/
+uv build packages/pkg-gamma --out-dir dist/ --find-links dist/ --find-links deps/ --no-sources
 ```
 
 `--find-links dist/` tells uv's build isolation to resolve `[build-system].requires` from local wheels first.
@@ -45,7 +45,7 @@ Input:
   pkg-gamma  deps: [pkg-beta]  → layer 2
 ```
 
-Packages in the same layer have no interdependencies and build concurrently. Cycles raise `RuntimeError`.
+Packages in the same layer have no interdependencies and build sequentially. Cycles raise `RuntimeError`.
 
 ## Per-runner build matrix
 
@@ -72,29 +72,19 @@ mkdir -p dist
 gh release download pkg-beta/v0.2.0 --pattern "*.whl" --dir dist/
 ```
 
-**Build.** One stage per topological layer, concurrent within each.
+**Build.** One stage per topological layer, sequential within each.
 
 ```
 Layer 0:
   pkg-alpha:
-    uv version 0.1.5 --directory packages/pkg-alpha
-    uv build packages/pkg-alpha --out-dir dist/ --find-links dist/
+    uv build packages/pkg-alpha --out-dir dist/ --find-links dist/ --find-links deps/ --no-sources
 
-Layer 1:  (concurrent)
+Layer 1:
   pkg-beta:
-    uv version 0.2.0 --directory packages/pkg-beta
-    uv build packages/pkg-beta --out-dir dist/ --find-links dist/
+    uv build packages/pkg-beta --out-dir dist/ --find-links dist/ --find-links deps/ --no-sources
   pkg-delta:
-    uv version 0.3.0 --directory packages/pkg-delta
-    uv build packages/pkg-delta --out-dir dist/ --find-links dist/
+    uv build packages/pkg-delta --out-dir dist/ --find-links dist/ --find-links deps/ --no-sources
 ```
-
-**Cleanup.** Remove wheels for packages built only as transitive deps (not assigned to this runner).
-
-## Parallel execution
-
-- **Stages** run sequentially. Layer 1 waits for layer 0.
-- **Packages within a stage** run concurrently via `ThreadPoolExecutor`.
 
 ## CI execution
 
@@ -102,14 +92,16 @@ Each runner gets its own CI job.
 
 ```yaml
 strategy:
-  fail-fast: false
+  fail-fast: true
   matrix:
     runner: ${{ fromJSON(inputs.plan).build_matrix }}
 runs-on: ${{ matrix.runner }}
 ```
 
 ```bash
-uvr jobs build --plan "$UVR_PLAN" --runner '${{ toJSON(matrix.runner) }}'
+uvr jobs build
 ```
+
+The plan and runner are passed via `UVR_PLAN` and `UVR_RUNNER` environment variables.
 
 Each runner uploads wheels as `wheels-<runner-labels>`. The release job downloads all `wheels-*` artifacts and merges them.

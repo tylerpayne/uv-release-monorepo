@@ -30,3 +30,7 @@ Chosen option: "Create `uv-release-monorepo` as a new package", because the arch
 - Good, because the new package started with a clean module structure, proper test suite, and typed models
 - Bad, because existing users of `lazy-wheels` (if any) had no upgrade path — it was a hard break
 - Bad, because historical tags use two naming schemes (`r1`-`r13` and `lazy-wheels/v*` for the old package, `uv-release-monorepo/v*` for the new)
+
+### Subsequent Changes
+
+The package was later renamed from `uv-release-monorepo` to `uv-release`. Tag prefix is `uv-release/v*`.

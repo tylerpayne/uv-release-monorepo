@@ -51,9 +51,8 @@ uvr status
 ```
 Packages
 --------
-  STATUS     PACKAGE     VERSION       PREVIOUS  DIFF FROM                    CHANGES  COMMITS
-  changed    pkg-alpha   0.2.0.dev0    0.1.0     pkg-alpha/v0.2.0.dev0-base   3        2
-  unchanged  pkg-beta    0.1.1.dev0    0.1.0     pkg-beta/v0.1.1.dev0-base    -        -
+  files changed     pkg-alpha   0.2.0.dev0
+  unchanged         pkg-beta    0.1.1.dev0
 ```
 
 ## Your first release

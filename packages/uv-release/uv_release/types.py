@@ -621,7 +621,7 @@ class WorkspacePyProjectDoc:
 
 
 class Change(BaseModel):
-    """A package that changed since its baseline. Produced by detect."""
+    """A package that changed since its baseline. Produced by Changes.parse()."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -638,7 +638,7 @@ class Change(BaseModel):
 
 
 class Release(BaseModel):
-    """A changed package planned for release. Produced by plan."""
+    """A changed package planned for release. Constructed by intent plan() methods."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -788,3 +788,15 @@ class Intent(Protocol):
 
     def guard(self, **state: object) -> None: ...
     def plan(self, **state: object) -> Plan: ...
+
+
+class UserRecoverableError(ValueError):
+    """Error that the user can recover from by executing commands.
+
+    The fix CommandGroup is presented to the user for confirmation.
+    If they accept, the caller executes the commands and retries.
+    """
+
+    def __init__(self, message: str, fix: CommandGroup) -> None:
+        super().__init__(message)
+        self.fix = fix

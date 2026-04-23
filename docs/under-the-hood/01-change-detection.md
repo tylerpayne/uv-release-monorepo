@@ -40,7 +40,7 @@ The baseline tag sits on the bump commit, not the release commit. This means the
 
 ## Package discovery
 
-`find_packages()` reads `[tool.uv.workspace].members`, expands globs, collects metadata (name, version, internal deps), and applies `[tool.uvr.config]` filters.
+`Workspace.parse()` reads `[tool.uv.workspace].members`, expands globs, collects metadata (name, version, internal deps), and applies `[tool.uvr.config]` filters.
 
 ```toml
 [tool.uvr.config]
@@ -52,10 +52,10 @@ exclude = ["pkg-debug"]               # denylist
 
 A package is **dirty** if any of these conditions hold.
 
-1. `--rebuild-all` is set
+1. `--all-packages` is set
 2. No baseline tag exists (first release)
 3. Files in the package directory changed since baseline (subtree comparison via pygit2)
-4. The version is clean (no `.dev` suffix) and its release tag already exists. In this case the release tag is used as the effective baseline instead.
+4. The version is clean (no `.dev` suffix). The previous release tag is found and used as the diff baseline.
 
 ## Transitive propagation
 

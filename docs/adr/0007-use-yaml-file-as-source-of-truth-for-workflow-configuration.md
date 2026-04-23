@@ -42,6 +42,10 @@ The `ReleaseWorkflow` model validates the full workflow structure — rejecting 
 | `uvr workflow init` safety | Safe — TOML survives regeneration | Risky — `--force` loses non-hook customizations |
 | Formatting preservation | Good — template controls output | Lossy — PyYAML rewrites formatting |
 
+### Subsequent Changes
+
+The `ReleaseWorkflow` Pydantic model was not implemented. Validation uses YAML parsing against required job names. The `uvr hooks` CLI reference was superseded by ADR-0011.
+
 ## Links
 
 - Extends [ADR-0001](0001-use-plan-execute-architecture-for-releases.md) — the YAML file remains a pure executor, but now also holds user configuration

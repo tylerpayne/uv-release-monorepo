@@ -44,7 +44,7 @@ class _HooksPyProject(BaseModel):
 def parse_hooks() -> Hooks | None:
     """Read hooks configuration from the root pyproject.toml and load them.
 
-    This is intentionally independent of parse_workspace so that hooks
+    This is intentionally independent of Workspace.parse() so that hooks
     can be loaded before the full workspace is parsed.
     """
     root = Path.cwd()

@@ -27,9 +27,9 @@ def print_plan_summary(plan: Plan) -> None:
 
     print("Pipeline")
     print("--------")
+    skipped = set(plan.skip)
     for job in plan.jobs:
-        has_cmds = len(job.commands) > 0
-        status = "run" if has_cmds else "skip"
+        status = "skip" if job.name in skipped else "run"
         print(f"  {status.ljust(6)}  {job.name}")
 
 

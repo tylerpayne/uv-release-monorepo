@@ -38,3 +38,7 @@ Chosen option: "Two-tag system", because it eliminates the heuristic entirely. T
 | Simplicity | Complex — requires parsing commit contents to decide if they "count" | Simple — tag placement is mechanical, diff is a straight `git diff` |
 | Failure mode | Silent: skips real changes that look like version bumps | Loud: missing tag causes an error, not silent data loss |
 | Tag overhead | 1 tag per release per package | 2 tags per release per package |
+
+### Subsequent Changes
+
+The baseline tag suffix was renamed from `-dev` to `-base` in ADR-0008.

@@ -48,8 +48,8 @@ uvr bump --all --post        # advance post-release number
 
 | Flag | Description |
 |------|-------------|
-| `--rebuild-all` | Rebuild all packages, not just changed ones |
-| `--python VER` | Python version for CI builds (default: `3.12`) |
+| `--all-packages` | Release all packages, not just changed ones |
+| `--packages PKG...` | Release specific packages |
 
 ## Dispatch options (CI mode)
 
@@ -57,7 +57,7 @@ uvr bump --all --post        # advance post-release number
 |------|-------------|
 | `-y, --yes` | Skip the confirmation prompt |
 | `--skip JOB` | Skip a CI job (repeatable). Validated against jobs in `release.yml`. Warns if a custom job lacks the skip guard in its `if` condition. |
-| `--skip-to JOB` | Skip all jobs before JOB (reads job order from `release.yml`). Works with both core and custom jobs. `uvr-validate` is never skipped. |
+| `--skip-to JOB` | Skip all jobs before JOB (reads job order from `release.yml`). Works with both core and custom jobs. `validate` is never skipped. |
 | `--reuse-run RUN_ID` | Reuse build artifacts from a prior workflow run. Requires `build` to be skipped. |
 | `--reuse-release` | Assume GitHub releases already exist. Requires both `build` and `release` to be skipped. |
 
@@ -74,7 +74,7 @@ uvr bump --all --post        # advance post-release number
 | Flag | Description |
 |------|-------------|
 | `--json` | Print only the plan JSON to stdout and exit |
-| `--workflow-dir DIR` | Workflow directory (default: `.github/workflows`) |
+| `--release-notes PKG NOTES` | Attach release notes to a package. NOTES can be inline text or `@path/to/file.md`. Repeatable for multiple packages. |
 
 ## Common patterns
 
@@ -86,10 +86,10 @@ uvr release --dry-run
 uvr release -y
 
 # Resume after a failed build — reuse artifacts from run 12345678
-uvr release --skip-to uvr-release --reuse-run 12345678
+uvr release --skip-to release --reuse-run 12345678
 
 # Resume after release succeeded but bump failed
-uvr release --skip-to uvr-bump --reuse-release
+uvr release --skip-to bump --reuse-release
 
 # Skip a custom job (e.g., tests you already ran locally)
 uvr release --skip checks

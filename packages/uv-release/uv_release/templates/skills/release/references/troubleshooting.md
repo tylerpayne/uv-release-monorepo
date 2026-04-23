@@ -44,7 +44,7 @@ When a release fails partway through, you don't need to start over. Use `--skip`
 gh run view <RUN_ID> --log-failed
 ```
 
-The release pipeline has three core jobs in order: **build → release → bump**. Pick the right resume strategy based on where it failed:
+The release pipeline has five core jobs in order: **validate → build → release → publish → bump**. Pick the right resume strategy based on where it failed:
 
 ### Build failed
 

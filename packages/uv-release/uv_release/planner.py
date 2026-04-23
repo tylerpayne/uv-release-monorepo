@@ -31,7 +31,7 @@ def compute_plan(
 
     Resolves each intent's declared state dependencies by inspecting type
     hints. State types with a parse() classmethod are resolved recursively.
-    PlanParams and pre-resolved Workspace are seeded into the cache.
+    PlanParams, Workspace, UvrState, and GitRepo are seeded into the cache.
     """
     if params is None:
         params = PlanParams()

@@ -2,21 +2,20 @@
 
 One command detects changes, builds on the right runners, creates GitHub releases, publishes to PyPI, bumps versions, and pushes. All planned locally, executed on CI. See [Change Detection](01-change-detection.md) for how packages are discovered and diffed.
 
-## The ReleasePlan
+## The Plan
 
 The plan encodes everything CI needs.
 
 | Field | Purpose |
 |-------|---------|
-| `changed` | Packages to rebuild, with version lifecycle and runner config |
-| `unchanged` | Packages reused from previous releases |
-| `build_commands` | Pre-computed build commands, keyed by runner |
-| `release_commands` | GitHub release creation commands |
-| `publish_commands` | PyPI publishing commands (if configured) |
-| `bump_commands` | Version bump, dep pin, tag, and push commands |
 | `build_matrix` | Unique runner sets (drives CI `strategy.matrix`) |
+| `python_version` | Python version for CI (default "3.12") |
+| `publish_environment` | GitHub Actions environment for trusted publishing |
 | `skip` | Job names to skip |
-| `reuse_run_id` | Workflow run ID to reuse artifacts from |
+| `reuse_run` | Workflow run ID to reuse artifacts from |
+| `reuse_release` | Whether to skip creating GitHub releases |
+| `jobs` | Ordered list of Job objects with commands |
+| `changes` | Detected package changes (read-only intents) |
 
 The plan is serialized as JSON and passed via `gh workflow run release.yml -f plan=<json>`. CI accesses fields via <code v-pre>${{ fromJSON(inputs.plan).field }}</code>.
 
@@ -35,7 +34,7 @@ One CI job per unique runner. Each job runs [topologically layered builds](03-bu
 Downloads all `wheels-*` artifacts and creates one GitHub release per changed package.
 
 ```bash
-uvr jobs release --plan "$UVR_PLAN"
+uvr jobs release
 ```
 
 Each release gets a tag (`{name}/v{version}`), release notes, and attached wheels. The `[tool.uvr.config].latest` setting controls the "Latest" badge.
@@ -74,7 +73,7 @@ Skip a specific job. Downstream jobs still run.
 Skip all jobs before the named job.
 
 ```bash
-uvr release --skip-to uvr-release
+uvr release --skip-to release
 ```
 
 ### `--reuse-run <run-id>`
@@ -82,5 +81,5 @@ uvr release --skip-to uvr-release
 Reuse artifacts from a previous build.
 
 ```bash
-uvr release --skip uvr-build --reuse-run 12345
+uvr release --skip build --reuse-run 12345
 ```

@@ -44,7 +44,7 @@ When a release fails partway through, you don't need to start over. Use `--skip`
 gh run view <RUN_ID> --log-failed
 ```
 
-The release pipeline has three core jobs in order: **build → release → bump**. Pick the right resume strategy based on where it failed:
+The release pipeline has five core jobs in order: **validate → build → release → publish → bump**. Pick the right resume strategy based on where it failed:
 
 ### Build failed
 
@@ -59,25 +59,25 @@ uvr release
 Reuse the build artifacts so you don't rebuild:
 
 ```bash
-uvr release --skip-to uvr-release --reuse-run <RUN_ID>
+uvr release --skip-to release --reuse-run <RUN_ID>
 ```
 
-`--skip-to uvr-release` skips the build job. `--reuse-run` downloads artifacts from the prior run.
+`--skip-to release` skips the build job. `--reuse-run` tells the release and publish jobs to download artifacts from the prior run instead of the current one.
 
 ### Release succeeded, publish or bump failed
 
-GitHub releases already exist. Skip straight to bump (or publish):
+GitHub releases already exist. Skip straight to publish with `--reuse-run` to fetch artifacts from the original build:
 
 ```bash
-uvr release --skip-to uvr-bump --rebuild-all
+uvr release --skip-to publish --reuse-run <RUN_ID> --reuse-release --all-packages
 ```
 
-Bump doesn't need wheel artifacts, so `--reuse-run` and `--reuse-release` are not required. `--rebuild-all` is needed so the planner treats packages with clean versions as changed.
+`--reuse-release` skips the release job (tags already exist). `--all-packages` is needed so the planner treats packages with clean versions as changed.
 
-If publish failed and you need to retry it before bump:
+For bump-only retry:
 
 ```bash
-uvr release --skip-to uvr-publish --reuse-release --rebuild-all
+uvr release --skip-to bump --reuse-release --all-packages
 ```
 
 ### Skipping custom jobs
@@ -98,10 +98,10 @@ Custom jobs must check the plan's skip list in their `if` condition for this to 
 
 ### Constraints
 
-- `--reuse-run` and `--reuse-release` are only required when `uvr-release` or `uvr-publish` will run (they need wheel artifacts)
-- `--skip-to uvr-bump` does not require any `--reuse-*` flag (bump doesn't need wheels)
+- `--reuse-run` and `--reuse-release` are only required when `release` or `publish` will run (they need wheel artifacts)
+- `--skip-to bump` does not require any `--reuse-*` flag (bump doesn't need wheels)
 - `--reuse-run` and `--reuse-release` are mutually exclusive
-- Use `--rebuild-all` when packages have clean versions (no `.devN`) from a prior release commit
+- Use `--all-packages` when packages have clean versions (no `.devN`) from a prior release commit
 
 ## Main moved ahead of the release branch
 

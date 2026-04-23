@@ -56,3 +56,7 @@ Chosen option: **Option A — apply locally before dispatch**, because it is the
 * Good, because no change to the build flow
 * Bad, because the tag would point at a *finalize* commit (with `.dev0` versions), not the release state
 * Bad, because fundamentally doesn't solve the problem — the release version still never exists in a committed state
+
+### Subsequent Changes
+
+Version setting uses `SetVersionCommand` and dep pinning uses `PinDepsCommand` (both in `commands.py`). `PlanParams` replaced `PlanConfig`.

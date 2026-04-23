@@ -1,6 +1,6 @@
 # Package State Machine and Data Model
 
-Comprehensive reference for how uvr models package state in a uv workspace monorepo.
+Reference for how <code class="brand-code">uvr</code> models package state in a uv workspace monorepo.
 Covers version transitions, dirty detection, baseline resolution, the release pipeline,
 and partial failure states.
 
@@ -19,83 +19,106 @@ and partial failure states.
 
 ## Data Model
 
-Three structures represent a package at different points in the release pipeline.
+Three entity types represent a package at different points in the release pipeline.
 
-### PackageInfo
+### Package
 
 The base representation of any workspace package. Collected during discovery by scanning
 `[tool.uv.workspace].members` globs and reading each `pyproject.toml`.
 
-| Field     | Type         | Description                                    |
-|-----------|--------------|------------------------------------------------|
-| `path`    | `str`        | Relative path from workspace root              |
-| `version` | `str`        | Current PEP 440 version from `pyproject.toml`  |
-| `deps`    | `list[str]`  | Internal (workspace) dependency names           |
+| Field          | Type         | Description                                    |
+|----------------|--------------|------------------------------------------------|
+| `name`         | `str`        | Canonical package name                         |
+| `path`         | `str`        | Relative path from workspace root              |
+| `version`      | `Version`    | Current PEP 440 version from `pyproject.toml`  |
+| `dependencies` | `list[str]`  | Internal (workspace) dependency names           |
 
-Only `[project].dependencies` and `[build-system].requires` are tracked in `deps`.
+Only `[project].dependencies` and `[build-system].requires` are tracked in `dependencies`.
 Optional dependencies and dependency groups are excluded because they do not affect
 build ordering.
 
-### ChangedPackage
+### Change
 
-Extends `PackageInfo` with lifecycle information for packages that will be released.
-Created during plan generation after change detection.
+Produced during change detection. Contains the Package along with its baseline tag and
+a reason explaining why it was detected as dirty.
 
-| Field              | Type             | Description                                         |
-|--------------------|------------------|-----------------------------------------------------|
-| `current_version`  | `str`            | Version in `pyproject.toml` before any changes      |
-| `release_version`  | `str`            | Version that will be published                      |
-| `next_version`     | `str`            | Post-release dev version to bump to after release   |
-| `last_release_tag` | `str` or `None`  | Most recent `{name}/v{version}` tag                 |
-| `baseline_tag`     | `str` or `None`  | Tag used as the diff baseline for change detection  |
-| `release_notes`    | `str`            | Markdown release notes                              |
-| `make_latest`      | `bool` or `None` | Whether this gets the GitHub "Latest" badge          |
-| `runners`          | `list[list[str]]` | Runner label sets for the build matrix             |
+| Field         | Type             | Description                                         |
+|---------------|------------------|-----------------------------------------------------|
+| `package`     | `Package`        | The package that changed                            |
+| `baseline`    | `Tag` or `None`  | Tag used as the diff baseline for change detection  |
+| `diff_stats`  | `str` or `None`  | Output of `git diff --stat` against the baseline    |
+| `commit_log`  | `str`            | Commit log between baseline and HEAD                |
+| `reason`      | `str`            | Why the package was marked dirty                    |
 
-### ReleasePlan
+### Release
+
+Produced during plan generation. Contains the Package along with the computed
+release version, next dev version, release notes, and whether this release should
+get the GitHub "Latest" badge.
+
+| Field              | Type      | Description                                         |
+|--------------------|-----------|-----------------------------------------------------|
+| `package`          | `Package` | The package to release                              |
+| `release_version`  | `Version` | Version that will be published                      |
+| `next_version`     | `Version` | Post-release dev version to bump to after release   |
+| `release_notes`    | `str`     | Markdown release notes                              |
+| `make_latest`      | `bool`    | Whether this gets the GitHub "Latest" badge          |
+
+### Plan
 
 The self-contained JSON plan generated locally and consumed by CI. Contains every command
 the executor needs. CI runs zero logic, zero version arithmetic, zero git operations
 beyond what the plan dictates.
 
-| Field                | Type                                      | Description                                |
-|----------------------|-------------------------------------------|--------------------------------------------|
-| `changed`            | `dict[str, ChangedPackage]`               | Packages to rebuild and release            |
-| `unchanged`          | `dict[str, PackageInfo]`                  | Packages reused from previous releases     |
-| `build_commands`     | `dict[RunnerKey, list[BuildStage]]`       | Per-runner build command sequences         |
-| `release_commands`   | `list[ReleaseCommand]`                    | Tag + GitHub release creation commands     |
-| `publish_commands`   | `list[PublishCommand]`                    | PyPI publishing commands                   |
-| `bump_commands`      | `list[BumpCommand]`                       | Version bump, dep pin, baseline tag commands |
-| `skip`               | `list[str]`                               | Job names to skip                          |
-| `reuse_run_id`       | `str`                                     | CI run ID to reuse artifacts from          |
-| `build_matrix`       | `list[list[str]]`                         | Unique runner sets for CI matrix           |
+| Field                  | Type                  | Description                                |
+|------------------------|-----------------------|--------------------------------------------|
+| `build_matrix`         | `list[list[str]]`     | Unique runner sets for CI matrix           |
+| `python_version`       | `str`                 | Python version for CI                      |
+| `publish_environment`  | `str`                 | GitHub Actions environment for publishing  |
+| `skip`                 | `list[str]`           | Job names to skip                          |
+| `reuse_run`            | `str`                 | CI run ID to reuse artifacts from          |
+| `reuse_release`        | `bool`                | Whether to reuse GitHub release artifacts  |
+| `jobs`                 | `list[Job]`           | Ordered list of jobs to execute            |
+| `changes`              | `tuple[Change, ...]`  | Packages that changed (for read-only intents) |
+| `validation_errors`    | `tuple[str, ...]`     | Errors detected during validation          |
+| `validation_warnings`  | `tuple[str, ...]`     | Warnings detected during validation        |
 
 ---
 
 ## Version State Space
 
-A package's version in `pyproject.toml` follows PEP 440. uvr recognizes six distinct
-version forms. Each form determines which release types are valid, how baselines are
-resolved, and what the post-release bump looks like.
+A package's version in `pyproject.toml` follows PEP 440. <code class="brand-code">uvr</code>
+recognizes 11 distinct version forms via the `VersionState` enum. Each form determines which
+release types are valid, how baselines are resolved, and what the post-release bump looks like.
 
-### The six version forms
+### The 11 version forms
 
-| Form                          | Example            | Description                         |
-|-------------------------------|---------------------|-------------------------------------|
-| Clean final                   | `1.2.3`            | Released stable version (transient) |
-| Dev after final               | `1.2.3.dev0`       | Development toward `1.2.3`         |
-| Clean pre-release             | `1.2.3a1`          | Released pre-release (transient)    |
-| Dev after pre-release         | `1.2.3a1.dev0`     | Development toward `1.2.3a1`       |
-| Clean post-release            | `1.2.3.post0`      | Released post-fix (transient)       |
-| Dev after post-release        | `1.2.3.post0.dev0` | Development toward `1.2.3.post0`   |
+| VersionState     | Example              | Description                                        |
+|------------------|----------------------|----------------------------------------------------|
+| `CLEAN_STABLE`   | `1.2.3`             | Released stable version (transient)                |
+| `DEV0_STABLE`    | `1.2.3.dev0`        | Start of development toward `1.2.3`               |
+| `DEVK_STABLE`    | `1.2.3.dev3`        | After dev releases toward `1.2.3`                  |
+| `CLEAN_PRE0`     | `1.2.3a0`           | First pre-release of a kind (transient)            |
+| `CLEAN_PREN`     | `1.2.3a2`           | Subsequent pre-release (transient)                 |
+| `DEV0_PRE`       | `1.2.3a1.dev0`      | Start of development toward `1.2.3a1`             |
+| `DEVK_PRE`       | `1.2.3a1.dev3`      | After dev releases toward `1.2.3a1`               |
+| `CLEAN_POST0`    | `1.2.3.post0`       | First post-release (transient)                     |
+| `CLEAN_POSTM`    | `1.2.3.post2`       | Subsequent post-release (transient)                |
+| `DEV0_POST`      | `1.2.3.post0.dev0`  | Start of development toward `1.2.3.post0`         |
+| `DEVK_POST`      | `1.2.3.post0.dev3`  | After dev releases toward `1.2.3.post0`           |
 
 "Transient" forms exist briefly during the release pipeline between the
 "set release versions" commit and the "prepare next release" bump commit.
 The "dev" forms are the at-rest states that developers see during normal work.
 
-When `N > 0` on a `.devN` suffix, it means `.dev{N-1}` was published as a dev
-release (`uvr release --dev`). The versions `1.2.3.dev0` and `1.2.3.dev3` are
-both valid at-rest states, but they resolve baselines differently.
+The distinction between `DEV0` and `DEVK` matters for baseline resolution.
+`DEV0` means no dev releases have been published yet in this cycle.
+`DEVK` (where K > 0) means at least one dev release was published, which shifts
+the dev number forward.
+
+The distinction between `CLEAN_PRE0` and `CLEAN_PREN` (and `CLEAN_POST0` vs `CLEAN_POSTM`)
+matters for baseline resolution. The first release of a kind diffs against the previous
+release, while subsequent ones can diff against the prior release of the same kind.
 
 ### Stable release cycle
 
@@ -119,9 +142,10 @@ flowchart LR
 
 ### Pre-release cycle
 
-Enter a pre-release track with `uvr bump --alpha`, iterate with `uvr release --pre`,
+Enter a pre-release track with `uvr bump --alpha`, iterate with `uvr release`
+(auto-detected as pre-release from the version string),
 graduate to the next kind with `uvr bump --beta` or `--rc`, and exit to stable with
-`uvr release` (no `--pre` flag).
+`uvr release` from an rc version (which strips the pre-release suffix).
 
 ```mermaid
 flowchart LR
@@ -140,10 +164,10 @@ flowchart LR
     next("1.0.1.dev0"):::rest
 
     dev0 -->|"uvr bump --alpha"| adev
-    adev -->|"uvr release --pre"| a0
+    adev -->|"uvr release"| a0
     a0 -->|"CI bump"| a1dev
     a1dev -->|"uvr bump --beta"| bdev
-    bdev -->|"uvr release --pre"| b0
+    bdev -->|"uvr release"| b0
     b0 -->|"CI bump"| b1dev
     b1dev -->|"uvr bump --rc"| rcdev
     rcdev -->|"uvr release<br/>(stable)"| stable
@@ -151,7 +175,7 @@ flowchart LR
 ```
 
 Pre-release kind can only move forward. `a` to `b` and `b` to `rc` are valid.
-`rc` to `a` is rejected by `validate_bump()`.
+`rc` to `a` is rejected by `compute_bumped_version()`.
 
 ### Post-release cycle
 
@@ -169,7 +193,7 @@ flowchart LR
     p1dev("1.0.0.post1.dev0"):::rest
 
     final -->|"uvr bump --post"| pdev
-    pdev -->|"uvr release --post"| p0
+    pdev -->|"uvr release"| p0
     p0 -->|"CI bump"| p1dev
     p1dev -->|"next post..."| p1("1.0.0.post1"):::transient
 ```
@@ -200,7 +224,7 @@ strips the suffix and publishes the underlying version.
 
 ### Release version transformation
 
-How `current_version` maps to `release_version` and `next_version` for each release
+How the current version maps to `release_version` and `next_version` for each release
 type.
 
 | Current Version     | Release Type | Release Version  | Next Version        |
@@ -213,24 +237,12 @@ type.
 | `1.0.0a2.dev0`     | stable      | `1.0.0`          | `1.0.1.dev0`        |
 | `1.0.0.post0.dev0` | post        | `1.0.0.post0`    | `1.0.0.post1.dev0`  |
 
-### Invalid transitions
-
-These version/release-type combinations are rejected with a `ValueError`.
-
-| Current Version     | Attempted Release Type | Why                                       |
-|---------------------|------------------------|-------------------------------------------|
-| `X.Y.Z.dev0`       | pre                    | No pre-release suffix in version          |
-| `X.Y.Z.dev0`       | post                   | Cannot post-release an unreleased version |
-| `X.Y.Za0.dev0`     | post                   | Pre-releases are unreleased versions      |
-| `X.Y.Z.post0.dev0` | stable                 | Cannot stable-release from post track     |
-| `X.Y.Z.post0.dev0` | pre                    | Cannot pre-release from post track        |
-
 ---
 
 ## Change Detection
 
 Change detection determines which packages are "dirty" and need rebuilding.
-The result is a flat set of package names, but each package becomes dirty for
+The result is a set of Change objects, but each package becomes dirty for
 a specific reason.
 
 ### Dirty reasons
@@ -242,18 +254,16 @@ flowchart TD
     classDef decision fill:#e2e8f0,stroke:#64748b,color:#000
 
     start(["For each package"]):::decision
-    rb{"rebuild_all?"}:::decision
-    force{"In --rebuild list?"}:::decision
-    base{"Baseline tag exists?"}:::decision
-    resolve{"Baseline resolves<br/>to a commit?"}:::decision
-    diff{"Subtree OID<br/>changed?"}:::decision
+    rb{"--all-packages?"}:::decision
+    force{"In --packages list?"}:::decision
+    base{"Baseline tag found?"}:::decision
+    diff{"Path changed<br/>between commits?"}:::decision
     dep{"Any dependency<br/>dirty?"}:::decision
 
-    dirty_all["DIRTY<br/>(force rebuild)"]:::dirty
-    dirty_force["DIRTY<br/>(force rebuild)"]:::dirty
-    dirty_new["DIRTY<br/>(new package)"]:::dirty
-    dirty_missing["DIRTY<br/>(baseline missing)"]:::dirty
-    dirty_source["DIRTY<br/>(source changed)"]:::dirty
+    dirty_all["DIRTY<br/>(all packages)"]:::dirty
+    dirty_force["DIRTY<br/>(selected)"]:::dirty
+    dirty_new["DIRTY<br/>(initial release)"]:::dirty
+    dirty_source["DIRTY<br/>(files changed)"]:::dirty
     dirty_dep["DIRTY<br/>(dependency changed)"]:::dirty
     clean_pkg["UNCHANGED"]:::clean
 
@@ -263,9 +273,7 @@ flowchart TD
     force -->|Yes| dirty_force
     force -->|No| base
     base -->|No| dirty_new
-    base -->|Yes| resolve
-    resolve -->|No| dirty_missing
-    resolve -->|Yes| diff
+    base -->|Yes| diff
     diff -->|Yes| dirty_source
     diff -->|No| dep
     dep -->|Yes| dirty_dep
@@ -277,17 +285,17 @@ flowchart TD
 These two categories are the primary dirty reasons during normal operation.
 
 **Source-dirty** means files inside the package directory changed since the baseline
-commit. Detection uses subtree OID comparison via pygit2, which runs in O(depth)
+commit. Detection uses tree OID comparison via pygit2, which runs in O(depth)
 time rather than diffing every file. If the git tree hash at the package path
-differs between baseline and HEAD, the package is dirty.
+differs between the baseline commit and HEAD, the package is dirty.
 
 **Dependency-dirty** means the package itself has not changed, but one of its
 workspace dependencies is dirty. After direct dirty detection finishes, a BFS
 traversal over the reverse dependency map marks all transitive dependents as dirty.
 
-One exception exists for dependency propagation. Post-release packages do not
-propagate dirtiness to their dependents. A post-fix only affects the target
-package, not anything that depends on it.
+One exception exists for dependency propagation. Packages in a clean post-release
+state (`CLEAN_POST0` or `CLEAN_POSTM`) do not propagate dirtiness to their dependents.
+A post-fix only affects the target package, not anything that depends on it.
 
 ```mermaid
 flowchart TD
@@ -310,37 +318,20 @@ flowchart TD
 ```
 
 In this example, `pkg-alpha` changed and propagates dirtiness to `pkg-beta`
-and then to `pkg-gamma`. But `pkg-delta` is a post-release, so its dirtiness
+and then to `pkg-gamma`. But `pkg-delta` is a clean post-release, so its dirtiness
 does not propagate to `pkg-epsilon`.
-
-### The effective baseline override
-
-When a package version has no `.dev` suffix (it is a clean final/pre/post version)
-AND its release tag already exists in the repo, change detection uses the release tag
-as the effective baseline instead of the dev baseline tag.
-
-This correctly identifies packages as unchanged when they sit at an already-released
-version. The situation arises on post-release branches or after a manual stable bump.
-
-```
-pyproject.toml says:  1.0.0          (clean, no .dev)
-release tag exists:   pkg/v1.0.0     (already released)
-effective baseline:   pkg/v1.0.0     (diff against release, not dev baseline)
-```
-
-If no files changed since the release tag, the package is unchanged.
 
 ---
 
 ## Baseline Resolution
 
 Baseline resolution determines which git tag to diff against when checking for
-changes. The function `resolve_baseline()` takes the current version and release
-type and returns a tag name (or `None` for new packages).
+changes. The function `_find_baseline_tag()` takes the package name, its current
+Version, and the GitRepo, then returns a Tag (or `None` for new packages).
 
 ### Tag formats
 
-uvr uses two tag formats throughout its lifecycle.
+<code class="brand-code">uvr</code> uses two tag formats throughout its lifecycle.
 
 **Release tags** follow the pattern `{name}/v{version}` and are created during the
 release phase of CI. They mark the commit where a version was published and serve as
@@ -362,286 +353,76 @@ pkg-beta/v0.2.1.dev0-base
 pkg-gamma/v1.0.0a1.dev0-base
 ```
 
-### Resolution matrix
-
-When uvr detects changes, it needs a baseline tag to diff against. The baseline
-depends on two inputs: the current version in `pyproject.toml` and how
-`uvr release` is invoked.
-
-The "release type" is not a user-facing flag. It is auto-detected internally from
-the version string by `detect_release_type_for_version()`. The only CLI override
-is `--dev`, which forces the dev release path regardless of version.
-
-- Version contains `a`, `b`, or `rc` suffix -> auto-detected as **pre**
-- Version contains `.post` suffix -> auto-detected as **post**
-- Otherwise -> auto-detected as **stable**
-
-Each row reads as: "If `pyproject.toml` says **version** and you run
-**command**, then change detection diffs HEAD against **baseline tag**."
-
-These examples assume the package is named `pkg` and that `pkg/v1.2.2` is the
-most recent stable release tag and `pkg/v1.2.3.post1` is the most recent
-post-release tag.
-
-#### Stable track (`uvr release`)
-
-| Current version | Baseline tag | Diffs against |
-|---|---|---|
-| `1.2.3` | `pkg/v1.2.2` | The previous release commit |
-| `1.2.3.dev0` | `pkg/v1.2.3.dev0-base` | The commit that bumped to `1.2.3.dev0` |
-| `1.2.3.dev3` | `pkg/v1.2.3.dev0-base` | Rewinds to cycle start (all dev iterations included) |
-
-#### Pre-release track (`uvr release` when version has `a`/`b`/`rc` suffix)
-
-| Current version | Baseline tag | Diffs against |
-|---|---|---|
-| `1.2.3a1` | `pkg/v1.2.2` | The previous stable release commit |
-| `1.2.3a1.dev0` | `pkg/v1.2.3a1.dev0-base` | The commit that bumped to `1.2.3a1.dev0` |
-| `1.2.3a1.dev2` | `pkg/v1.2.3a1.dev0-base` | Rewinds to cycle start (all dev iterations included) |
-
-When graduating from pre-release to stable (e.g. version is `1.2.3a1.dev0` but you
-manually strip the pre suffix before releasing), the baseline goes all the way back
-to the previous final release (`pkg/v1.2.2`). This is cumulative mode and ensures
-the stable release includes all changes made during the entire pre-release cycle.
-
-#### Post-release track (`uvr release` when version has `.post` suffix)
-
-| Current version | Baseline tag | Diffs against |
-|---|---|---|
-| `1.2.3.post0` | `pkg/v1.2.3` | The stable release this post-fix targets |
-| `1.2.3.post0.dev0` | `pkg/v1.2.3.post0.dev0-base` | The commit that bumped to `1.2.3.post0.dev0` |
-| `1.2.3.post0.dev3` | `pkg/v1.2.3.post0.dev0-base` | Rewinds to cycle start (all dev iterations included) |
-| `1.2.3.post2` | `pkg/v1.2.3.post1` | The previous post-release commit |
-| `1.2.3.post2.dev0` | `pkg/v1.2.3.post2.dev0-base` | The commit that bumped to `1.2.3.post2.dev0` |
-| `1.2.3.post2.dev3` | `pkg/v1.2.3.post2.dev0-base` | Rewinds to cycle start (all dev iterations included) |
-
-#### Dev release track (`uvr release --dev`)
-
-The `--dev` flag overrides auto-detection. The baseline is always the current
-version's own `-base` tag with no rewinding.
-
-| Current version | Baseline tag | Diffs against |
-|---|---|---|
-| `1.2.3.dev0` | `pkg/v1.2.3.dev0-base` | The commit that bumped to `1.2.3.dev0` |
-| `1.2.3.dev3` | `pkg/v1.2.3.dev3-base` | The commit that bumped to `1.2.3.dev3` |
-| `1.2.3a1.dev0` | `pkg/v1.2.3a1.dev0-base` | The commit that bumped to `1.2.3a1.dev0` |
-| `1.2.3.post2.dev0` | `pkg/v1.2.3.post2.dev0-base` | The commit that bumped to `1.2.3.post2.dev0` |
-
-#### Invalid combinations
-
-These are rejected with a `ValueError` during baseline resolution.
-
-| Current version | Attempted release | Why |
-|---|---|---|
-| `1.2.3.dev0` | `uvr release --dev` then auto-detect as post | Cannot post-release an unreleased version |
-| `1.2.3a1.dev0` | manually set to post track | Cannot post-release a pre-release |
-| `1.2.3.post2.dev0` | manually set to stable track | Cannot stable-release from post track |
-| `1.2.3.post2.dev0` | manually set to pre track | Cannot pre-release from post track |
-
-These errors only arise from invalid version states (e.g. manually editing
-`pyproject.toml` into a contradictory version). Normal workflows through
-`uvr bump` and `uvr release` never produce them.
-
-#### Key patterns
-
-- **Clean versions** (no `.dev` suffix) are transient. They always resolve to the
-  previous release tag.
-- **`.dev0` versions** resolve to their own `-base` tag. That tag was created by the
-  bump phase of the previous release and marks the start of the current dev cycle.
-- **`.devN` where N > 0** resolve differently depending on release type. A `--dev`
-  release uses the exact `.devN-base` tag (incremental). All other release types
-  rewind to `.dev0-base` so that all changes since the cycle started are included.
-
-### Resolution by version form
-
-One unified flowchart showing the full baseline resolution and release lifecycle
-for every version form. The decision tree branches on version shape first, then
-on command (`uvr release` vs `uvr release --dev`).
-
-For tag lookups, `pkg` is the package name. "Scan tags" means scanning all
-`pkg/v*` tags (excluding `-base` suffixes), parsing as PEP 440, and returning
-the highest version below the current one.
-
-#### `uvr release` (default)
-
-```mermaid
-flowchart TD
-    classDef ver fill:#4ade80,stroke:#16a34a,color:#000
-    classDef check fill:#fbbf24,stroke:#d97706,color:#000
-    classDef ok fill:#e2e8f0,stroke:#64748b,color:#000
-    classDef err fill:#f87171,stroke:#dc2626,color:#fff
-    classDef step fill:#60a5fa,stroke:#2563eb,color:#000
-
-    START(["VERSION"]):::ver
-
-    START --> DEVN{"has .devK<br/>where K > 0?"}:::check
-
-    %% ── devK > 0 branch ──
-    DEVN -->|Yes| DEVN_POST{"has .postM?"}:::check
-    DEVN_POST -->|Yes| DEVN_POST_OK["baseline: pkg/vX.Y.Z.postM.dev0-base<br/>(rewinds to cycle start)<br/>publishes: X.Y.Z.postM<br/>bumps to: X.Y.Z.post(M+1).dev0"]:::ok
-    DEVN_POST -->|No| DEVN_PRE{"has aN/bN/rcN?"}:::check
-    DEVN_PRE -->|Yes| DEVN_PRE_OK["baseline: pkg/vX.Y.ZaN.dev0-base<br/>(rewinds to cycle start)<br/>publishes: X.Y.ZaN<br/>bumps to: X.Y.Za(N+1).dev0"]:::ok
-    DEVN_PRE -->|No| DEVN_STABLE["baseline: pkg/vX.Y.Z.dev0-base<br/>(rewinds to cycle start)<br/>publishes: X.Y.Z<br/>bumps to: X.Y.(Z+1).dev0"]:::ok
-
-    %% ── dev0 branch ──
-    DEVN -->|No| DEV0{"has .dev0?"}:::check
-    DEV0 -->|Yes| DEV0_POST{"has .postM?"}:::check
-    DEV0_POST -->|Yes| DEV0_POST_OK["baseline: pkg/vX.Y.Z.postM.dev0-base<br/>publishes: X.Y.Z.postM<br/>bumps to: X.Y.Z.post(M+1).dev0"]:::ok
-    DEV0_POST -->|No| DEV0_PRE{"has aN/bN/rcN?"}:::check
-    DEV0_PRE -->|Yes| DEV0_PRE_BASE{"pkg/vX.Y.ZaN.dev0-base<br/>tag exists?"}:::check
-    DEV0_PRE_BASE -->|Yes| DEV0_PRE_OK["baseline: pkg/vX.Y.ZaN.dev0-base<br/>publishes: X.Y.ZaN<br/>bumps to: X.Y.Za(N+1).dev0"]:::ok
-    DEV0_PRE_BASE -->|No| DEV0_PRE_FB{"pkg/vX.Y.Z.dev0-base<br/>exists? (fallback)"}:::check
-    DEV0_PRE_FB -->|Yes| DEV0_PRE_FB_OK["baseline: pkg/vX.Y.Z.dev0-base<br/>publishes: X.Y.ZaN<br/>bumps to: X.Y.Za(N+1).dev0"]:::ok
-    DEV0_PRE_FB -->|No| DEV0_PRE_DIRTY["baseline missing<br/>package always dirty<br/>publishes: X.Y.ZaN<br/>bumps to: X.Y.Za(N+1).dev0"]:::err
-    DEV0_PRE -->|No| DEV0_STABLE_BASE{"pkg/vX.Y.Z.dev0-base<br/>tag exists?"}:::check
-    DEV0_STABLE_BASE -->|Yes| DEV0_STABLE_OK["baseline: pkg/vX.Y.Z.dev0-base<br/>publishes: X.Y.Z<br/>bumps to: X.Y.(Z+1).dev0"]:::ok
-    DEV0_STABLE_BASE -->|No| DEV0_STABLE_DIRTY["baseline missing<br/>package always dirty<br/>publishes: X.Y.Z<br/>bumps to: X.Y.(Z+1).dev0"]:::err
-
-    %% ── clean (no .dev) branch ──
-    DEV0 -->|No| CLEAN_POST{"has .postM?"}:::check
-    CLEAN_POST -->|Yes| CLEAN_POST_M{"M == 0?"}:::check
-
-    CLEAN_POST_M -->|"Yes (post0)"| CLEAN_POST0_SCAN["scan pkg/v* tags<br/>find highest below X.Y.Z.post0<br/>(finds X.Y.Z, the stable release)"]:::step
-    CLEAN_POST0_SCAN --> CLEAN_POST0_FOUND{"previous tag<br/>found?"}:::check
-    CLEAN_POST0_FOUND -->|"Yes (X.Y.Z)"| CLEAN_POST0_TAG{"tag pkg/vX.Y.Z.post0<br/>already exists?"}:::check
-    CLEAN_POST0_TAG -->|Yes| CLEAN_POST0_ERR["ERROR: tag conflict<br/>use --post or bump"]:::err
-    CLEAN_POST0_TAG -->|No| CLEAN_POST0_OK["baseline: pkg/vX.Y.Z<br/>publishes: X.Y.Z.post0<br/>bumps to: X.Y.Z.post1.dev0"]:::ok
-    CLEAN_POST0_FOUND -->|No| CLEAN_POST0_NEW["baseline: none<br/>(new package, always dirty)"]:::ok
-
-    CLEAN_POST_M -->|"No (M > 0)"| CLEAN_POSTN_TAG{"tag pkg/vX.Y.Z.postM<br/>already exists?"}:::check
-    CLEAN_POSTN_TAG -->|Yes| CLEAN_POSTN_ERR["ERROR: tag conflict<br/>use --post or bump"]:::err
-    CLEAN_POSTN_TAG -->|No| CLEAN_POSTN_OK["baseline: pkg/vX.Y.Z.post(M-1)<br/>publishes: X.Y.Z.postM<br/>bumps to: X.Y.Z.post(M+1).dev0"]:::ok
-
-    CLEAN_POST -->|No| CLEAN_PRE{"has aN/bN/rcN?"}:::check
-    CLEAN_PRE -->|Yes| CLEAN_PRE_SCAN["scan pkg/v* tags<br/>find highest below X.Y.ZaN"]:::step
-    CLEAN_PRE_SCAN --> CLEAN_PRE_FOUND{"previous tag<br/>found?"}:::check
-    CLEAN_PRE_FOUND -->|"Yes (e.g. X.Y.Za(N-1))"| CLEAN_PRE_TAG{"tag pkg/vX.Y.ZaN<br/>already exists?"}:::check
-    CLEAN_PRE_TAG -->|Yes| CLEAN_PRE_ERR["ERROR: tag conflict<br/>use --post or bump"]:::err
-    CLEAN_PRE_TAG -->|No| CLEAN_PRE_OK["baseline: previous tag<br/>publishes: X.Y.ZaN<br/>bumps to: X.Y.Za(N+1).dev0"]:::ok
-    CLEAN_PRE_FOUND -->|No| CLEAN_PRE_NEW["baseline: none<br/>(new package, always dirty)"]:::ok
-
-    CLEAN_PRE -->|No| CLEAN_STABLE_SCAN["scan pkg/v* tags<br/>find highest below X.Y.Z"]:::step
-    CLEAN_STABLE_SCAN --> CLEAN_STABLE_FOUND{"previous tag<br/>found?"}:::check
-    CLEAN_STABLE_FOUND -->|"Yes (e.g. X.Y.(Z-1))"| CLEAN_STABLE_TAG{"tag pkg/vX.Y.Z<br/>already exists?"}:::check
-    CLEAN_STABLE_TAG -->|Yes| CLEAN_STABLE_ERR["ERROR: tag conflict<br/>use --post or bump"]:::err
-    CLEAN_STABLE_TAG -->|No| CLEAN_STABLE_OK["baseline: previous tag<br/>publishes: X.Y.Z<br/>bumps to: X.Y.(Z+1).dev0"]:::ok
-    CLEAN_STABLE_FOUND -->|No| CLEAN_STABLE_NEW["baseline: none<br/>(new package, always dirty)"]:::ok
-```
-
-#### `uvr release --dev`
-
-The `--dev` flag requires all changed packages to have a `.devK` version.
-Clean versions (no `.dev` suffix) cause an error.
-
-```mermaid
-flowchart TD
-    classDef ver fill:#4ade80,stroke:#16a34a,color:#000
-    classDef check fill:#fbbf24,stroke:#d97706,color:#000
-    classDef ok fill:#e2e8f0,stroke:#64748b,color:#000
-    classDef err fill:#f87171,stroke:#dc2626,color:#fff
-
-    START(["VERSION"]):::ver
-
-    START --> HAS_DEV{"has .devK suffix?"}:::check
-
-    HAS_DEV -->|No| ERR_CLEAN["ERROR: --dev requires .devK version<br/>Fix: uvr bump --dev"]:::err
-
-    HAS_DEV -->|Yes| BASE_TAG{"pkg/vX.Y.Z...devK-base<br/>tag exists?"}:::check
-    BASE_TAG -->|No| DIRTY["baseline missing<br/>package always dirty"]:::err
-    BASE_TAG -->|Yes| BASELINE["baseline: pkg/vX.Y.Z...devK-base"]:::ok
-
-    DIRTY --> CONFLICT
-    BASELINE --> CONFLICT{"tag pkg/vX.Y.Z...devK<br/>already exists?"}:::check
-    CONFLICT -->|Yes| ERR_TAG["ERROR: tag conflict"]:::err
-    CONFLICT -->|No| RESULT["publishes: X.Y.Z...devK as-is<br/>bumps to: X.Y.Z...dev(K+1)"]:::ok
-```
-
-### Resolution flowchart
-
-```mermaid
-flowchart TD
-    classDef result fill:#4ade80,stroke:#16a34a,color:#000
-    classDef error fill:#f87171,stroke:#dc2626,color:#fff
-    classDef decision fill:#e2e8f0,stroke:#64748b,color:#000
-
-    start(["resolve_baseline(version, release_type)"]):::decision
-    hasdev{"Has .dev suffix?"}:::decision
-    cleanpath["find_release_tags_below()"]:::result
-
-    haspost_sp{"has_post AND<br/>release_type in<br/>(stable, pre)?"}:::decision
-    err1["ERROR: cannot stable/pre<br/>from post-release dev"]:::error
-
-    nopost_post{"NOT has_post AND<br/>release_type == post?"}:::decision
-    err2["ERROR: cannot post<br/>from unreleased version"]:::error
-
-    isdev{"release_type == dev?"}:::decision
-    devbase["current version -base tag"]:::result
-
-    pre_nopre{"release_type == pre<br/>AND NOT has_pre?"}:::decision
-    err3["ERROR: no pre suffix<br/>in version"]:::error
-
-    pre_pre{"has_pre AND<br/>release_type == pre?"}:::decision
-    devgt0_pre{"devN > 0?"}:::decision
-    prebase0["dev0-base tag<br/>(with stable fallback)"]:::result
-    prebase["current version -base tag<br/>(with stable fallback)"]:::result
-
-    pre_stable{"has_pre AND<br/>release_type == stable?"}:::decision
-    cumulative["find_release_tags_below(base_version)"]:::result
-
-    post_post{"has_post AND<br/>release_type == post?"}:::decision
-    devgt0_post{"devN > 0?"}:::decision
-    postbase0["dev0-base tag"]:::result
-    postbase["current version -base tag"]:::result
-
-    devgt0_final{"devN > 0?"}:::decision
-    finalbase0["dev0-base tag"]:::result
-    finalbase["current version -base tag"]:::result
-
-    start --> hasdev
-    hasdev -->|"No"| cleanpath
-    hasdev -->|"Yes"| haspost_sp
-
-    haspost_sp -->|"Yes"| err1
-    haspost_sp -->|"No"| nopost_post
-
-    nopost_post -->|"Yes"| err2
-    nopost_post -->|"No"| isdev
-
-    isdev -->|"Yes"| devbase
-    isdev -->|"No"| pre_nopre
-
-    pre_nopre -->|"Yes"| err3
-    pre_nopre -->|"No"| pre_pre
-
-    pre_pre -->|"Yes"| devgt0_pre
-    devgt0_pre -->|"Yes"| prebase0
-    devgt0_pre -->|"No"| prebase
-    pre_pre -->|"No"| pre_stable
-
-    pre_stable -->|"Yes"| cumulative
-    pre_stable -->|"No"| post_post
-
-    post_post -->|"Yes"| devgt0_post
-    devgt0_post -->|"Yes"| postbase0
-    devgt0_post -->|"No"| postbase
-    post_post -->|"No"| devgt0_final
-
-    devgt0_final -->|"Yes"| finalbase0
-    devgt0_final -->|"No"| finalbase
-```
-
-### Pre-release baseline fallback
-
-When entering a pre-release cycle from a dev version (e.g. `uvr bump --alpha` turns
-`1.0.0.dev0` into `1.0.0a0.dev0`), the expected baseline tag `pkg/v1.0.0a0.dev0-base`
-may not exist yet because no bump phase created it.
-
-In this case, `resolve_baseline()` falls back to the stable dev baseline
-`pkg/v1.0.0.dev0-base`. This allows entering alpha without a manual tag creation step.
-
-The fallback only applies to `--pre` release type. If the fallback tag also does not
-exist, the original pre-release baseline tag is returned (and change detection will
-mark the package dirty due to a missing baseline).
+### Resolution by VersionState
+
+The baseline depends on the VersionState of the current version. Resolution follows
+three strategies depending on which group the VersionState falls into.
+
+#### DEV0 states (DEV0_STABLE, DEV0_PRE, DEV0_POST)
+
+Look up the baseline tag for the current version. If that tag does not exist, fall
+back to `_find_previous_release()`, which scans all release tags and returns the
+highest version below the current one.
+
+| VersionState   | Example version   | Baseline tag looked up         | Fallback                                  |
+|----------------|-------------------|--------------------------------|-------------------------------------------|
+| `DEV0_STABLE`  | `1.2.3.dev0`      | `pkg/v1.2.3.dev0-base`         | Highest release tag below `1.2.3`         |
+| `DEV0_PRE`     | `1.2.3a1.dev0`    | `pkg/v1.2.3a1.dev0-base`       | Highest release tag below `1.2.3a1`       |
+| `DEV0_POST`    | `1.2.3.post0.dev0`| `pkg/v1.2.3.post0.dev0-base`   | Highest release tag below `1.2.3.post0`   |
+
+#### DEVK states (DEVK_STABLE, DEVK_PRE, DEVK_POST)
+
+Rewind the dev number to 0, then look up the baseline tag for that `.dev0` version.
+This ensures that all changes since the start of the cycle are included, not just
+changes since the last dev release. If that tag does not exist, fall back to
+`_find_previous_release()`.
+
+| VersionState   | Example version      | Rewound to       | Baseline tag looked up            | Fallback                             |
+|----------------|----------------------|-------------------|-----------------------------------|--------------------------------------|
+| `DEVK_STABLE`  | `1.2.3.dev3`         | `1.2.3.dev0`      | `pkg/v1.2.3.dev0-base`            | Highest release tag below `1.2.3`    |
+| `DEVK_PRE`     | `1.2.3a1.dev2`       | `1.2.3a1.dev0`    | `pkg/v1.2.3a1.dev0-base`          | Highest release tag below `1.2.3a1`  |
+| `DEVK_POST`    | `1.2.3.post0.dev3`   | `1.2.3.post0.dev0`| `pkg/v1.2.3.post0.dev0-base`      | Highest release tag below `1.2.3.post0` |
+
+#### Clean states with no post suffix (CLEAN_STABLE, CLEAN_PRE0, CLEAN_PREN)
+
+Go directly to `_find_previous_release()`, which scans all release tags and returns
+the highest version below the current one. No baseline tag lookup is attempted.
+
+| VersionState    | Example version | Diffs against                         |
+|-----------------|-----------------|---------------------------------------|
+| `CLEAN_STABLE`  | `1.2.3`         | Highest release tag below `1.2.3`     |
+| `CLEAN_PRE0`    | `1.2.3a0`       | Highest release tag below `1.2.3a0`   |
+| `CLEAN_PREN`    | `1.2.3a2`       | Highest release tag below `1.2.3a2`   |
+
+#### Clean post states (CLEAN_POST0, CLEAN_POSTM)
+
+Look up the release tag for the base version (the stable version without the `.postN`
+suffix). This diffs against the stable release that the post-fix targets.
+
+| VersionState    | Example version  | Baseline tag looked up |
+|-----------------|------------------|------------------------|
+| `CLEAN_POST0`   | `1.2.3.post0`    | `pkg/v1.2.3`           |
+| `CLEAN_POSTM`   | `1.2.3.post2`    | `pkg/v1.2.3`           |
+
+### Key patterns
+
+- **DEV0 versions** resolve to their own `-base` tag first, then fall back to the
+  previous release tag. The `-base` tag was created by the bump phase of the previous
+  release and marks the start of the current dev cycle.
+- **DEVK versions** (where K > 0) always rewind to the `.dev0` baseline tag. This
+  means all changes since the cycle started are included, not just changes since the
+  last dev release.
+- **Clean versions** (no `.dev` suffix) are transient. Stable and pre-release clean
+  versions resolve to the previous release tag. Clean post-release versions resolve
+  to the release tag on the base stable version.
+
+### `_find_previous_release()` behavior
+
+This function scans all tags matching the `{name}/v*` prefix, excluding baseline tags
+(those ending in `-base`). It parses each tag as a PEP 440 version, filters to those
+below the target version, and returns the highest match. If no matching tag exists, it
+returns `None`, which means the package has no previous release and will always be
+marked dirty as an "initial release".
 
 ---
 
@@ -649,10 +430,10 @@ mark the package dirty due to a missing baseline).
 
 ### Topological layer assignment
 
-uvr assigns each package a **layer number** using a modified Kahn's algorithm.
-Packages in the same layer have no dependencies on each other and can build
-concurrently. Layers execute sequentially so that earlier layers complete before
-later layers start.
+<code class="brand-code">uvr</code> assigns each package a **layer number** using the
+`topo_layers()` function. Packages in the same layer have no dependencies on each other.
+Layers execute sequentially so that earlier layers complete before later layers start.
+Within a layer, packages build sequentially.
 
 ```
 Layer 0: packages with zero internal dependencies
@@ -661,7 +442,7 @@ Layer N: packages whose deepest dependency is in layer N-1
 
 The algorithm processes in three steps.
 
-1. Build in-degree and reverse-dependency maps from `PackageInfo.deps`
+1. Build in-degree and reverse-dependency maps from `Package.dependencies`
 2. Initialize all zero-in-degree nodes to layer 0
 3. Process the queue, updating each dependent's layer to
    `max(current_layer, dependency_layer + 1)` and decrementing in-degrees
@@ -690,33 +471,18 @@ graph TD
     D --> E
 ```
 
-In this example, `pkg-alpha` and `pkg-beta` build concurrently in layer 0.
-Then `pkg-gamma` and `pkg-delta` build concurrently in layer 1. Finally
+In this example, `pkg-alpha` and `pkg-beta` are in layer 0.
+Then `pkg-gamma` and `pkg-delta` are in layer 1. Finally
 `pkg-epsilon` builds alone in layer 2.
-
-### Build stage structure
-
-Each topological layer becomes a `BuildStage` in the plan. A stage has three parts.
-
-| Part       | Execution          | Purpose                                        |
-|------------|--------------------|-------------------------------------------------|
-| `setup`    | Sequential         | Create directories, fetch unchanged deps        |
-| `packages` | Concurrent per-pkg | `uv build` for each package in this layer       |
-| `cleanup`  | Sequential         | Remove transitive dep wheels from `dist/`       |
-
-The setup phase of the first stage fetches wheels for unchanged dependencies from
-GitHub releases (or CI run artifacts if `reuse_run_id` is set). This uses the
-`DownloadWheelsCommand` which implements BFS transitive resolution by parsing
-wheel `METADATA` for internal dependencies.
 
 ### Runner matrix
 
-Packages can be assigned to different CI runners (e.g. `ubuntu-latest` and
+Packages can be assigned to different CI runners (for example `ubuntu-latest` and
 `macos-latest` for platform-specific wheels). The plan groups packages by runner
-and generates independent build stage sequences per runner. CI fans out via
+and generates independent build sequences per runner. CI fans out via
 `strategy.matrix` using the plan's `build_matrix` field.
 
-In local mode (`--where local`), only runners matching the current platform execute.
+Runner filtering uses the `UVR_RUNNER` environment variable.
 
 ---
 
@@ -740,23 +506,23 @@ stateDiagram-v2
         baselines --> detect: Resolve baselines
         detect --> versions: Detect changes
         versions --> notes: Compute versions
-        notes --> validate: Generate release notes
-        validate --> commit: Check tag conflicts
+        notes --> validate_local: Generate release notes
+        validate_local --> commit: Check tag conflicts
         commit --> push: Commit version pins
         push --> dispatch: Push to remote
     }
 
     state "CI (release.yml)" as ci {
-        dispatch --> uvr_validate
-        uvr_validate --> uvr_build
-        uvr_build --> uvr_release
-        uvr_release --> uvr_publish
-        uvr_publish --> uvr_bump
-        uvr_bump --> [*]
+        dispatch --> validate
+        validate --> build
+        build --> release
+        release --> publish
+        publish --> bump
+        bump --> [*]
     }
 
-    class discover,baselines,detect,versions,notes,validate,commit,push,dispatch local
-    class uvr_validate,uvr_build,uvr_release,uvr_publish,uvr_bump ci
+    class discover,baselines,detect,versions,notes,validate_local,commit,push,dispatch local
+    class validate,build,release,publish,bump ci
 ```
 
 ### Local phase details
@@ -764,9 +530,9 @@ stateDiagram-v2
 | Step                  | What happens                                                    |
 |-----------------------|-----------------------------------------------------------------|
 | Scan workspace        | Read `[tool.uv.workspace].members`, apply include/exclude       |
-| Resolve baselines     | Call `resolve_baseline()` per package per release type           |
-| Detect changes        | Subtree OID comparison + transitive BFS propagation             |
-| Compute versions      | `current_version` to `release_version` to `next_version`        |
+| Resolve baselines     | Call `_find_baseline_tag()` per package                         |
+| Detect changes        | Tree OID comparison + transitive BFS propagation                |
+| Compute versions      | Current version to release version to next version              |
 | Generate release notes| Commit log between baseline and HEAD for each changed package   |
 | Check tag conflicts   | Verify no planned tags already exist in the repo                |
 | Commit version pins   | Write release versions + dep pins, commit "chore: set release versions" |
@@ -781,30 +547,30 @@ Each job is a separate GitHub Actions job. They run sequentially. Each job recei
 the plan JSON via `inputs.plan` and calls `uvr jobs <phase>` which reads the
 pre-computed commands from the plan and executes them.
 
-#### uvr-validate
+#### validate
 
-Always runs. Cannot be skipped. Validates the plan schema version and workflow YAML.
+Always runs. Cannot be skipped. Sets release versions and pins dependencies (for
+non-dev releases). For dev releases, this job has no commands.
 
-#### uvr-build
+#### build
 
 Runs as a matrix job, one per unique runner label set. Each runner executes its
 assigned build stages.
 
 1. Create `dist/` and `deps/` directories
 2. Fetch unchanged dependency wheels (from run artifacts or GitHub releases)
-3. For each topological layer, build all assigned packages concurrently
-4. Clean up transitive dependency wheels not owned by this runner
-5. Upload `dist/*.whl` as `wheels-<runner-labels>` artifact
+3. For each topological layer, build all assigned packages sequentially
+4. Upload `dist/*.whl` as artifact
 
-#### uvr-release
+#### release
 
-Runs after all build matrix jobs complete. Downloads all `wheels-*` artifacts.
+Runs after all build matrix jobs complete. Downloads wheel artifacts.
 
 1. Tag the current commit with `{name}/v{release_version}` for each changed package
 2. Create GitHub releases with wheels attached (ordered so the `latest` package is last)
 3. Push all release tags
 
-#### uvr-publish
+#### publish
 
 Runs after release. Gated by a GitHub Actions environment for trusted publishing.
 
@@ -814,7 +580,7 @@ Runs after release. Gated by a GitHub Actions environment for trusted publishing
 Packages are filtered by `[tool.uvr.publish]` include/exclude settings. If no
 packages are publishable, this job is a no-op.
 
-#### uvr-bump
+#### bump
 
 Runs after publish. The only CI job that writes to the repository.
 
@@ -839,7 +605,7 @@ stateDiagram-v2
     classDef failed fill:#f87171,stroke:#dc2626,color:#fff
     classDef partial fill:#fbbf24,stroke:#d97706,color:#000
 
-    [*] --> validate_done: uvr-validate passes
+    [*] --> validate_done: validate passes
 
     state "After validate" as validate_done {
         state "Repo: version commit pushed" as v_repo
@@ -848,8 +614,8 @@ stateDiagram-v2
         state "Artifacts: none" as v_art
     }
 
-    validate_done --> build_done: uvr-build passes
-    validate_done --> build_fail: uvr-build FAILS
+    validate_done --> build_done: build passes
+    validate_done --> build_fail: build FAILS
 
     state "After build" as build_done {
         state "Repo: version commit pushed  " as b_repo
@@ -860,8 +626,8 @@ stateDiagram-v2
 
     state "Build failure" as build_fail
 
-    build_done --> release_done: uvr-release passes
-    build_done --> release_fail: uvr-release FAILS
+    build_done --> release_done: release passes
+    build_done --> release_fail: release FAILS
 
     state "After release" as release_done {
         state "Repo: version commit pushed    " as r_repo
@@ -872,8 +638,8 @@ stateDiagram-v2
 
     state "Release failure" as release_fail
 
-    release_done --> publish_done: uvr-publish passes
-    release_done --> publish_fail: uvr-publish FAILS
+    release_done --> publish_done: publish passes
+    release_done --> publish_fail: publish FAILS
 
     state "After publish" as publish_done {
         state "Repo: version commit pushed     " as p_repo
@@ -884,8 +650,8 @@ stateDiagram-v2
 
     state "Publish failure" as publish_fail
 
-    publish_done --> bump_done: uvr-bump passes
-    publish_done --> bump_fail: uvr-bump FAILS
+    publish_done --> bump_done: bump passes
+    publish_done --> bump_fail: bump FAILS
 
     state "Complete" as bump_done {
         state "Repo: bumped to next dev" as c_repo
@@ -905,16 +671,16 @@ stateDiagram-v2
 
 | Failure Point | System State | Recovery Command |
 |---|---|---|
-| **uvr-build fails** | Version commit pushed. No tags. No wheels. | Re-run the workflow, or revert the version commit and start over. |
-| **uvr-release fails** | Wheels exist in CI artifacts. No tags created. | `uvr release --skip uvr-build --reuse-run <RUN_ID>` |
-| **uvr-publish fails** | Release tags and GitHub releases exist. Wheels not on index. | `uvr release --skip uvr-build --skip uvr-release` |
-| **uvr-bump fails** | Everything published. Repo not bumped to next dev. | `uvr release --skip uvr-build --skip uvr-release --skip uvr-publish` |
+| **build fails** | Version commit pushed. No tags. No wheels. | Re-run the workflow, or revert the version commit and start over. |
+| **release fails** | Wheels exist in CI artifacts. No tags created. | `uvr release --skip build --reuse-run <RUN_ID>` |
+| **publish fails** | Release tags and GitHub releases exist. Wheels not on index. | `uvr release --skip build --skip release` |
+| **bump fails** | Everything published. Repo not bumped to next dev. | `uvr release --skip build --skip release --skip publish` |
 
 The `--reuse-run` flag tells the build phase to download wheels from the specified
 CI run's artifacts instead of building from scratch. The `--skip` flag skips
 individual jobs so downstream jobs still execute.
 
-When `uvr-release` is skipped, release tag conflict checks are suppressed because
+When `release` is skipped, release tag conflict checks are suppressed because
 the tags already exist from the previous run.
 
 ### Tag conflict detection
@@ -922,7 +688,7 @@ the tags already exist from the previous run.
 Before generating a plan, the planner checks whether any planned tags already exist
 in the local repo.
 
-**Release tags** (`{name}/v{release_version}`) are checked unless `uvr-release` is
+**Release tags** (`{name}/v{release_version}`) are checked unless `release` is
 in the skip list (because skipping release means the tags already exist from a
 previous successful run).
 
@@ -935,10 +701,10 @@ If any conflicts are found, the planner exits with suggestions.
 
 ### Version conflict detection
 
-Separately from tag conflicts, `find_version_conflicts()` checks whether any
-package's dev version targets a version that was already released. For example,
-if `pyproject.toml` says `1.0.1a1.dev0` but the tag `pkg/v1.0.1a1` already exists,
-the version was already published and should not be developed toward again.
+Separately from tag conflicts, the planner checks whether any package's dev version
+targets a version that was already released. For example, if `pyproject.toml` says
+`1.0.1a1.dev0` but the tag `pkg/v1.0.1a1` already exists, the version was already
+published and should not be developed toward again.
 
 The resolution is to bump the version past the conflict with `uvr bump`.
 
@@ -960,15 +726,15 @@ sequenceDiagram
     Dev->>Repo: uvr release (commit 1.0.0 versions)
     Dev->>CI: dispatch plan JSON
 
-    CI->>CI: uvr-validate
-    CI->>CI: uvr-build (produce wheels)
+    CI->>CI: validate
+    CI->>CI: build (produce wheels)
 
     CI->>Repo: git tag pkg/v1.0.0
     CI->>Repo: gh release create pkg/v1.0.0 (attach wheels)
     CI->>Repo: git push --tags
     Note right of Repo: Release tag created:<br/>pkg/v1.0.0
 
-    CI->>CI: uvr-publish (upload to PyPI)
+    CI->>CI: publish (upload to PyPI)
 
     CI->>Repo: uv version 1.0.1.dev0
     CI->>Repo: git commit "chore: prepare next release"
@@ -988,7 +754,7 @@ sequenceDiagram
     Dev->>CI: dispatch plan JSON
 
     CI->>Repo: git tag pkg/v1.0.1
-    Note right of Repo: Release tag created:<br/>pkg/v1.0.1<br/>(also consumable as effective<br/>baseline if version is clean)
+    Note right of Repo: Release tag created:<br/>pkg/v1.0.1
 
     CI->>Repo: git tag pkg/v1.0.2.dev0-base
     Note right of Repo: Baseline tag created:<br/>pkg/v1.0.2.dev0-base
@@ -998,12 +764,12 @@ sequenceDiagram
 
 | Tag Type | Created By | Consumed By | Purpose |
 |---|---|---|---|
-| `{name}/v{version}` (release) | uvr-release phase | `find_release_tags_below()`, effective baseline override, GitHub release identifier | Marks published version |
-| `{name}/v{version}-base` (baseline) | uvr-bump phase | `resolve_baseline()` during next release cycle's change detection | Diff anchor for next release |
+| `{name}/v{version}` (release) | release job | `_find_previous_release()`, GitHub release identifier, `DownloadWheelsCommand` | Marks published version |
+| `{name}/v{version}-base` (baseline) | bump job | `_find_baseline_tag()` during next release cycle's change detection | Diff anchor for next release |
 
-Release tags are long-lived. They are referenced by `find_release_tags_below()` to
+Release tags are long-lived. They are referenced by `_find_previous_release()` to
 locate the baseline for clean versions. They also serve as the source for downloading
-unchanged dependency wheels via `FetchGithubReleaseCommand`.
+unchanged dependency wheels via `DownloadWheelsCommand`.
 
 Baseline tags are consumed exactly once, during the next release cycle's change
 detection. After that cycle completes, a new baseline tag is created for the next

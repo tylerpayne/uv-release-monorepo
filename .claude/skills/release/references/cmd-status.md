@@ -12,4 +12,5 @@ Shows which packages have changed since their last release tag, their current ve
 
 | Flag | Description |
 |------|-------------|
-| `--workflow-dir DIR` | Workflow directory (default: `.github/workflows`) |
+| `--all-packages` | Show all packages as changed |
+| `--packages PKG...` | Show specific packages |

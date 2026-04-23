@@ -43,6 +43,10 @@ Chosen option: "Python hook class system", because it is the only option that le
 * Hook classes are imported and executed locally, so a broken hook can block `uvr release`
 * The hook point names (pre_plan, post_plan, pre_build, etc.) are frozen once users depend on them
 
+### Subsequent Changes
+
+The public class is `Hooks` (not `ReleaseHook`). Default class name is `Hooks` (not `Hook`). Hook points are `pre_plan`, `post_plan`, `pre_build`, `post_build`, `pre_release`, `post_release`, `pre_publish`, `post_publish`, `pre_bump`, `post_bump`.
+
 ## Links
 
 * Supersedes [ADR-0006: Use post-release hook for PyPI publishing](0006-use-post-release-hook-for-pypi-publishing.md) — PyPI publishing can now be implemented as a ReleaseHook instead of a workflow-level hook job
