@@ -10,43 +10,32 @@ strategy:
     runner: ${{ fromJSON(inputs.plan).build_matrix }}
 ```
 
-## The `ReleaseWorkflow` model
+## Workflow management
 
-A Pydantic model defines the expected schema for `release.yml`.
+<code class="brand-code">uvr workflow init</code> copies a bundled YAML template into your repository. <code class="brand-code">uvr workflow validate</code> parses the YAML and checks for required jobs.
 
-1. **Generation.** <code class="brand-code">uvr workflow init</code> instantiates `ReleaseWorkflow()` with defaults and serializes to YAML.
-2. **Validation.** <code class="brand-code">uvr workflow validate</code> loads the YAML and runs all validators including frozen field checks.
-3. **Documentation.** The model is the single source of truth for what the workflow should look like.
+## Validation
 
-All jobs inherit from `Job` with `extra="allow"`. You can add arbitrary keys (permissions, outputs, concurrency) without breaking validation.
+Validation checks two things.
 
-## Frozen fields
-
-Core jobs contain `fromJSON(inputs.plan)` expressions that CI depends on. Changing them silently breaks the pipeline. <code class="brand-code">uvr</code> marks them **frozen**. Validation warns (but doesn't block) if they're modified.
-
-| Job | Frozen fields |
-|-----|--------------|
-| `BuildJob` | `if`, `strategy`, `runs-on`, `steps` |
-| `ReleaseJob` | `if`, `strategy`, `steps` |
-| `BumpJob` | `if`, `steps` |
+1. The five required jobs exist (`validate`, `build`, `release`, `publish`, `bump`).
+2. Whether the file differs from the bundled template. If it does, a warning is emitted.
 
 ## Pipeline enforcement
 
 Core jobs have mandatory `needs` dependencies.
 
 ```
-uvr-validate → uvr-build → uvr-release → uvr-bump
+validate -> build -> release -> publish -> bump
 ```
-
-If you remove a required `needs` entry, the `_needs_validator` silently adds it back. You can add extra entries (e.g., `needs: [uvr-build, my-test-job]`) but can't remove the required ones.
 
 ## Custom workflow jobs
 
-Add your own jobs to `release.yml` by editing the YAML directly. `WorkflowJobs` uses `extra="allow"`, so any additional jobs pass validation.
+Add your own jobs to `release.yml` by editing the YAML directly.
 
 ```yaml
 pre-build:
-  needs: [uvr-validate]
+  needs: [validate]
   runs-on: ubuntu-latest
   steps:
     - uses: actions/checkout@v4
@@ -58,21 +47,21 @@ Custom jobs survive <code class="brand-code">uvr workflow init --upgrade</code>.
 
 ## Python hooks
 
-For injecting data into the plan before it reaches CI.
+For injecting data into the plan before it reaches CI. The default hooks file is `uvr_hooks.py` with a default class named `Hooks`.
 
 ```python
-from uv_release import ReleaseHook, ReleasePlan
+from uv_release import Hooks
 
-class Hook(ReleaseHook):
-    def post_plan(self, plan: ReleasePlan) -> ReleasePlan:
-        data = plan.model_dump()
-        data["deploy_env"] = "staging"
-        return ReleasePlan.model_validate(data)
+
+class MyHooks(Hooks):
+    def post_plan(self, workspace, intent, plan):
+        # Modify the plan before it is dispatched
+        return plan
 ```
 
-**Local hooks** run on your machine during <code class="brand-code">uvr release</code>. `pre_plan`, `post_plan`.
+**Local hooks** run on your machine during <code class="brand-code">uvr release</code>. These are `pre_plan` and `post_plan`.
 
-**CI hooks** run inside the workflow. `pre_build`, `post_build`, `pre_build_stage`, `post_build_stage`, `pre_build_package`, `post_build_package`, `pre_release`, `post_release`, `pre_publish`, `post_publish`, `pre_bump`, `post_bump`.
+**CI hooks** run inside the workflow. These are `pre_build`, `post_build`, `pre_release`, `post_release`, `pre_publish`, `post_publish`, `pre_bump`, and `post_bump`.
 
 ## Init, validate, and upgrade
 
@@ -82,7 +71,7 @@ Generates `release.yml` from defaults. Checks that the CWD is a git repo with `[
 
 ### <code class="brand-code">uvr workflow validate</code>
 
-Validates the existing YAML against the model. Reports frozen field warnings and errors. Never modifies the file.
+Validates the existing YAML against the template. Checks for required jobs and reports if the file differs from the template. Never modifies the file.
 
 ### <code class="brand-code">uvr workflow init --upgrade</code>
 

@@ -17,7 +17,7 @@ checks:
     - run: uv run poe check
     - run: uv run poe test
 
-uvr-build:
+build:
   needs: [checks]
   # ... (rest unchanged)
 ```
@@ -27,7 +27,7 @@ uvr-build:
 ```yaml
 notify:
   runs-on: ubuntu-latest
-  needs: [uvr-bump]
+  needs: [bump]
   if: ${{ always() && !failure() && !cancelled() }}
   steps:
     - name: Notify Slack
@@ -59,12 +59,12 @@ env:
 Create `uvr_hooks.py` at your workspace root.
 
 ```python
-from uv_release import ReleaseHook, ReleasePlan
+from uv_release import Hooks
 
 
-class Hook(ReleaseHook):
-    def post_plan(self, plan: ReleasePlan) -> ReleasePlan:
-        # Modify the plan before dispatch
+class MyHooks(Hooks):
+    def post_plan(self, workspace, intent, plan):
+        # Inspect the plan before dispatch
         return plan
 ```
 
@@ -72,10 +72,10 @@ class Hook(ReleaseHook):
 
 Run on your machine during <code class="brand-code">uvr release</code>.
 
-| Method | Receives | Returns |
+| Method | Signature | Returns |
 |---|---|---|
-| `pre_plan` | `PlanConfig` | Modified `PlanConfig` |
-| `post_plan` | `ReleasePlan` | Modified `ReleasePlan` |
+| `pre_plan` | `(self, workspace, intent)` | Modified intent or `None` |
+| `post_plan` | `(self, workspace, intent, plan)` | Modified plan or `None` |
 
 ### CI hooks
 
@@ -83,24 +83,23 @@ Run during executor phases (in GitHub Actions or locally with `--where local`).
 
 | Method | When |
 |---|---|
-| `pre_build` / `post_build` | Before/after the entire build phase |
-| `pre_build_stage` / `post_build_stage` | Before/after each topological layer |
-| `pre_build_package` / `post_build_package` | Before/after each package build |
+| `pre_build` / `post_build` | Before/after the build phase |
 | `pre_release` / `post_release` | Before/after GitHub release creation |
 | `pre_publish` / `post_publish` | Before/after index publishing |
 | `pre_bump` / `post_bump` | Before/after the version bump phase |
 
 ### Attaching custom data to the plan
 
-The `ReleasePlan` model allows extra keys. Attach data in `post_plan` that travels through the pipeline to CI.
+The plan is a frozen model, so `post_plan` cannot mutate it. To attach custom data, build a new plan with the extra fields.
 
 ```python
-def post_plan(self, plan: ReleasePlan) -> ReleasePlan:
-    plan.deploy_env = "staging"
+def post_plan(self, workspace, intent, plan):
+    # Log or inspect the plan
+    print(f"Releasing {len(plan.jobs)} jobs")
     return plan
 ```
 
-Access it in workflow jobs via `fromJSON(inputs.plan).deploy_env`.
+The full plan JSON is available in workflow jobs via `fromJSON(inputs.plan)`.
 
 ---
 

@@ -31,39 +31,40 @@ features:
 
 You have a uv workspace with three packages. `auth` is a leaf. `api` depends on it. `cli` hasn't changed.
 
+Install uvr as a dev dependency.
+
 ```bash
 uv add --dev uv-release
+```
+
+Scaffold the release workflow.
+
+```bash
 uvr workflow init
+```
+
+Plan, confirm, and dispatch.
+
+```bash
 uvr release
 ```
 
 ```
 Packages
 --------
-  STATUS     PACKAGE  VERSION      PREVIOUS  CHANGES  COMMITS
-  changed    auth     0.2.0.dev0   0.1.0     3        2
-  changed    api      0.1.1.dev0   0.1.0     1        1
-  unchanged  cli      1.0.0        1.0.0     -        -
+  files changed     auth    0.2.0.dev0
+  files changed     api     0.1.1.dev0
+  unchanged         cli     1.0.0
 
 Pipeline
 --------
-  run   uvr-build
-          [ubuntu-latest]
-            layer 0
-              auth  0.2.0
-            layer 1
-              api   0.1.1
-  run   uvr-release
-          auth/v0.2.0
-          api/v0.1.1
-  run   uvr-publish
-          auth → pypi
-          api  → pypi
-  run   uvr-bump
-          auth → 0.2.1.dev0
-          api  → 0.1.2.dev0
+  run     validate
+  run     build
+  run     release
+  run     publish
+  run     bump
 
-Dispatch release? [y/N]
+Proceed? [y/N]
 ```
 
 Change detection, topological build ordering, GitHub releases, PyPI publishing, and version bumping. All planned locally before anything touches CI. See the [setup guide](/user-guide/01-getting-started) for the full walkthrough.

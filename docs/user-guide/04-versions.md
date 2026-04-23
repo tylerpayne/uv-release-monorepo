@@ -46,9 +46,9 @@ By default, bumping a package updates `>=` pins in downstream dependents. The `-
 | `--alpha` | `1.3.0.dev0` → `1.3.0a0.dev0` | Enter alpha [pre-release](https://peps.python.org/pep-0440/#pre-releases) cycle |
 | `--beta` | `1.3.0a2.dev0` → `1.3.0b0.dev0` | Enter beta pre-release cycle |
 | `--rc` | `1.3.0b1.dev0` → `1.3.0rc0.dev0` | Enter release candidate cycle |
-| `--post` | `1.3.0.dev0` → `1.3.0.post0.dev0` | Enter [post-release](https://peps.python.org/pep-0440/#post-releases) cycle |
+| `--post` | `1.2.3` → `1.2.3.post0.dev0` | Enter [post-release](https://peps.python.org/pep-0440/#post-releases) cycle |
 | `--dev` | `1.3.0.dev0` → `1.3.0.dev1` | Increment the dev number |
-| `--stable` | `1.3.0a2.dev0` → `1.3.0.dev0` | Strip pre-release markers |
+| `--stable` | `1.3.0a2.dev0` → `1.3.0` | Strip pre-release markers |
 
 Repeating the same pre-release type increments it. `--alpha` twice goes `1.0.0a0.dev0` → `1.0.0a1.dev0`.
 
@@ -62,7 +62,7 @@ uvr bump --alpha                  # 1.3.0a2.dev0
 uvr release                       # publishes 1.3.0a2, CI bumps to 1.3.0a3.dev0
 uvr bump --beta                   # 1.3.0b0.dev0
 uvr release                       # publishes 1.3.0b0, CI bumps to 1.3.0b1.dev0
-uvr bump --stable                 # 1.3.0.dev0
+uvr bump --stable                 # 1.3.0
 uvr release                       # publishes 1.3.0, CI bumps to 1.3.1.dev0
 ```
 

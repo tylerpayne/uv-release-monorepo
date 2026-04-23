@@ -621,7 +621,7 @@ class WorkspacePyProjectDoc:
 
 
 class Change(BaseModel):
-    """A package that changed since its baseline. Produced by detect."""
+    """A package that changed since its baseline. Produced by Changes.parse()."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -638,7 +638,7 @@ class Change(BaseModel):
 
 
 class Release(BaseModel):
-    """A changed package planned for release. Produced by plan."""
+    """A changed package planned for release. Constructed by intent plan() methods."""
 
     model_config = ConfigDict(frozen=True)
 

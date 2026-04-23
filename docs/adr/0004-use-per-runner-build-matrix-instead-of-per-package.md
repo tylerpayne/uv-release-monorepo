@@ -42,7 +42,4 @@ Chosen option: "Per-runner matrix", because it solves build-time dependencies na
 
 ## Subsequent Changes
 
-> **Note (ADR-0014):** The `graph.py` module referenced in this ADR was moved to
-> `planner/_graph.py` as part of the shared module restructuring in
-> [ADR-0014](0014-restructure-shared-module-architecture.md). The `topo_layers()`
-> function and algorithm remain unchanged.
+`graph.py` remains at `uv_release/graph.py` (not `planner/_graph.py`). CLI is `uvr jobs build` (not `uvr-steps build-all`).

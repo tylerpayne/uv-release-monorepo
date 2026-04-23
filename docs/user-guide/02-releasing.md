@@ -22,13 +22,16 @@ Runs all detection and planning logic but makes no changes.
 uvr release --json
 ```
 
-## Bump versions inline
+## Bump versions before releasing
+
+To release a minor or major version instead of patch, bump first and then release.
 
 ```bash
-uvr release --bump minor
+uvr bump --minor
+uvr release
 ```
 
-Bumps all changed packages before generating the plan. Equivalent to `uvr bump --minor` followed by `uvr release` in a single command. Available types. `alpha`, `beta`, `rc`, `post`, `dev`, `stable`, `minor`, `major`, `patch`.
+Available bump types. `alpha`, `beta`, `rc`, `post`, `dev`, `stable`, `minor`, `major`, `patch`. See [Managing Versions](04-versions.md) for the full version lifecycle.
 
 ## Publish dev versions
 
@@ -61,32 +64,26 @@ uvr release --where local
 
 Runs the full pipeline (build, release, publish, bump) on your machine instead of dispatching to CI. Add `--no-push` to skip git push.
 
-## Allow a dirty working tree
+## Clean working tree
+
+A clean working tree is required. <code class="brand-code">uvr release</code> will error if you have uncommitted changes or if your local branch is out of sync with the remote.
+
+## Release specific packages
 
 ```bash
-uvr release --allow-dirty
-```
-
-Turns clean-tree and remote-match checks into warnings instead of errors.
-
-## Rebuild specific packages
-
-```bash
-uvr release --rebuild pkg-alpha pkg-beta
+uvr release --packages pkg-alpha pkg-beta
 ```
 
 Force specific packages to be treated as changed (and their dependents).
 
-## Rebuild all packages
+## Release all packages
 
 ```bash
-uvr release --rebuild-all
+uvr release --all-packages
 ```
 
-## Set the Python version for CI
+Treats all packages as changed regardless of what files were modified.
 
-```bash
-uvr release --python 3.11
-```
+## Python version
 
-Defaults to `3.12`.
+The Python version for CI builds is configured in `[tool.uvr.config]` in your root `pyproject.toml`. See [Reference](08-reference.md) for all configuration keys.

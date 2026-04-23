@@ -37,6 +37,10 @@ Chosen option: "Embed `uvr pin-deps` commands in the build plan", because it pre
 * Bad, because pin changes are no longer individually visible as git commits before dispatch
 * Bad, because build commands grow more complex (version set + pin + build per package)
 
+### Subsequent Changes
+
+`uvr pin-deps` is not a CLI command. Pinning is handled by `PinDepsCommand` in `commands.py`. `Plan` type replaced `ReleasePlan`.
+
 ## Links
 
 * Refines [ADR-0003](0003-move-dependency-pinning-to-local-planning.md)

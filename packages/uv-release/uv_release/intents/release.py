@@ -108,9 +108,10 @@ class ReleaseIntent(BaseModel):
             jobs.append(Job(name="release"))
 
         # Publish job (download artifacts + publish to index)
-        if "publish" not in skip:
+        if "publish" not in skip and uvr_state.publishing.index:
             jobs.append(_compute_publish_job(releases, uvr_state.publishing, download))
         else:
+            skip.add("publish")
             jobs.append(Job(name="publish"))
 
         # Bump job

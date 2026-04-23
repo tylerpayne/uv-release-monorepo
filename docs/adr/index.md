@@ -19,6 +19,7 @@
 * [0013 - Use Three Way Merge For Workflow Upgrades](0013-use-three-way-merge-for-workflow-upgrades.md)
 * [0014 - Restructure Shared Module Architecture](0014-restructure-shared-module-architecture.md)
 * [0015 - Allow Dev Release From Clean Versions](0015-allow-dev-release-from-clean-versions.md)
+* [0016 - Inject State Dependencies Into Intents](0016-inject-state-dependencies-into-intents.md)
 
 ## Rejected Records
 

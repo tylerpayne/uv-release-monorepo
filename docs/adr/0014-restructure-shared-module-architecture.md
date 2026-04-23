@@ -55,6 +55,10 @@ Chosen option: **Option B**, because it makes dependency direction explicit in t
 * The `context/` and `planner/` subpackage boundaries are enforced by convention (private `_` prefix), not by Python's import system
 * Schema version bump to 9 breaks existing release plans — CI workflows must be regenerated via `uvr workflow init --upgrade`
 
+### Subsequent Changes
+
+Superseded by ADR-0016 (state dependency injection). The `planner/` and `context/` subpackages, `RepositoryContext`, `ChangedPackage`, and `PackageInfo` were never implemented. Current architecture uses `Change`, `Release`, and `Package` types in `types.py` with state types in `states/`.
+
 ## Links
 
 * Supersedes [ADR-0012: Replace git and gh subprocesses with pygit2 and httpx](0012-replace-git-and-gh-subprocesses-with-pygit2-and-httpx.md) — the git/ subpackage further refines that decision

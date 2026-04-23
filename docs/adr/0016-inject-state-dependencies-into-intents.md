@@ -52,6 +52,10 @@ This is a staged decision. The immediate next step is to define the first few st
 | Extensibility | Add a new state type and parser. No changes to existing intents | Add a new provider. No changes to existing intents | Add an optional field to Workspace. May require touching parse_workspace |
 | Complexity | Medium. Planner inspects annotations and dispatches | Higher. Runtime registry, lazy evaluation, caching | Low. Minimal structural change |
 
+### Subsequent Changes
+
+The state types named in the decision section were implemented as `Workspace` (not `Packages`) and `Worktree` (not `GitState`). `find_release_tag` was replaced by the `ReleaseTags` state.
+
 ## Links
 
 * Supersedes [ADR-0014: Restructure Shared Module Architecture](0014-restructure-shared-module-architecture.md) in its RepositoryContext approach

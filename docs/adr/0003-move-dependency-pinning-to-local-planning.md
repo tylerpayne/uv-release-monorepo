@@ -34,11 +34,7 @@ If pins change local files, `uvr release` exits and tells the user to commit the
 
 ## Subsequent Changes
 
-> **Note (ADR-0014):** The `BumpPlan` model referenced in this ADR was later
-> consolidated into `ChangedPackage` as part of the shared module restructuring
-> in [ADR-0014](0014-restructure-shared-module-architecture.md). The pinning
-> logic moved from `deps.py` to `planner/_dependencies.py`. The decision and
-> rationale in this ADR remain valid.
+Current code uses `compute_plan()` in `planner.py` (not `build_plan()`), `Plan` type (not `ReleasePlan`), `Release` type (not `BumpPlan`/`ChangedPackage`), and `PinDepsCommand` in `commands.py` (not `deps.py` or `planner/_dependencies.py`).
 
 ## Links
 

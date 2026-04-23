@@ -25,6 +25,10 @@
 
 * Users who relied on the rejection as a safety net (preventing accidental dev releases from non-dev branches) lose that guard. The risk is low since `--dev` is an explicit opt-in flag.
 
+### Subsequent Changes
+
+This behavior was not implemented. `compute_release_version()` in `intents/shared/versioning.py` still raises `ValueError` for non-dev versions when `dev_release=True`.
+
 ## Links
 
 * Amends [ADR-0008: Support Dev, Pre, and Post Releases](0008-support-dev-pre-and-post-releases-with-base-tags.md) — relaxes the dev release precondition

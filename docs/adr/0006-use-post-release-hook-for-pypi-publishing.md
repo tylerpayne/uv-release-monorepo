@@ -41,6 +41,10 @@ Chosen option: "Post-release hook", because it runs as part of the same workflow
 | Re-publishability | Can manually dispatch | Can manually dispatch | Must re-run full release workflow |
 | Wheel availability | Must download from GitHub release | Must download from GitHub release | Already available as workflow artifacts |
 
+### Subsequent Changes
+
+Superseded by ADR-0011 (Python hook system). The `$UVR_PLAN`/`$UVR_CHANGED` env vars and `uvr hooks` CLI were never implemented. Publishing is now a first-class pipeline job.
+
 ## Links
 
 - Extends [ADR-0001](0001-use-plan-execute-architecture-for-releases.md) — hooks are part of the plan+execute architecture

@@ -3,23 +3,23 @@
 <code class="brand-code">uvr</code> plans locally and executes remotely. All intelligence lives in <code class="brand-code">uvr release</code> on your machine. CI receives a single JSON plan and follows it mechanically.
 
 ```
-your machine                           GitHub Actions
-─────────────                          ──────────────
-uvr release
-  ├─ scan workspace
-  ├─ diff each package vs baseline tag
-  ├─ propagate changes through deps
-  ├─ compute release & next versions
-  ├─ pin internal dependencies
-  ├─ expand per-runner build matrix
-  ├─ generate all commands
-  ├─ print human-readable summary
-  └─ [confirm] dispatch plan ─────────► release.yml receives plan JSON
-                                          ├─ validate plan schema
-                                          ├─ build: per-runner, topo-ordered
-                                          ├─ release: GitHub releases + wheels
-                                          ├─ publish: PyPI (optional)
-                                          └─ bump: patch versions, tags, push
+uvr release (your machine)
+  1. scan workspace (pyproject.toml)
+  2. diff each package vs baseline tag
+  3. propagate changes through deps
+  4. compute release and next versions
+  5. pin internal dependencies
+  6. expand per-runner build matrix
+  7. generate all commands
+  8. print human-readable summary
+  9. dispatch plan JSON to GitHub Actions
+
+release.yml (GitHub Actions)
+  1. validate: confirm plan
+  2. build: per-runner, topo-ordered
+  3. release: GitHub releases + wheels
+  4. publish: PyPI (optional)
+  5. bump: patch versions, tags, push
 ```
 
 - **Debug locally.** <code class="brand-code">uvr release --dry-run</code> shows the full plan without dispatching.
@@ -34,7 +34,7 @@ Computes published versions for every workspace package and rewrites internal de
 
 ### [<code class="brand-code">uvr build</code>](03-build.md): Layered builds without sources
 
-Builds packages in topological layers with `--find-links`. Unchanged dependencies are fetched from GitHub releases (or CI run artifacts). Changed packages are built in order so earlier wheels satisfy later `[build-system].requires`. Per-runner matrix with concurrent execution within layers.
+Builds packages in topological layers with `--find-links`. Unchanged dependencies are fetched from GitHub releases (or CI run artifacts). Changed packages are built in order so earlier wheels satisfy later `[build-system].requires`. Per-runner matrix with sequential execution within layers.
 
 ### [<code class="brand-code">uvr workflow</code>](04-workflow.md): A CI template you never debug
 

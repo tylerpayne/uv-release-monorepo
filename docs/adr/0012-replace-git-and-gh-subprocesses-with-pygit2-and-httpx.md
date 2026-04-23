@@ -42,3 +42,7 @@ Chosen option: "pygit2 + httpx", because pygit2 eliminates subprocess overhead f
 * pygit2 adds a binary dependency (~5 MB wheel, bundles libgit2) — pre-built wheels cover all major platforms but niche architectures (s390x, musl ppc64le) require building from source with libgit2 headers
 * Two new runtime dependencies to keep updated (pygit2, httpx)
 * Contributors need pygit2 installed locally for development, slightly raising the setup bar
+
+### Subsequent Changes
+
+The httpx migration was not completed. GitHub API calls still use `gh` subprocess. Some git operations (`commit_log`, `diff_stats`) still use `git` subprocess. Core tag and ref operations use pygit2.

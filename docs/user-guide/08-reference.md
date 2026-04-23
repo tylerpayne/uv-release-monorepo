@@ -11,26 +11,22 @@ uvr release [options]
 | `--where {ci\|local}` | `ci` dispatches to GitHub Actions (default). `local` runs in your shell. |
 | `--dry-run` | Preview the plan without making changes. |
 | `--plan JSON` | Execute a pre-computed plan instead of generating one. |
-| `--rebuild PKG [...]` | Force specific packages to be treated as changed. |
-| `--rebuild-all` | Treat all packages as changed. |
-| `--allow-dirty` | Proceed with uncommitted changes. |
-| `--python VER` | Python version for CI builds (default `3.12`). |
+| `--all-packages` | Treat all packages as changed. |
+| `--packages PKG [...]` | Force specific packages to be treated as changed. |
 | `--dev` | Publish `.devN` as-is instead of stripping it. |
-| `--bump TYPE` | Bump all changed packages before planning. |
 | `-y`, `--yes` | Skip the confirmation prompt. |
 | `--skip JOB` | Skip a CI job (repeatable). |
-| `--skip-to JOB` | Skip all jobs before JOB (except `uvr-validate`). |
+| `--skip-to JOB` | Skip all jobs before JOB (except `validate`). |
 | `--reuse-run RUN_ID` | Download artifacts from a prior CI run. |
 | `--reuse-release` | Assume GitHub releases already exist. |
 | `--no-push` | Skip git push (local mode only). |
 | `--json` | Print only the plan JSON and exit. |
 | `--release-notes PKG NOTES` | Set release notes (inline text or `@file`). Repeatable. |
-| `--workflow-dir DIR` | Workflow directory (default `.github/workflows`). |
 
 ## <code class="brand-code">uvr status</code>
 
 ```
-uvr status [--rebuild-all] [--rebuild PKG [...]] [--workflow-dir DIR]
+uvr status [--all-packages] [--packages PKG [...]]
 ```
 
 ## <code class="brand-code">uvr bump</code>
@@ -56,7 +52,7 @@ uvr bump <type> [scope] [options]
 ## <code class="brand-code">uvr build</code>
 
 ```
-uvr build [--rebuild-all] [--rebuild PKG [...]] [--python VER]
+uvr build [--all-packages] [--packages PKG [...]]
 ```
 
 ## <code class="brand-code">uvr install</code>
@@ -142,15 +138,15 @@ include = ["pkg-alpha"]              # only publish these
 exclude = ["pkg-debug"]              # skip these
 
 [tool.uvr.hooks]
-file = "uvr_hooks.py"                # hook file (default class Hook)
+file = "uvr_hooks.py"                # hook file (default class Hooks)
 ```
 
 ## CI pipeline jobs
 
 | Job | What it does |
 |---|---|
-| `uvr-validate` | Validates the release plan JSON. Cannot be skipped. |
-| `uvr-build` | Downloads unchanged deps, builds changed packages in topological layers. |
-| `uvr-release` | Creates git tags and GitHub releases with wheel assets. |
-| `uvr-publish` | Runs `uv publish` for each publishable package. |
-| `uvr-bump` | Bumps to next `.dev0`, pins deps, creates baseline tags, commits, pushes. |
+| `validate` | Validates the release plan JSON. Cannot be skipped. |
+| `build` | Downloads unchanged deps, builds changed packages in topological layers. |
+| `release` | Creates git tags and GitHub releases with wheel assets. |
+| `publish` | Runs `uv publish` for each publishable package. |
+| `bump` | Bumps to next `.dev0`, pins deps, creates baseline tags, commits, pushes. |

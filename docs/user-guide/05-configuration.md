@@ -77,7 +77,7 @@ The `environment` field enables [trusted publishing](https://docs.pypi.org/trust
 
 ## Python hooks
 
-Place `uvr_hooks.py` at your workspace root with a `ReleaseHook` subclass and <code class="brand-code">uvr</code> discovers it automatically. For a custom path, configure it explicitly.
+Place `uvr_hooks.py` at your workspace root with a `Hooks` subclass and <code class="brand-code">uvr</code> discovers it automatically. For a custom path, configure it explicitly.
 
 ```toml
 [tool.uvr.hooks]

@@ -4,13 +4,13 @@
 
 ```
 pkg-beta/pyproject.toml
-  pkg-alpha>=0.1.0  →  pkg-alpha>=0.1.5
+  pkg-alpha>=0.1.0  →  pkg-alpha>=0.1.5,<0.2.0
 
 pkg-gamma/pyproject.toml
-  pkg-beta>=0.1.0   →  pkg-beta>=0.2.0
+  pkg-beta>=0.1.0   →  pkg-beta>=0.2.0,<0.3.0
 
 pkg-delta/pyproject.toml
-  pkg-alpha>=0.1.0  →  pkg-alpha>=0.1.5
+  pkg-alpha>=0.1.0  →  pkg-alpha>=0.1.5,<0.2.0
 ```
 
 No manual auditing. No stale constraints shipping broken wheels. See [PEP 440 version specifiers](https://peps.python.org/pep-0440/#version-specifiers) for constraint syntax.
@@ -22,7 +22,7 @@ The planner builds a `published_versions` map for every workspace package.
 - **Changed packages** publish at their release version. `0.1.5.dev0` strips to `0.1.5`.
 - **Unchanged packages** use the version from their last release tag. `pkg-alpha/v0.1.4` gives `0.1.4`.
 
-Every internal dep constraint is rewritten to `>=published_version`. Pins cover `[project].dependencies`, `[project].optional-dependencies`, and `[dependency-groups]`. `[build-system].requires` is **not** pinned. Build-time deps are resolved through the [layered build system](03-build.md) instead.
+Every internal dep constraint is rewritten to `>=published_version`. Pins cover `[project].dependencies` and `[build-system].requires`.
 
 ## Pin detection without side effects
 
@@ -31,9 +31,9 @@ Pin detection is pure. No files are modified during plan generation. If pins nee
 ```
 Dependency pins
   pkg-beta/pyproject.toml
-    pkg-alpha>=0.1.0  →  pkg-alpha>=0.1.5
+    pkg-alpha>=0.1.0  →  pkg-alpha>=0.1.5,<0.2.0
   pkg-gamma/pyproject.toml
-    pkg-beta>=0.1.0   →  pkg-beta>=0.2.0
+    pkg-beta>=0.1.0   →  pkg-beta>=0.2.0,<0.3.0
 ```
 
 On confirmation, <code class="brand-code">uvr</code> writes the pins and instructs you to commit and re-run.
@@ -50,12 +50,7 @@ The second run detects no pending changes and proceeds to dispatch.
 
 After CI builds and publishes, the bump phase pins internal deps to the just-published versions. This ensures `pyproject.toml` constraints stay satisfiable during development.
 
-```
-uvr pin-deps --path packages/pkg-beta/pyproject.toml pkg-alpha>=0.1.5
-uvr pin-deps --path packages/pkg-gamma/pyproject.toml pkg-beta>=0.2.0
-```
-
-These commands are embedded in the `ReleasePlan` JSON. Pins only land in the repo if the build succeeds.
+These pin updates are embedded in the `Plan` JSON as `PinDepsCommand` entries. CI executes them during the bump job.
 
 ## Version management
 
