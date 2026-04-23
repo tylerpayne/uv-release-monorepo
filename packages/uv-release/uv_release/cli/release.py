@@ -10,6 +10,8 @@ from typing import Literal
 
 from pydantic import Field
 
+from diny import provide
+
 from ._args import CommandArgs
 from ._display import print_plan_summary
 from ..commands import DispatchWorkflowCommand
@@ -85,14 +87,16 @@ def cmd_release(args: argparse.Namespace) -> None:
     )
 
     try:
-        plan = compute_plan(intent, params=params)
+        with provide(params):
+            plan = compute_plan(intent)
     except UserRecoverableError as exc:
         if dry_run:
             print(f"ERROR: {exc}", file=sys.stderr)
             sys.exit(1)
         fix_job = Job(name="version-fix", commands=[exc.fix])
         execute_job(fix_job, hooks=None)
-        plan = compute_plan(intent, params=params)
+        with provide(params):
+            plan = compute_plan(intent)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)

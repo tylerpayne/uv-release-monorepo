@@ -9,6 +9,8 @@ from pathlib import Path
 
 import tomlkit
 
+from diny import provider
+
 from ..types import Config, Publishing, RootPyProject
 from .base import State
 
@@ -24,44 +26,45 @@ class UvrState(State):
     editor: str | None = None
     uvr_version: str = ""
 
-    @classmethod
-    def parse(cls) -> UvrState:
-        """Read uvr configuration from the root pyproject.toml."""
-        root = Path.cwd()
-        doc = tomlkit.loads((root / "pyproject.toml").read_text())
-        root_pyproject = RootPyProject.model_validate(doc)
 
-        uvr = root_pyproject.tool.uvr
+@provider(UvrState)
+def parse_uvr_state() -> UvrState:
+    """Read uvr configuration from the root pyproject.toml."""
+    root = Path.cwd()
+    doc = tomlkit.loads((root / "pyproject.toml").read_text())
+    root_pyproject = RootPyProject.model_validate(doc)
 
-        uvr_version = _read_uvr_version()
+    uvr = root_pyproject.tool.uvr
 
-        config = Config(
-            uvr_version=uvr_version,
-            latest_package=uvr.config.latest,
-            python_version=uvr.config.python_version,
-            include=frozenset(uvr.config.include),
-            exclude=frozenset(uvr.config.exclude),
-        )
+    uvr_version = _read_uvr_version()
 
-        runners = dict(uvr.runners)
+    config = Config(
+        uvr_version=uvr_version,
+        latest_package=uvr.config.latest,
+        python_version=uvr.config.python_version,
+        include=frozenset(uvr.config.include),
+        exclude=frozenset(uvr.config.exclude),
+    )
 
-        publishing = Publishing(
-            index=uvr.publish.index,
-            environment=uvr.publish.environment,
-            trusted_publishing=uvr.publish.trusted_publishing,
-            include=frozenset(uvr.publish.include),
-            exclude=frozenset(uvr.publish.exclude),
-        )
+    runners = dict(uvr.runners)
 
-        editor = _resolve_editor(None)
+    publishing = Publishing(
+        index=uvr.publish.index,
+        environment=uvr.publish.environment,
+        trusted_publishing=uvr.publish.trusted_publishing,
+        include=frozenset(uvr.publish.include),
+        exclude=frozenset(uvr.publish.exclude),
+    )
 
-        return UvrState(
-            config=config,
-            publishing=publishing,
-            runners=runners,
-            editor=editor,
-            uvr_version=uvr_version,
-        )
+    editor = _resolve_editor(None)
+
+    return UvrState(
+        config=config,
+        publishing=publishing,
+        runners=runners,
+        editor=editor,
+        uvr_version=uvr_version,
+    )
 
 
 def _read_uvr_version() -> str:

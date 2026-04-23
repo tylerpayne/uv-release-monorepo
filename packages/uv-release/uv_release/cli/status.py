@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import sys
 
+from diny import provide
+
 from ._args import CommandArgs
 from ..intents.status import StatusIntent
 from ..planner import compute_plan
@@ -28,7 +30,8 @@ def cmd_status(args: argparse.Namespace) -> None:
     )
     intent = StatusIntent()
     try:
-        plan = compute_plan(intent, params=params)
+        with provide(params):
+            plan = compute_plan(intent)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)

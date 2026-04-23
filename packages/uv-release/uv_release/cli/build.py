@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import sys
 
+from diny import provide
+
 from ._args import CommandArgs
 from ..intents.build import BuildIntent
 from ..planner import compute_plan
@@ -29,7 +31,8 @@ def cmd_build(args: argparse.Namespace) -> None:
     )
     intent = BuildIntent()
     try:
-        plan = compute_plan(intent, params=params)
+        with provide(params):
+            plan = compute_plan(intent)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)

@@ -3,33 +3,19 @@
 from __future__ import annotations
 
 import subprocess
-import threading
 
 import pygit2
+from diny import singleton
 
-_thread_local = threading.local()
 
-
+@singleton
 class GitRepo:
-    """All git I/O goes through this class. Thread-local singleton."""
+    """All git I/O goes through this class. Singleton via diny."""
 
     _repo: pygit2.Repository
 
-    def __new__(cls, path: str = ".") -> GitRepo:
-        import os
-
-        resolved = os.path.realpath(path)
-        cache: dict[str, GitRepo] = getattr(_thread_local, "git_repos", {})
-        if resolved in cache:
-            return cache[resolved]
-        instance = super().__new__(cls)
-        instance._repo = pygit2.Repository(path)
-        cache[resolved] = instance
-        _thread_local.git_repos = cache
-        return instance
-
-    def __init__(self, path: str = ".") -> None:
-        pass
+    def __init__(self) -> None:
+        self._repo = pygit2.Repository(".")
 
     def find_tag(self, tag_name: str) -> str | None:
         """Return commit SHA for a tag, or None if it doesn't exist."""

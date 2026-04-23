@@ -6,6 +6,7 @@ import importlib.util
 from pathlib import Path
 
 import tomlkit
+from diny import provider
 from pydantic import BaseModel, ConfigDict
 
 from ..types import Hooks
@@ -41,6 +42,7 @@ class _HooksPyProject(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+@provider(Hooks)
 def parse_hooks() -> Hooks | None:
     """Read hooks configuration from the root pyproject.toml and load them.
 

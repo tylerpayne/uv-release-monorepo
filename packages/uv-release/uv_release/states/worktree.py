@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 
+from diny import provider
+
 from ..git import GitRepo
 from .base import State
 
@@ -14,14 +16,15 @@ class Worktree(State):
     is_ahead_or_behind: bool = False
     repo: str = ""
 
-    @classmethod
-    def parse(cls, *, git_repo: GitRepo) -> Worktree:
-        """Read worktree state from git."""
-        return Worktree(
-            is_dirty=git_repo.is_dirty(),
-            is_ahead_or_behind=git_repo.is_ahead_or_behind(),
-            repo=_parse_gh_repo(git_repo.remote_url()) or "",
-        )
+
+@provider(Worktree)
+def parse_worktree(git_repo: GitRepo) -> Worktree:
+    """Read worktree state from git."""
+    return Worktree(
+        is_dirty=git_repo.is_dirty(),
+        is_ahead_or_behind=git_repo.is_ahead_or_behind(),
+        repo=_parse_gh_repo(git_repo.remote_url()) or "",
+    )
 
 
 def _parse_gh_repo(url: str | None) -> str | None:

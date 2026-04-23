@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import Field
 
+from diny import provider
+
 from .base import State
 from .worktree import Worktree
 
@@ -13,29 +15,30 @@ class LatestReleaseTags(State):
 
     tags: dict[str, str] = Field(default_factory=dict)
 
-    @classmethod
-    def parse(cls, *, worktree: Worktree) -> LatestReleaseTags:
-        """Fetch latest release tag for each package via gh CLI.
 
-        One gh release list call, builds a full package to tag mapping.
-        """
-        if not worktree.repo:
-            return LatestReleaseTags()
+@provider(LatestReleaseTags)
+def parse_latest_release_tags(worktree: Worktree) -> LatestReleaseTags:
+    """Fetch latest release tag for each package via gh CLI.
 
-        releases = _fetch_releases(worktree.repo)
-        if releases is None:
-            return LatestReleaseTags()
+    One gh release list call, builds a full package to tag mapping.
+    """
+    if not worktree.repo:
+        return LatestReleaseTags()
 
-        tags: dict[str, str] = {}
-        for release in releases:
-            tag_name = release.get("tagName", "")
-            if not tag_name or "/" not in tag_name:
-                continue
-            package = tag_name.split("/v", 1)[0]
-            if package not in tags:
-                tags[package] = tag_name
+    releases = _fetch_releases(worktree.repo)
+    if releases is None:
+        return LatestReleaseTags()
 
-        return LatestReleaseTags(tags=tags)
+    tags: dict[str, str] = {}
+    for release in releases:
+        tag_name = release.get("tagName", "")
+        if not tag_name or "/" not in tag_name:
+            continue
+        package = tag_name.split("/v", 1)[0]
+        if package not in tags:
+            tags[package] = tag_name
+
+    return LatestReleaseTags(tags=tags)
 
 
 def _fetch_releases(gh_repo: str) -> list[dict[str, str]] | None:

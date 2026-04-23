@@ -7,6 +7,8 @@ from collections import defaultdict
 from packaging.version import InvalidVersion
 from packaging.version import Version as PkgVersion
 
+from diny import provider
+
 from ..git import GitRepo
 from ..types import (
     Change,
@@ -25,68 +27,69 @@ class Changes(State):
 
     items: tuple[Change, ...] = ()
 
-    @classmethod
-    def parse(
-        cls, *, workspace: Workspace, params: PlanParams, git_repo: GitRepo
-    ) -> Changes:
-        """Detect which packages changed since their baselines."""
-        head = git_repo.head_commit()
-        packages = workspace.packages
 
-        dirty: set[str] = set()
-        baselines: dict[str, Tag] = {}
-        reasons: dict[str, str] = {}
+@provider(Changes)
+def parse_changes(
+    workspace: Workspace, params: PlanParams, git_repo: GitRepo
+) -> Changes:
+    """Detect which packages changed since their baselines."""
+    head = git_repo.head_commit()
+    packages = workspace.packages
 
-        if params.all_packages:
-            dirty = set(packages.keys())
-            reasons = {n: "all packages" for n in dirty}
-        elif params.packages:
-            dirty = set(params.packages & set(packages.keys()))
-            reasons = {n: "selected" for n in dirty}
-        else:
-            for name, pkg in packages.items():
-                baseline = _find_baseline_tag(name, pkg.version, git_repo)
-                if baseline is None:
-                    dirty.add(name)
-                    reasons[name] = "initial release"
-                    continue
-                baselines[name] = baseline
-                if git_repo.path_changed(baseline.commit, head, pkg.path):
-                    dirty.add(name)
-                    reasons[name] = "files changed"
+    dirty: set[str] = set()
+    baselines: dict[str, Tag] = {}
+    reasons: dict[str, str] = {}
 
-        before_propagation = set(dirty)
-        dirty = _propagate_dirtiness(dirty, packages)
-        for name in dirty - before_propagation:
-            reasons[name] = "dependency changed"
-
-        if params.packages:
-            allowed: set[str] = set()
-            for name in params.packages:
-                allowed |= _collect_transitive_deps(name, packages)
-            dirty &= allowed
-
-        changes: list[Change] = []
-        for name in sorted(dirty):
-            pkg = packages[name]
-            baseline = baselines.get(name)
+    if params.all_packages:
+        dirty = set(packages.keys())
+        reasons = {n: "all packages" for n in dirty}
+    elif params.packages:
+        dirty = set(params.packages & set(packages.keys()))
+        reasons = {n: "selected" for n in dirty}
+    else:
+        for name, pkg in packages.items():
+            baseline = _find_baseline_tag(name, pkg.version, git_repo)
             if baseline is None:
-                commit_log = "initial release"
-                diff_stats = None
-            else:
-                commit_log = git_repo.commit_log(baseline.commit, head, pkg.path)
-                diff_stats = git_repo.diff_stats(baseline.commit, head, pkg.path)
-            changes.append(
-                Change(
-                    package=pkg,
-                    baseline=baseline,
-                    diff_stats=diff_stats,
-                    commit_log=commit_log,
-                    reason=reasons.get(name, ""),
-                )
-            )
+                dirty.add(name)
+                reasons[name] = "initial release"
+                continue
+            baselines[name] = baseline
+            if git_repo.path_changed(baseline.commit, head, pkg.path):
+                dirty.add(name)
+                reasons[name] = "files changed"
 
-        return Changes(items=tuple(changes))
+    before_propagation = set(dirty)
+    dirty = _propagate_dirtiness(dirty, packages)
+    for name in dirty - before_propagation:
+        reasons[name] = "dependency changed"
+
+    if params.packages:
+        allowed: set[str] = set()
+        for name in params.packages:
+            allowed |= _collect_transitive_deps(name, packages)
+        dirty &= allowed
+
+    changes: list[Change] = []
+    for name in sorted(dirty):
+        pkg = packages[name]
+        baseline = baselines.get(name)
+        if baseline is None:
+            commit_log = "initial release"
+            diff_stats = None
+        else:
+            commit_log = git_repo.commit_log(baseline.commit, head, pkg.path)
+            diff_stats = git_repo.diff_stats(baseline.commit, head, pkg.path)
+        changes.append(
+            Change(
+                package=pkg,
+                baseline=baseline,
+                diff_stats=diff_stats,
+                commit_log=commit_log,
+                reason=reasons.get(name, ""),
+            )
+        )
+
+    return Changes(items=tuple(changes))
 
 
 # ---------------------------------------------------------------------------

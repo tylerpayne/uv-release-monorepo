@@ -6,6 +6,8 @@ import subprocess
 from importlib.resources import files
 from pathlib import Path
 
+from diny import provider
+
 from .base import State
 
 _WORKFLOW_TEMPLATE_PATH = files("uv_release").joinpath("templates/release/release.yml")
@@ -21,30 +23,31 @@ class WorkflowState(State):
     workflow_dir: str = ".github/workflows"
     file_exists: bool = False
 
-    @classmethod
-    def parse(cls) -> WorkflowState:
-        """Load workflow template, file content, and merge base."""
-        root = Path.cwd()
-        template = _WORKFLOW_TEMPLATE_PATH.read_text(encoding="utf-8")
 
-        workflow_dir = ".github/workflows"
-        rel_dest = f"{workflow_dir}/release.yml"
-        dest = root / rel_dest
+@provider(WorkflowState)
+def parse_workflow_state() -> WorkflowState:
+    """Load workflow template, file content, and merge base."""
+    root = Path.cwd()
+    template = _WORKFLOW_TEMPLATE_PATH.read_text(encoding="utf-8")
 
-        file_exists = dest.exists()
-        file_content = dest.read_text() if file_exists else ""
+    workflow_dir = ".github/workflows"
+    rel_dest = f"{workflow_dir}/release.yml"
+    dest = root / rel_dest
 
-        merge_base = _read_base(root, rel_dest)
-        has_uncommitted = _has_uncommitted_changes(dest) if file_exists else False
+    file_exists = dest.exists()
+    file_content = dest.read_text() if file_exists else ""
 
-        return WorkflowState(
-            template=template,
-            file_content=file_content,
-            merge_base=merge_base,
-            has_uncommitted=has_uncommitted,
-            workflow_dir=workflow_dir,
-            file_exists=file_exists,
-        )
+    merge_base = _read_base(root, rel_dest)
+    has_uncommitted = _has_uncommitted_changes(dest) if file_exists else False
+
+    return WorkflowState(
+        template=template,
+        file_content=file_content,
+        merge_base=merge_base,
+        has_uncommitted=has_uncommitted,
+        workflow_dir=workflow_dir,
+        file_exists=file_exists,
+    )
 
 
 def _read_base(root: Path, rel_path: str) -> str:

@@ -6,6 +6,7 @@ from abc import ABC
 from enum import Enum
 from typing import Any, Literal, Protocol
 
+from diny import singleton
 from packaging.version import Version as PkgVersion
 from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, field_validator
 
@@ -358,6 +359,7 @@ class Publishing(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+@singleton
 class Hooks(ABC):
     """User-provided release hooks. Subclass to customize lifecycle behavior."""
 
@@ -400,6 +402,7 @@ class Hooks(ABC):
 # ---------------------------------------------------------------------------
 
 
+@singleton
 class PlanParams(BaseModel):
     """CLI flags passed through the pipeline. Not a State."""
 

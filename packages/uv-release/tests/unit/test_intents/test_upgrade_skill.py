@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from uv_release.intents.upgrade_skill import UpgradeSkillIntent
-from uv_release.states.skill import SkillState
+from uv_release.states.skill import parse_skill_state
 from uv_release.states.uvr_state import UvrState
 from uv_release.states.workspace import Workspace
 from uv_release.types import (
@@ -78,7 +78,7 @@ class TestUpgradeSkillPlanInit:
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".git").mkdir()
         uvr = _uvr_state()
-        skill = SkillState.parse()
+        skill = parse_skill_state()
         intent = UpgradeSkillIntent(force=True)
         result = intent.plan(workspace=_workspace(), uvr_state=uvr, skill_state=skill)
         assert isinstance(result, Plan)
@@ -91,7 +91,7 @@ class TestUpgradeSkillPlanInit:
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".git").mkdir()
         uvr = _uvr_state()
-        skill = SkillState.parse()
+        skill = parse_skill_state()
         intent = UpgradeSkillIntent(force=True)
         result = intent.plan(workspace=_workspace(), uvr_state=uvr, skill_state=skill)
         assert len(result.jobs[0].commands) > 0
@@ -103,7 +103,7 @@ class TestUpgradeSkillPlanInit:
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".git").mkdir()
         uvr = _uvr_state()
-        skill = SkillState.parse()
+        skill = parse_skill_state()
         intent = UpgradeSkillIntent(force=True)
         plan = intent.plan(workspace=_workspace(), uvr_state=uvr, skill_state=skill)
 

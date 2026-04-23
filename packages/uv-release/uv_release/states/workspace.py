@@ -8,6 +8,8 @@ import tomlkit
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
+from diny import provider
+
 from ..types import Package, PackagePyProject, RootPyProject, Version
 from .base import State
 
@@ -18,45 +20,46 @@ class Workspace(State):
     root: Path
     packages: dict[str, Package]
 
-    @classmethod
-    def parse(cls) -> Workspace:
-        """Read the workspace root and all package directories."""
-        root = Path.cwd()
-        doc = tomlkit.loads((root / "pyproject.toml").read_text())
-        root_pyproject = RootPyProject.model_validate(doc)
 
-        uvr = root_pyproject.tool.uvr
+@provider(Workspace)
+def parse_workspace() -> Workspace:
+    """Read the workspace root and all package directories."""
+    root = Path.cwd()
+    doc = tomlkit.loads((root / "pyproject.toml").read_text())
+    root_pyproject = RootPyProject.model_validate(doc)
 
-        package_dirs: list[Path] = []
-        for pattern in root_pyproject.tool.uv.workspace.members:
-            package_dirs.extend(sorted(root.glob(pattern)))
+    uvr = root_pyproject.tool.uvr
 
-        member_names: set[str] = set()
-        for pkg_dir in package_dirs:
-            if not (pkg_dir / "pyproject.toml").exists():
-                continue
-            pkg_doc = tomlkit.loads((pkg_dir / "pyproject.toml").read_text())
-            name = pkg_doc.get("project", {}).get("name")
-            if name:
-                member_names.add(name)
+    package_dirs: list[Path] = []
+    for pattern in root_pyproject.tool.uv.workspace.members:
+        package_dirs.extend(sorted(root.glob(pattern)))
 
-        workspace_members = frozenset(member_names)
+    member_names: set[str] = set()
+    for pkg_dir in package_dirs:
+        if not (pkg_dir / "pyproject.toml").exists():
+            continue
+        pkg_doc = tomlkit.loads((pkg_dir / "pyproject.toml").read_text())
+        name = pkg_doc.get("project", {}).get("name")
+        if name:
+            member_names.add(name)
 
-        packages: dict[str, Package] = {}
-        for pkg_dir in package_dirs:
-            if not (pkg_dir / "pyproject.toml").exists():
-                continue
-            pkg = _parse_package(pkg_dir, workspace_members)
-            packages[pkg.name] = pkg
+    workspace_members = frozenset(member_names)
 
-        include = frozenset(uvr.config.include)
-        exclude = frozenset(uvr.config.exclude)
-        if include:
-            packages = {n: p for n, p in packages.items() if n in include}
-        if exclude:
-            packages = {n: p for n, p in packages.items() if n not in exclude}
+    packages: dict[str, Package] = {}
+    for pkg_dir in package_dirs:
+        if not (pkg_dir / "pyproject.toml").exists():
+            continue
+        pkg = _parse_package(pkg_dir, workspace_members)
+        packages[pkg.name] = pkg
 
-        return Workspace(root=root, packages=packages)
+    include = frozenset(uvr.config.include)
+    exclude = frozenset(uvr.config.exclude)
+    if include:
+        packages = {n: p for n, p in packages.items() if n in include}
+    if exclude:
+        packages = {n: p for n, p in packages.items() if n not in exclude}
+
+    return Workspace(root=root, packages=packages)
 
 
 def _parse_package(path: Path, workspace_members: frozenset[str]) -> Package:

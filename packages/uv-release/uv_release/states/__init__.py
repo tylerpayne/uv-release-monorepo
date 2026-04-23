@@ -1,6 +1,7 @@
 from .base import State as State
 from .changes import Changes as Changes
 from .github import LatestReleaseTags as LatestReleaseTags
+from .hooks import parse_hooks as parse_hooks
 from .release_tags import ReleaseTags as ReleaseTags
 from .skill import SkillFile as SkillFile
 from .skill import SkillState as SkillState

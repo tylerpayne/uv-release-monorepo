@@ -5,8 +5,17 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
+from typing import Iterator
 
 import pytest
+from diny import provide
+
+
+@pytest.fixture(autouse=True)
+def _di_scope() -> Iterator[None]:
+    """Fresh diny scope per test so singletons are not shared."""
+    with provide():
+        yield
 
 
 @pytest.fixture()

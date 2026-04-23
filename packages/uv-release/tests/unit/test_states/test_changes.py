@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-from uv_release.states.changes import Changes
+from uv_release.states.changes import parse_changes
 from uv_release.states.workspace import Workspace
 from uv_release.types import (
     Package,
@@ -85,10 +85,10 @@ class TestInitialRelease:
         repo = _FakeGitRepo()
 
         with patch("uv_release.states.changes._find_baseline_tag", return_value=None):
-            result = Changes.parse(
+            result = parse_changes(
                 workspace=ws,
                 params=PlanParams(),
-                git_repo=repo,  # type: ignore[arg-type]
+                git_repo=repo,
             )
 
         assert len(result.items) == 1
@@ -121,10 +121,10 @@ class TestAllPackages:
             "uv_release.states.changes._find_baseline_tag",
             side_effect=find_baseline,
         ):
-            result = Changes.parse(
+            result = parse_changes(
                 workspace=ws,
                 params=PlanParams(all_packages=True),
-                git_repo=repo,  # type: ignore[arg-type]
+                git_repo=repo,
             )
 
         names = {c.package.name for c in result.items}
@@ -156,10 +156,10 @@ class TestSelectedPackages:
             "uv_release.states.changes._find_baseline_tag",
             side_effect=find_baseline,
         ):
-            result = Changes.parse(
+            result = parse_changes(
                 workspace=ws,
                 params=PlanParams(packages=frozenset({"a"})),
-                git_repo=repo,  # type: ignore[arg-type]
+                git_repo=repo,
             )
 
         names = {c.package.name for c in result.items}
@@ -189,10 +189,10 @@ class TestPackagesFilter:
             "uv_release.states.changes._find_baseline_tag",
             side_effect=find_baseline,
         ):
-            result = Changes.parse(
+            result = parse_changes(
                 workspace=ws,
                 params=PlanParams(packages=frozenset({"a"})),
-                git_repo=repo,  # type: ignore[arg-type]
+                git_repo=repo,
             )
 
         names = {c.package.name for c in result.items}
@@ -222,10 +222,10 @@ class TestDependencyPropagation:
             "uv_release.states.changes._find_baseline_tag",
             side_effect=find_baseline,
         ):
-            result = Changes.parse(
+            result = parse_changes(
                 workspace=ws,
                 params=PlanParams(),
-                git_repo=repo,  # type: ignore[arg-type]
+                git_repo=repo,
             )
 
         names = {c.package.name for c in result.items}
@@ -249,10 +249,10 @@ class TestDependencyPropagation:
             "uv_release.states.changes._find_baseline_tag",
             side_effect=find_baseline,
         ):
-            result = Changes.parse(
+            result = parse_changes(
                 workspace=ws,
                 params=PlanParams(),
-                git_repo=repo,  # type: ignore[arg-type]
+                git_repo=repo,
             )
 
         names = {c.package.name for c in result.items}
