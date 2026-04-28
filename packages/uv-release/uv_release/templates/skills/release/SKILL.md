@@ -1,7 +1,6 @@
 ---
 name: release
 description: Release packages to GitHub via uvr. Use when user says "release", "publish packages", "cut a release", or wants to publish new package versions.
-disable-model-invocation: true
 ---
 
 # Releasing Packages
@@ -30,7 +29,7 @@ Present the output to the user. For each changed package, show:
 - The package name and its new version
 - Why it changed (summarize the relevant commits)
 
-Ask the user whether any packages need a minor bump instead of patch. Patch is the default — bump minor for new features, new public API, or breaking changes:
+Ask the user whether any packages need a minor bump instead of patch. Patch is the default — bump minor for new features, new public API, or breaking changes. See `references/cmd-bump.md` for all bump types and flags.
 
 ```bash
 uvr bump --packages <package-name> --minor
@@ -87,7 +86,7 @@ If no `--release-notes` flag is provided, the release gets a minimal header only
 ## 5. Dispatch
 
 ```bash
-git add -A
+git add <files>
 git commit -m "Release v<VERSION>"
 git push -u origin "$(git branch --show-current)"
 uvr release
@@ -98,8 +97,8 @@ When prompted `Proceed? [y/N]`, answer `y`.
 If `uvr release` says dependency pins were updated, commit those first and re-run:
 
 ```bash
-git add -A
-git commit -m "chore: update dep pins"
+git add <files>
+git commit -m "chore: update dependency pins"
 git push
 uvr release
 ```
@@ -147,15 +146,17 @@ git merge --no-ff <release-branch> -m "Merge <release-branch>"
 git push
 ```
 
-After merging, clean up release notes:
+**NEVER** merge pre-release branches back to main. Stay on the branch through the alpha → beta → rc → stable cycle, then merge after the stable release. See `references/pre-releases.md`.
+
+**TAKE CARE** merging post-release branches back to main — they branch from an old tag, so pyproject.toml versions will conflict. You may need to accept main's versions or cherry-pick just the fix commits. See `references/post-releases.md`.
+
+## 9. Finally
+
+If packages were released successfully, clean up release notes:
 
 ```bash
 rm -rf .uvr/release-notes/
 ```
-
-**DO NOT** merge pre-release branches back to main. Stay on the branch through the alpha → beta → rc → stable cycle, then merge after the stable release. See `references/pre-releases.md`.
-
-**TAKE CARE** merging post-release branches back to main — they branch from an old tag, so pyproject.toml versions will conflict. You may need to accept main's versions or cherry-pick just the fix commits. See `references/post-releases.md`.
 
 ---
 
@@ -177,12 +178,13 @@ User says: "Let's release the new changes"
 ## References
 
 **Commands:**
+- `references/cmd-bump.md` — bump package versions (major, minor, patch, pre-release, stable)
 - `references/cmd-init.md` — scaffold the release workflow
-- `references/cmd-validate.md` — check release.yml against schema
+- `references/cmd-install.md` — install from GitHub releases
 - `references/cmd-release.md` — plan and dispatch a release (all flags)
 - `references/cmd-runners.md` — manage per-package build runners
-- `references/cmd-install.md` — install from GitHub releases
 - `references/cmd-skill-init.md` — copy Claude skills into project
+- `references/cmd-validate.md` — check release.yml against schema
 
 **Guides:**
 - `references/pipeline.md` — the five core jobs (validate, build, release, publish, bump)
