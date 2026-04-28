@@ -76,16 +76,18 @@ def make_changes_for(
 
 
 class FakeGitRepo:
-    """Minimal fake for GitRepo that satisfies Changes.parse."""
+    """Minimal fake for GitRepo that satisfies Changes.parse and ReleaseTags.parse."""
 
     def __init__(
         self,
         *,
         head: str = "head_sha",
         changed_paths: set[str] | None = None,
+        tags: dict[str, str] | None = None,
     ) -> None:
         self._head = head
         self._changed_paths = changed_paths or set()
+        self._tags = tags or {}
 
     def head_commit(self) -> str:
         return self._head
@@ -98,3 +100,9 @@ class FakeGitRepo:
 
     def diff_stats(self, from_commit: str, to_commit: str, path: str) -> str:
         return "1 file changed"
+
+    def find_tag(self, tag_name: str) -> str | None:
+        return self._tags.get(tag_name)
+
+    def list_tags(self, prefix: str) -> list[str]:
+        return [name for name in self._tags if name.startswith(prefix)]
