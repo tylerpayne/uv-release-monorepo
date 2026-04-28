@@ -657,6 +657,7 @@ class Release(BaseModel):
     package: Package
     release_version: Version
     next_version: Version
+    baseline_tag: str = ""
     release_notes: str = ""
     make_latest: bool = False
 
@@ -762,6 +763,7 @@ class Plan(BaseModel):
     jobs: list[SerializeAsAny[Job]] = Field(default_factory=list)
 
     # Results (populated by read-only intents)
+    releases: dict[str, Release] = Field(default_factory=dict)
     changes: tuple[Change, ...] = ()
     validation_errors: tuple[str, ...] = ()
     validation_warnings: tuple[str, ...] = ()

@@ -6,7 +6,7 @@ Show which packages have changed since their last release baseline.
 uvr status
 ```
 
-Displays each package's name, version, and change reason (files changed, initial release, dependency changed, or unchanged).
+Displays each package's name, version, change reason (files changed, initial release, dependency changed, or unchanged), and the baseline tag it was diffed against.
 
 ## Flags
 
