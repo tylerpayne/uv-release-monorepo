@@ -7,6 +7,7 @@ import argparse
 from diny import provide
 
 from ._args import CommandArgs, compute_plan_or_exit
+from ._display import format_table
 from ..intents.status import StatusIntent
 from ..types import PlanParams
 
@@ -43,13 +44,20 @@ def cmd_status(args: argparse.Namespace) -> None:
     print("Packages")
     print("--------")
 
-    nw = max(len(n) for n in workspace.packages)
+    headers = ("STATUS", "PACKAGE", "VERSION", "DIFF FROM")
+    rows: list[tuple[str, ...]] = []
     for name, pkg in sorted(workspace.packages.items()):
         if name in changed_map:
-            reason = changed_map[name].reason or "changed"
-            print(f"  {reason.ljust(16)}  {name.ljust(nw)}  {pkg.version.raw}")
+            change = changed_map[name]
+            reason = change.reason or "changed"
+            baseline = change.baseline.raw if change.baseline else "(initial)"
         else:
-            print(f"  {'unchanged'.ljust(16)}  {name.ljust(nw)}  {pkg.version.raw}")
+            reason = "unchanged"
+            baseline = ""
+        rows.append((reason, name, pkg.version.raw, baseline))
+
+    for line in format_table(headers, rows):
+        print(line)
 
     if not changed_map:
         print()

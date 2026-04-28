@@ -75,4 +75,5 @@ class ReleaseIntent(BaseModel):
             reuse_run=params.reuse_run,
             reuse_release=params.reuse_release,
             jobs=jobs,
+            releases=releases.items,
         )

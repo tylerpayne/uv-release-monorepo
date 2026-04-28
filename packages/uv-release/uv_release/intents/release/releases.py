@@ -35,10 +35,12 @@ def compute_releases(
             change.package.version, dev_release=params.dev_release
         )
         notes = params.release_notes.get(name, change.commit_log)
+        baseline_tag = change.baseline.raw if change.baseline else ""
         releases[name] = Release(
             package=change.package,
             release_version=release_version,
             next_version=next_version,
+            baseline_tag=baseline_tag,
             release_notes=notes,
             make_latest=(name == uvr_state.config.latest_package),
         )

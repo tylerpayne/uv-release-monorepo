@@ -21,9 +21,27 @@ def format_table(headers: tuple[str, ...], rows: list[tuple[str, ...]]) -> list[
 
 
 def print_plan_summary(plan: Plan) -> None:
-    """Print the release plan pipeline summary."""
+    """Print the release plan summary including packages and pipeline."""
     if not plan.jobs:
         return
+
+    if plan.releases:
+        print("Packages")
+        print("--------")
+        headers = ("PACKAGE", "CURRENT", "RELEASE", "NEXT", "DIFF FROM")
+        rows = [
+            (
+                name,
+                release.package.version.raw,
+                release.release_version.raw,
+                release.next_version.raw,
+                release.baseline_tag or "(initial)",
+            )
+            for name, release in sorted(plan.releases.items())
+        ]
+        for line in format_table(headers, rows):
+            print(line)
+        print()
 
     print("Pipeline")
     print("--------")
