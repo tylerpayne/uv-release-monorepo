@@ -6,7 +6,7 @@ from diny import singleton, provider
 
 from .build_order import BuildOrder
 from .build_packages import BuildPackages
-from ...commands import BuildCommand, DownloadWheelsCommand
+from ...commands import BuildCommand, DownloadWheelsCommand, MakeDirectoryCommand
 from ...types.job import Job
 from .package_dependencies import PackageDependencies
 from ..params.reuse_run import ReuseRun
@@ -30,7 +30,11 @@ def provide_build_job(
     if not build_packages.items or "build" in skip_jobs.value or reuse_run.value:
         return BuildJob(name="build")
 
-    commands: list[DownloadWheelsCommand | BuildCommand] = []
+    commands: list[MakeDirectoryCommand | DownloadWheelsCommand | BuildCommand] = []
+
+    # Ensure output dirs exist before --find-links tries to read them.
+    commands.append(MakeDirectoryCommand(label="Create dist/", path="dist"))
+    commands.append(MakeDirectoryCommand(label="Create deps/", path="deps"))
 
     for dep in package_dependencies.released:
         commands.append(
