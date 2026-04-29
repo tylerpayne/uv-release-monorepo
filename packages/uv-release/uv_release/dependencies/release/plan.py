@@ -51,7 +51,9 @@ def provide_plan(
     # ReleaseGuard: side-effect only, raises if preconditions fail.
     release_guard: ReleaseGuard,
 ) -> Plan:
-    jobs: list[Job] = [build_job, release_job, publish_job, bump_job]
+    # Validate is an empty job. CI uses it to confirm the plan is parseable.
+    validate_job = Job(name="validate")
+    jobs: list[Job] = [validate_job, build_job, release_job, publish_job, bump_job]
 
     # Skip user-requested jobs and empty (no-op) jobs.
     skip = list(skip_jobs.value) + [j.name for j in jobs if not j.commands]
