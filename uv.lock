@@ -808,7 +808,7 @@ wheels = [
 
 [[package]]
 name = "uv-release"
-version = "0.30.2a1.dev0"
+version = "0.31.0.dev0"
 source = { editable = "packages/uv-release" }
 dependencies = [
     { name = "diny" },
@@ -821,6 +821,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "pytest" },
     { name = "pytest-cov" },
 ]
 
@@ -835,7 +836,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest-cov", specifier = ">=7.1.0" }]
+dev = [
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-cov", specifier = ">=7.1.0" },
+]
 
 [[package]]
 name = "win32-setctime"

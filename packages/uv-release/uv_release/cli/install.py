@@ -1,32 +1,14 @@
-"""The ``uvr install`` command."""
+"""uvr install: install packages from wheels."""
 
 from __future__ import annotations
 
-import argparse
+from diny import inject
 
-from ._args import CommandArgs, compute_plan_or_exit
-from ..intents.install import InstallIntent
-from ..execute import execute_plan
-
-
-class InstallArgs(CommandArgs):
-    """Typed arguments for ``uvr install``."""
-
-    packages: list[str] | None = None
-    run_id: str | None = None
-    repo: str | None = None
-    dist: str | None = None
+from ..dependencies.install.install_job import InstallJob
+from ..execute import execute_job
 
 
-def cmd_install(args: argparse.Namespace) -> None:
-    """Install packages from GitHub releases, CI artifacts, or local wheels."""
-    parsed = InstallArgs.from_namespace(args)
-
-    intent = InstallIntent(
-        packages=parsed.packages or [],
-        dist=parsed.dist or "",
-        repo=parsed.repo or "",
-    )
-
-    plan = compute_plan_or_exit(intent)
-    execute_plan(plan, hooks=None)
+@inject
+def cmd_install(install_job: InstallJob) -> None:
+    execute_job(install_job)
+    print("Installed.")

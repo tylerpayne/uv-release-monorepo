@@ -1,0 +1,92 @@
+"""Pydantic models for pyproject.toml structures."""
+
+from __future__ import annotations
+
+from pydantic import Field
+
+from .base import Frozen
+
+# extra="allow" so unknown pyproject.toml fields don't fail validation.
+
+
+# --- Package pyproject.toml ---
+
+
+class ProjectTable(Frozen, extra="allow"):
+    """The [project] table from a package's pyproject.toml."""
+
+    name: str = ""
+    version: str = ""
+    dependencies: list[str] = Field(default_factory=list)
+
+
+class BuildSystemTable(Frozen, extra="allow"):
+    """The [build-system] table from a package's pyproject.toml."""
+
+    requires: list[str] = Field(default_factory=list)
+
+
+class PackagePyProject(Frozen, extra="allow"):
+    """A package-level pyproject.toml."""
+
+    project: ProjectTable = Field(default_factory=ProjectTable)
+    build_system: BuildSystemTable = Field(
+        default_factory=BuildSystemTable, alias="build-system"
+    )
+
+
+# --- Root pyproject.toml ---
+
+
+class UvWorkspaceTable(Frozen, extra="allow"):
+    """The [tool.uv.workspace] table."""
+
+    members: list[str] = Field(default_factory=list)
+
+
+class UvTable(Frozen, extra="allow"):
+    """The [tool.uv] table."""
+
+    workspace: UvWorkspaceTable = Field(default_factory=UvWorkspaceTable)
+
+
+class UvrConfigTable(Frozen, extra="allow"):
+    """The [tool.uvr.config] table."""
+
+    latest: str = ""
+    python_version: str = "3.12"
+    include: list[str] = Field(default_factory=list)
+    exclude: list[str] = Field(default_factory=list)
+
+
+class UvrPublishTable(Frozen, extra="allow"):
+    """The [tool.uvr.publish] table."""
+
+    index: str = ""
+    environment: str = ""
+    # Alias maps TOML kebab-case key to Python snake_case.
+    trusted_publishing: str = Field(default="automatic", alias="trusted-publishing")
+    include: list[str] = Field(default_factory=list)
+    exclude: list[str] = Field(default_factory=list)
+
+
+class UvrTable(Frozen, extra="allow"):
+    """The [tool.uvr] table."""
+
+    config: UvrConfigTable = Field(default_factory=UvrConfigTable)
+    # { pkg: [[label, ...], ...] } -- each inner list is one CI matrix row.
+    runners: dict[str, list[list[str]]] = Field(default_factory=dict)
+    publish: UvrPublishTable = Field(default_factory=UvrPublishTable)
+
+
+class ToolTable(Frozen, extra="allow"):
+    """The [tool] table from the root pyproject.toml."""
+
+    uv: UvTable = Field(default_factory=UvTable)
+    uvr: UvrTable = Field(default_factory=UvrTable)
+
+
+class RootPyProject(Frozen, extra="allow"):
+    """The root pyproject.toml structure."""
+
+    tool: ToolTable = Field(default_factory=ToolTable)

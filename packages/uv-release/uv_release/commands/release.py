@@ -1,70 +1,43 @@
-"""Commands for creating GitHub releases and publishing to indexes."""
+"""GitHub release command."""
 
 from __future__ import annotations
 
+import subprocess
 from typing import Literal
 
-from ..types import Command, Publishing, Release, Tag
+from pydantic import Field
+
+from .base import Command
 
 
 class CreateReleaseCommand(Command):
-    """Create a GitHub release with wheels via gh CLI."""
+    """Create a GitHub release."""
 
     type: Literal["create_release"] = "create_release"
-    release: Release
+    tag_name: str
+    title: str
+    notes: str
+    files: list[str] = Field(default_factory=list)
+    make_latest: bool = False
 
     def execute(self) -> int:
-        import subprocess
-
-        tag = Tag.release_tag_name(
-            self.release.package.name, self.release.release_version
-        )
-        files = _find_dist_wheels(
-            self.release.package.dist_name, self.release.release_version.raw
-        )
+        if self.label:
+            print(f"  {self.label}")
         args = [
             "gh",
             "release",
             "create",
-            tag,
+            self.tag_name,
             "--title",
-            f"{self.release.package.name} {self.release.release_version.raw}",
+            self.title,
             "--notes",
-            self.release.release_notes,
+            self.notes,
         ]
-        if self.release.make_latest:
+        # Explicit --latest=false prevents GitHub from auto-promoting pre-releases.
+        if self.make_latest:
             args.append("--latest")
         else:
             args.append("--latest=false")
-        args.extend(files)
-        return subprocess.run(args).returncode
-
-
-class PublishToIndexCommand(Command):
-    """Upload wheels to a package index via uv publish."""
-
-    type: Literal["publish_to_index"] = "publish_to_index"
-    release: Release
-    publishing: Publishing
-
-    def execute(self) -> int:
-        import subprocess
-
-        files = _find_dist_wheels(
-            self.release.package.dist_name, self.release.release_version.raw
-        )
-        args = ["uv", "publish"]
-        if self.publishing.index:
-            args.extend(["--index", self.publishing.index])
-        if self.publishing.trusted_publishing:
-            args.extend(["--trusted-publishing", self.publishing.trusted_publishing])
-        args.extend(files)
-        return subprocess.run(args).returncode
-
-
-def _find_dist_wheels(dist_name: str, version_raw: str) -> list[str]:
-    """Find wheel files matching a dist name and version in dist/."""
-    from glob import glob as glob_fn
-
-    pattern = f"dist/{dist_name}-{version_raw}-*.whl"
-    return sorted(glob_fn(pattern))
+        args.extend(self.files)
+        result = subprocess.run(args)
+        return result.returncode

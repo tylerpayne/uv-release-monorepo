@@ -1,6 +1,9 @@
-def main():
-    from .cli import cli
+"""Entry point for uvrd CLI."""
 
+from .cli import cli
+
+
+def main() -> None:
     cli()
 
 

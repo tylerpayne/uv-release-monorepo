@@ -9,7 +9,10 @@ Run `fix` then `check` after every change. Do not skip this. Do not commit witho
 
 ## Structure
 
-uv workspace with a single package at `packages/uv-release`. Published to PyPI as `uv-release`, CLI entry point is `uvr`.
+uv workspace with two packages.
+
+- `packages/uv-release`. Published to PyPI as `uv-release`, CLI entry point is `uvr`. Uses the State + Intent + Planner architecture.
+- `packages/uvr-diny`. Pure DI reimplementation using the `diny` container. CLI entry point is `uvrd`. Zero glue code. Every type is a `@singleton` with a `@provider`, resolved automatically from `sys.argv` down.
 
 ## Commands
 
@@ -88,7 +91,63 @@ State types own their I/O via a parse() classmethod. Dependencies are declared a
 
 All entities are frozen after construction. No mutation. Builders are internal to pipeline steps and never leak past them. Transformations return new instances.
 
-### State + Intent pipeline
+## uvr-diny Design (packages/uvr-diny)
+
+`uvr-diny` is a ground-up reimplementation that replaces the State + Intent + Planner architecture with pure dependency injection via `diny`. There is no planner, no Intent protocol, no `provide()` or `resolve()` calls in application code.
+
+### Architecture
+
+- `parse_args()` IS the `@provider(Params)`. diny resolves CLI args from `sys.argv` automatically.
+- `cli()` is `@inject`. The entire program is one injected function call.
+- Each CLI concern (PackageSelection, DevRelease, BumpType, etc.) is a separate `@singleton` derived from `Params` via its own `@provider`.
+- `Plan` is only for `uvr release` (CI dispatch). Other commands (`build`, `bump`, `status`) resolve their Job or state type directly.
+
+### Directory layout
+
+```
+uvr_diny/
+  types/           # Pure frozen data types, no DI
+    base.py        # Frozen(BaseModel) base class
+    version.py     # Version, VersionState
+    package.py     # Package
+    tag.py         # Tag
+    command.py     # Command subclasses (self-executing)
+    job.py         # Job base class (subclasses for DI identity)
+    pin.py         # Pin (dependency version pin)
+    pyproject.py   # Pydantic models for pyproject.toml parsing
+  dependencies/
+    shared/        # Cross-command providers (GitRepo, WorkspacePackages, etc.)
+    config/        # [tool.uvr.*] settings (UvrConfig, UvrPublishing, UvrRunners)
+    params/        # CLI-seeded singletons (one per CLI concern)
+    build/         # Build command deps (BuildPackages, PackageDependencies, BuildOrder, BuildJob)
+    release/       # Release command deps (ReleaseVersions, ReleaseNotes, Plan, etc.)
+    bump/          # Standalone bump deps (BumpVersions, BumpJob)
+  cli/             # @inject entry points, zero wiring
+  execute.py       # Plan/Job executor
+```
+
+### Import direction
+
+```
+types/             (shared, imported by all)
+     ↓
+dependencies/shared/  (GitRepo, WorkspacePackages, tags, versioning, graph)
+     ↓
+dependencies/config/  (UvrConfig, UvrPublishing, UvrRunners)
+dependencies/params/  (CLI-seeded singletons)
+     ↓
+dependencies/build/   (BuildPackages, PackageDependencies, BuildOrder, BuildJob)
+dependencies/release/ (ReleaseVersions, ReleaseJob, Plan, etc.)
+dependencies/bump/    (BumpVersions, BumpJob)
+     ↓
+cli/                  (@inject entry points)
+     ↓
+execute.py            (runs commands)
+```
+
+No command-axis module imports from another command-axis module. Shared modules never import from command modules.
+
+### State + Intent pipeline (packages/uv-release)
 
 The pipeline isolates reads from writes. States own all I/O via parse() classmethods. Intents are pure functions of state that produce Plans. The planner resolves state dependencies recursively.
 
@@ -155,6 +214,10 @@ Function names follow `verb_noun` pattern. Examples: `compute_build_job`, `compu
 ### Typed Python
 
 Type annotations on every function signature, variable, and return. Use `Any` when unavoidable, never `object` for dynamic values. Validate with `uv run ty check packages/uv-release`.
+
+### Code comments
+
+Every provider and non-trivial function should have inline comments explaining what is happening and why. Focus on the "why" when the reasoning is not obvious from the code itself. Do not restate what the code literally does. Do not comment obvious control flow, early returns, or one-liners whose intent is clear from context. Do not omit comments to save space when they add genuine value.
 
 ### File organization
 

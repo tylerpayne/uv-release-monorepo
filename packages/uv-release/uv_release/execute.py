@@ -1,77 +1,43 @@
-"""Execute a Plan's jobs."""
+"""Execute jobs and plans."""
 
 from __future__ import annotations
 
 import sys
+from typing import TYPE_CHECKING
 
-from .states.hooks import parse_hooks
-from .types import Hooks, Job, Plan, Unset, UNSET
+from .types.job import Job
+from .dependencies.release.plan import Plan
+
+if TYPE_CHECKING:
+    from .dependencies.shared.hooks import Hooks
 
 
-def execute_plan(plan: Plan, *, hooks: Hooks | None | Unset = UNSET) -> None:
-    """Execute all jobs in order."""
-    if isinstance(hooks, Unset):
-        hooks = parse_hooks()
+def execute_plan(plan: Plan, hooks: Hooks | None = None) -> None:
+    """Execute all jobs in the plan, skipping any in plan.skip."""
     for job in plan.jobs:
-        execute_job(job, hooks=hooks)
+        if job.name in plan.skip:
+            continue
+        execute_job(job, hooks)
 
 
-def execute_job(
-    job: Job,
-    *,
-    hooks: Hooks | None | Unset = UNSET,
-) -> None:
-    """Execute a single job's commands with pre/post hooks."""
-    if isinstance(hooks, Unset):
-        hooks = parse_hooks()
+def execute_job(job: Job, hooks: Hooks | None = None) -> None:
+    """Execute every command in a single job sequentially."""
+    if not job.commands:
+        return
 
-    # Pre-hook
-    if hooks is not None and job.pre_hook:
-        _call_hook(hooks, job.pre_hook)
+    # Per-job lifecycle hooks (pre_build, post_build, etc.)
+    pre_hook = getattr(hooks, f"pre_{job.name}", None) if hooks else None
+    post_hook = getattr(hooks, f"post_{job.name}", None) if hooks else None
 
-    # Commands
+    if pre_hook:
+        pre_hook()
+
+    print(f"\n--- {job.name} ---")
     for cmd in job.commands:
-        if cmd.needs_user_confirmation:
-            if cmd.label:
-                print(f"  {cmd.label}")
-            try:
-                answer = input("  Execute? [y/N] ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                sys.exit(1)
-            if answer != "y":
-                sys.exit(1)
-
-        if cmd.label and not cmd.needs_user_confirmation:
-            print(f"  {cmd.label}")
         returncode = cmd.execute()
         if cmd.check and returncode != 0:
-            print(
-                f"ERROR: {cmd.label or job.name} failed (exit {returncode})",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+            print(f"ERROR: Command failed with exit code {returncode}", file=sys.stderr)
+            sys.exit(returncode)
 
-    # Post-hook
-    if hooks is not None and job.post_hook:
-        _call_hook(hooks, job.post_hook)
-
-
-def find_job(plan: Plan, name: str) -> Job:
-    """Find a job by name in the plan. Exits with error if not found."""
-    for job in plan.jobs:
-        if job.name == name:
-            return job
-    available = ", ".join(j.name for j in plan.jobs)
-    print(
-        f"ERROR: Job '{name}' not found in plan. Available jobs: {available}",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-
-def _call_hook(hooks: Hooks, method_name: str) -> None:
-    if not hasattr(hooks, method_name):
-        msg = f"Hooks class {type(hooks).__name__} is missing method '{method_name}'"
-        raise AttributeError(msg)
-    getattr(hooks, method_name)()
+    if post_hook:
+        post_hook()

@@ -1,66 +1,31 @@
-"""The ``uvr status`` command."""
+"""uvr status: show workspace package status."""
 
 from __future__ import annotations
 
-import argparse
+from diny import inject
 
-from diny import provide
-
-from ._args import CommandArgs, compute_plan_or_exit
-from ._display import format_table
-from ..intents.status import StatusIntent
-from ..types import PlanParams
+from ..dependencies.shared.changed_packages import ChangedPackages
+from ..dependencies.shared.workspace_packages import WorkspacePackages
 
 
-class StatusArgs(CommandArgs):
-    """Typed arguments for ``uvr status``."""
+@inject
+def cmd_status(
+    workspace_packages: WorkspacePackages,
+    changed_packages: ChangedPackages,
+) -> None:
+    print("Packages:")
+    for name, pkg in sorted(workspace_packages.items.items()):
+        changed = name in changed_packages.names
+        marker = " *" if changed else ""
+        print(f"  {name} {pkg.version.raw}{marker}")
 
-    all_packages: bool = False
-    packages: list[str] | None = None
-
-
-def cmd_status(args: argparse.Namespace) -> None:
-    """Show workspace package status. Read-only, never modifies disk."""
-    parsed = StatusArgs.from_namespace(args)
-
-    params = PlanParams(
-        all_packages=parsed.all_packages,
-        packages=frozenset(parsed.packages or []),
-    )
-    intent = StatusIntent()
-    with provide(params):
-        plan = compute_plan_or_exit(intent)
-
-    changed_map = {c.package.name: c for c in plan.changes}
-
-    workspace = plan.metadata.workspace
-    assert workspace is not None
-
-    if not workspace.packages:
-        print("No packages found.")
-        return
-
-    print()
-    print("Packages")
-    print("--------")
-
-    headers = ("STATUS", "PACKAGE", "VERSION", "DIFF FROM")
-    rows: list[tuple[str, ...]] = []
-    for name, pkg in sorted(workspace.packages.items()):
-        if name in changed_map:
-            change = changed_map[name]
-            reason = change.reason or "changed"
-            baseline = change.baseline.raw if change.baseline else "(initial)"
-        else:
-            reason = "unchanged"
-            baseline = ""
-        rows.append((reason, name, pkg.version.raw, baseline))
-
-    for line in format_table(headers, rows):
-        print(line)
-
-    if not changed_map:
-        print()
-        print("Nothing changed since last release. Use --all-packages to force.")
-
-    print()
+    if changed_packages.reasons:
+        print("\nChanged:")
+        for name, reason in sorted(changed_packages.reasons.items()):
+            print(f"  {name}: {reason}")
+            log = changed_packages.commit_logs.get(name, "")
+            if log:
+                for line in log.splitlines()[:5]:
+                    print(f"    {line}")
+    else:
+        print("\nNo changes detected.")

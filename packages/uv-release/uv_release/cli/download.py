@@ -1,36 +1,14 @@
-"""The ``uvr download`` command."""
+"""uvr download: download wheels from a GitHub release or CI run."""
 
 from __future__ import annotations
 
-import argparse
+from diny import inject
 
-from ._args import CommandArgs, compute_plan_or_exit
-from ..intents.download import DownloadIntent
-from ..execute import execute_plan
-
-
-class DownloadArgs(CommandArgs):
-    """Typed arguments for ``uvr download``."""
-
-    output: str = "dist"
-    run_id: str | None = None
-    package: str | None = None
-    release_tag: str | None = None
-    repo: str | None = None
-    all_platforms: bool = False
+from ..dependencies.download.download_job import DownloadJob
+from ..execute import execute_job
 
 
-def cmd_download(args: argparse.Namespace) -> None:
-    """Download wheels from a GitHub release or CI run."""
-    parsed = DownloadArgs.from_namespace(args)
-
-    intent = DownloadIntent(
-        package=parsed.package or "",
-        release_tag=parsed.release_tag or "",
-        run_id=parsed.run_id or "",
-        repo=parsed.repo or "",
-        output=parsed.output,
-    )
-
-    plan = compute_plan_or_exit(intent)
-    execute_plan(plan, hooks=None)
+@inject
+def cmd_download(download_job: DownloadJob) -> None:
+    execute_job(download_job)
+    print("Done.")
