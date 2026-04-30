@@ -73,6 +73,7 @@ def parse_args() -> ParsedArgs:
     release_p.add_argument("--dry-run", action="store_true")
     release_p.add_argument("--all-packages", action="store_true")
     release_p.add_argument("--packages", nargs="*")
+    release_p.add_argument("--not-packages", nargs="*", default=[])
     release_p.add_argument("--dev", action="store_true")
     release_p.add_argument("-y", "--yes", action="store_true")
     release_p.add_argument("--no-commit", action="store_true")
@@ -203,11 +204,13 @@ def provide_params(args: ParsedArgs) -> Params:
 @provider(PackageSelection)
 def provide_package_selection(args: ParsedArgs) -> PackageSelection:
     pkgs = args.values.get("packages") or []
+    not_pkgs = args.values.get("not_packages") or []
     # --force on bump treats all packages as selected.
     force = args.values.get("force", False)
     return PackageSelection(
         all_packages=args.values.get("all_packages", False) or force,
         packages=frozenset(pkgs),
+        exclude_packages=frozenset(not_pkgs),
     )
 
 

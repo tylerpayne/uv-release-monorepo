@@ -11,3 +11,4 @@ class PackageSelection(Frozen):
 
     all_packages: bool = False
     packages: frozenset[str] = frozenset()
+    exclude_packages: frozenset[str] = frozenset()
