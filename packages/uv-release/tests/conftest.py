@@ -59,8 +59,29 @@ def tag_all(cwd: Path) -> None:
     git(cwd, "tag", "pkg-b/v0.1.0.dev0-base")
 
 
+def _add_workflow(root: Path) -> None:
+    """Add a minimal release.yml so the release guard passes."""
+    wf_dir = root / ".github" / "workflows"
+    wf_dir.mkdir(parents=True, exist_ok=True)
+    (wf_dir / "release.yml").write_text(
+        "name: Release Wheels\n"
+        "on:\n  workflow_dispatch:\n    inputs:\n"
+        "      plan:\n        type: string\n        required: true\n"
+        "jobs:\n"
+        "  validate:\n    runs-on: ubuntu-latest\n    steps: [{run: echo}]\n"
+        "  build:\n    runs-on: ubuntu-latest\n    steps: [{run: echo}]\n"
+        "  release:\n    runs-on: ubuntu-latest\n    steps: [{run: echo}]\n"
+        "  publish:\n    runs-on: ubuntu-latest\n    steps: [{run: echo}]\n"
+        "  bump:\n    runs-on: ubuntu-latest\n    steps: [{run: echo}]\n"
+    )
+
+
 def _make_package(
-    root: Path, name: str, version: str, deps: list[str]
+    root: Path,
+    name: str,
+    version: str,
+    deps: list[str],
+    build_requires: list[str] | None = None,
 ) -> None:
     pkg = root / "packages" / name
     pkg.mkdir(parents=True, exist_ok=True)
@@ -73,7 +94,7 @@ def _make_package(
                     "dependencies": deps,
                 },
                 "build-system": {
-                    "requires": ["hatchling"],
+                    "requires": build_requires or ["hatchling"],
                     "build-backend": "hatchling.build",
                 },
             }
@@ -110,6 +131,7 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     _make_package(root, "pkg-a", "0.1.0.dev0", [])
     _make_package(root, "pkg-b", "0.1.0.dev0", ["pkg-a>=0.1.0"])
+    _add_workflow(root)
 
     git(root, "init")
     git(root, "config", "user.name", "test")
@@ -156,6 +178,65 @@ def released_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     _make_package(root, "pkg-a", "1.0.1.dev0", [])
     _make_package(root, "pkg-b", "0.1.0.dev0", ["pkg-a>=1.0.0"])
     _make_package(root, "pkg-c", "0.1.0.dev0", ["pkg-b>=0.1.0"])
+    _add_workflow(root)
+
+    git(root, "init")
+    git(root, "config", "user.name", "test")
+    git(root, "config", "user.email", "test@test")
+    git(root, "add", ".")
+    git(root, "commit", "-m", "init")
+
+    # pkg-a was released at 1.0.0, then bumped to 1.0.1.dev0 with a baseline.
+    git(root, "tag", "pkg-a/v1.0.0")
+    git(root, "tag", "pkg-a/v1.0.1.dev0-base")
+
+    monkeypatch.chdir(root)
+    return root
+
+
+@pytest.fixture()
+def build_requires_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Four-package workspace where pkg-c has a workspace build-system dep.
+
+    packages/pkg-a  1.0.1.dev0  (released at 1.0.0, now in next dev cycle)
+    packages/pkg-b  0.1.0.dev0  (depends on pkg-a, unreleased)
+    packages/pkg-c  0.1.0.dev0  (depends on pkg-b, build-requires pkg-d, unreleased)
+    packages/pkg-d  0.1.0.dev0  (no deps, unreleased build plugin)
+
+    This exercises the build-system.requires dependency path:
+    - pkg-d must be discovered as an unreleased build dep of pkg-c
+    - pkg-d must be built before pkg-c (topo ordering)
+    - pkg-d wheels go to deps/, not dist/
+    - pkg-a (released) in build-system.requires would be downloaded, not built
+    """
+    root = tmp_path
+
+    (root / "pyproject.toml").write_text(
+        tomlkit.dumps(
+            {
+                "tool": {
+                    "uv": {"workspace": {"members": ["packages/*"]}},
+                    "uvr": {
+                        "config": {"latest": "pkg-c", "python_version": "3.12"},
+                        "publish": {"index": "pypi", "environment": "release"},
+                    },
+                },
+            }
+        )
+    )
+
+    _make_package(root, "pkg-a", "1.0.1.dev0", [])
+    _make_package(root, "pkg-b", "0.1.0.dev0", ["pkg-a>=1.0.0"])
+    # pkg-c has pkg-d in build-system.requires AND pkg-a as a released build dep.
+    _make_package(
+        root,
+        "pkg-c",
+        "0.1.0.dev0",
+        ["pkg-b>=0.1.0"],
+        build_requires=["hatchling", "pkg-d>=0.1.0", "pkg-a>=1.0.0"],
+    )
+    _make_package(root, "pkg-d", "0.1.0.dev0", [])
+    _add_workflow(root)
 
     git(root, "init")
     git(root, "config", "user.name", "test")

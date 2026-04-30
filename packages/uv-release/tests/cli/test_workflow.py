@@ -13,6 +13,7 @@ class TestWorkflowValidate:
     def test_missing_file(
         self, workspace: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        (workspace / ".github" / "workflows" / "release.yml").unlink()
         with diny.provide():
             run_cli("workflow", "validate")
         assert "does not exist" in capsys.readouterr().out
@@ -20,33 +21,16 @@ class TestWorkflowValidate:
     def test_has_all_required_jobs(
         self, workspace: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        wf_dir = workspace / ".github" / "workflows"
-        wf_dir.mkdir(parents=True)
-        (wf_dir / "release.yml").write_text(
-            yaml.dump(
-                {
-                    "jobs": {
-                        "validate": {},
-                        "build": {},
-                        "release": {},
-                        "publish": {},
-                        "bump": {},
-                    }
-                }
-            )
-        )
         with diny.provide():
             run_cli("workflow", "validate")
         out = capsys.readouterr().out
-        # No "missing" errors. May have template-diff warnings.
         assert "missing" not in out.lower()
 
     def test_missing_required_jobs(
         self, workspace: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        wf_dir = workspace / ".github" / "workflows"
-        wf_dir.mkdir(parents=True)
-        (wf_dir / "release.yml").write_text(yaml.dump({"jobs": {"build": {}}}))
+        wf = workspace / ".github" / "workflows" / "release.yml"
+        wf.write_text(yaml.dump({"jobs": {"build": {}}}))
         with diny.provide():
             run_cli("workflow", "validate")
         out = capsys.readouterr().out
@@ -80,6 +64,7 @@ class TestWorkflowUpgrade:
     def test_scaffolds_workflow(
         self, workspace: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
+        (workspace / ".github" / "workflows" / "release.yml").unlink()
         with diny.provide():
             run_cli("workflow", "upgrade")
         out = capsys.readouterr().out

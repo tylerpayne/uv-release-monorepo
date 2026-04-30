@@ -36,6 +36,7 @@ from ..dependencies.params.workflow_params import WorkflowParams
 from ..dependencies.params.skill_params import SkillParams
 from ..dependencies.release.release_guard import UserRecoverableError
 from ..dependencies.shared.hooks import Hooks
+from ..dependencies.shared.workflow_state import WorkflowState
 from ..dependencies.shared.workspace_packages import WorkspacePackages
 
 
@@ -249,14 +250,12 @@ def provide_reuse_releases(args: ParsedArgs) -> ReuseReleases:
 
 
 @provider(SkipJobs)
-def provide_skip_jobs(args: ParsedArgs) -> SkipJobs:
+def provide_skip_jobs(args: ParsedArgs, workflow_state: WorkflowState) -> SkipJobs:
     skipped = set(args.values.get("skip") or [])
     skip_to = args.values.get("skip_to", "") or ""
-    if skip_to:
-        _JOB_ORDER = ["validate", "build", "release", "publish", "bump"]
-        if skip_to in _JOB_ORDER:
-            idx = _JOB_ORDER.index(skip_to)
-            skipped |= {j for j in _JOB_ORDER[:idx] if j != "validate"}
+    if skip_to and skip_to in workflow_state.job_names:
+        idx = workflow_state.job_names.index(skip_to)
+        skipped |= {j for j in workflow_state.job_names[:idx] if j != "validate"}
     return SkipJobs(value=frozenset(skipped))
 
 

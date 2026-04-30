@@ -11,6 +11,7 @@ from ...commands import (
 )
 from ...types.job import Job
 from ...types.tag import Tag
+from ..params.release_target import ReleaseTarget
 from .publish_packages import PublishPackages
 from .release_versions import ReleaseVersions
 from ..config.uvr_publishing import UvrPublishing
@@ -26,27 +27,32 @@ def provide_publish_job(
     publish_packages: PublishPackages,
     release_versions: ReleaseVersions,
     uvr_publishing: UvrPublishing,
+    release_target: ReleaseTarget,
 ) -> PublishJob:
     if not publish_packages.items:
         return PublishJob(name="publish")
+
+    is_ci = release_target.value == "ci"
 
     commands: list[
         MakeDirectoryCommand | DownloadWheelsCommand | PublishToIndexCommand
     ] = []
 
-    # Download wheels from the GitHub releases created by the release job.
-    commands.append(MakeDirectoryCommand(label="Create dist/", path="dist"))
-    for name in publish_packages.items:
-        version = release_versions.items[name]
-        tag_name = Tag.release_tag_name(name, version)
-        commands.append(
-            DownloadWheelsCommand(
-                label=f"Download {name} wheels",
-                tag_name=tag_name,
-                pattern="*.whl",
-                output_dir="dist",
+    # In CI, download wheels from the GitHub releases created by the release job.
+    # Locally, wheels are already in dist/ from the build job.
+    if is_ci:
+        commands.append(MakeDirectoryCommand(label="Create dist/", path="dist"))
+        for name in publish_packages.items:
+            version = release_versions.items[name]
+            tag_name = Tag.release_tag_name(name, version)
+            commands.append(
+                DownloadWheelsCommand(
+                    label=f"Download {name} wheels",
+                    tag_name=tag_name,
+                    pattern="*.whl",
+                    output_dir="dist",
+                )
             )
-        )
 
     for name, version in publish_packages.items.items():
         commands.append(

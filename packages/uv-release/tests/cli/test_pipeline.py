@@ -13,6 +13,8 @@ from pathlib import Path
 import diny
 import pytest
 
+import tomlkit
+
 from conftest import get_plan_json, git, read_toml, run_cli
 
 
@@ -31,12 +33,19 @@ def _job(plan: dict, name: str) -> dict:
     raise KeyError(f"No job named {name}")
 
 
+def _set_runners(root: Path, runners: dict[str, list[list[str]]]) -> None:
+    """Patch [tool.uvr.runners] in the root pyproject.toml and commit."""
+    doc = tomlkit.loads((root / "pyproject.toml").read_text())
+    doc["tool"]["uvr"]["runners"] = runners  # type: ignore[index]
+    (root / "pyproject.toml").write_text(tomlkit.dumps(doc))
+    git(root, "add", ".")
+    git(root, "commit", "-m", "set runners")
+
+
 class TestBuildJobStructure:
     """Verify build job has correct download and build commands in order."""
 
-    def test_released_dep_downloaded_to_deps(
-        self, released_workspace: Path
-    ) -> None:
+    def test_released_dep_downloaded_to_deps(self, released_workspace: Path) -> None:
         with diny.provide():
             plan = get_plan_json("--dev")
         downloads = _commands_of_type(plan, "build", "download_wheels")
@@ -44,9 +53,7 @@ class TestBuildJobStructure:
         assert downloads[0]["tag_name"] == "pkg-a/v1.0.0"
         assert downloads[0]["output_dir"] == "deps"
 
-    def test_build_targets_go_to_dist(
-        self, released_workspace: Path
-    ) -> None:
+    def test_build_targets_go_to_dist(self, released_workspace: Path) -> None:
         with diny.provide():
             plan = get_plan_json("--dev")
         builds = _commands_of_type(plan, "build", "build")
@@ -66,9 +73,7 @@ class TestBuildJobStructure:
         labels = [b["label"] for b in builds]
         assert labels.index("Build pkg-b") < labels.index("Build pkg-c")
 
-    def test_creates_dist_and_deps_dirs(
-        self, released_workspace: Path
-    ) -> None:
+    def test_creates_dist_and_deps_dirs(self, released_workspace: Path) -> None:
         with diny.provide():
             plan = get_plan_json("--dev")
         mkdirs = _commands_of_type(plan, "build", "make_directory")
@@ -76,9 +81,7 @@ class TestBuildJobStructure:
         assert "dist" in paths
         assert "deps" in paths
 
-    def test_pkg_a_not_in_build_commands(
-        self, released_workspace: Path
-    ) -> None:
+    def test_pkg_a_not_in_build_commands(self, released_workspace: Path) -> None:
         """pkg-a is released. It should be downloaded, not built."""
         with diny.provide():
             plan = get_plan_json("--dev")
@@ -86,20 +89,115 @@ class TestBuildJobStructure:
         assert not any("pkg-a" in b["label"] for b in builds)
 
 
+class TestBuildRequiresDependency:
+    """Verify build-system.requires workspace deps are discovered and ordered.
+
+    With auto-detection (no --packages), all untagged packages are targets.
+    pkg-d is untagged so it becomes a target alongside pkg-b and pkg-c.
+    The build-requires relationship still affects topo ordering.
+
+    With --packages pkg-b pkg-c, pkg-d is excluded from targets but
+    discovered as an unreleased build dep of pkg-c via build-system.requires.
+    """
+
+    def test_untagged_build_dep_is_target(self, build_requires_workspace: Path) -> None:
+        """pkg-d is untagged, so auto-detection picks it up as a build target."""
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        builds = _commands_of_type(plan, "build", "build")
+        assert any("pkg-d" in b["label"] for b in builds)
+
+    def test_untagged_build_dep_goes_to_dist(
+        self, build_requires_workspace: Path
+    ) -> None:
+        """As a build target, pkg-d's wheel goes to dist/ for release."""
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        builds = _commands_of_type(plan, "build", "build")
+        pkg_d_build = next(b for b in builds if "pkg-d" in b["label"])
+        assert pkg_d_build["out_dir"] == "dist"
+
+    def test_build_dep_ordered_before_dependent(
+        self, build_requires_workspace: Path
+    ) -> None:
+        """pkg-d must build before pkg-c because pkg-c build-requires pkg-d."""
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        builds = _commands_of_type(plan, "build", "build")
+        labels = [b["label"] for b in builds]
+        assert labels.index("Build pkg-d") < labels.index("Build pkg-c")
+
+    def test_released_build_dep_is_downloaded(
+        self, build_requires_workspace: Path
+    ) -> None:
+        """pkg-a is released and in pkg-c's build-system.requires. Download it."""
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        downloads = _commands_of_type(plan, "build", "download_wheels")
+        tags = [d["tag_name"] for d in downloads]
+        assert "pkg-a/v1.0.0" in tags
+
+    def test_released_build_dep_downloaded_to_deps(
+        self, build_requires_workspace: Path
+    ) -> None:
+        """Released build deps go to deps/, same as released runtime deps."""
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        downloads = _commands_of_type(plan, "build", "download_wheels")
+        pkg_a_dl = next(d for d in downloads if "pkg-a" in d["tag_name"])
+        assert pkg_a_dl["output_dir"] == "deps"
+
+    def test_packages_flag_excludes_build_only_dep_from_targets(
+        self, build_requires_workspace: Path
+    ) -> None:
+        """--packages pkg-b pkg-c excludes pkg-d from targets."""
+        with diny.provide():
+            plan = get_plan_json("--dev", "--packages", "pkg-b", "pkg-c")
+        releases = _commands_of_type(plan, "release", "create_release")
+        titles = [r["title"] for r in releases]
+        assert not any("pkg-d" in t for t in titles)
+
+    def test_excluded_build_dep_discovered_as_needs_build(
+        self, build_requires_workspace: Path
+    ) -> None:
+        """When pkg-d is excluded from targets, it's still built as a dep."""
+        with diny.provide():
+            plan = get_plan_json("--dev", "--packages", "pkg-b", "pkg-c")
+        builds = _commands_of_type(plan, "build", "build")
+        assert any("pkg-d" in b["label"] for b in builds)
+
+    def test_excluded_build_dep_goes_to_deps_dir(
+        self, build_requires_workspace: Path
+    ) -> None:
+        """When pkg-d is not a target, its wheel goes to deps/."""
+        with diny.provide():
+            plan = get_plan_json("--dev", "--packages", "pkg-b", "pkg-c")
+        builds = _commands_of_type(plan, "build", "build")
+        pkg_d_build = next(b for b in builds if "pkg-d" in b["label"])
+        assert pkg_d_build["out_dir"] == "deps"
+
+    def test_excluded_build_dep_still_ordered_first(
+        self, build_requires_workspace: Path
+    ) -> None:
+        """Even when excluded from targets, pkg-d builds before pkg-c."""
+        with diny.provide():
+            plan = get_plan_json("--dev", "--packages", "pkg-b", "pkg-c")
+        builds = _commands_of_type(plan, "build", "build")
+        labels = [b["label"] for b in builds]
+        assert labels.index("Build pkg-d") < labels.index("Build pkg-c")
+
+
 class TestReleaseJobStructure:
     """Verify release job downloads artifacts and attaches wheels."""
 
-    def test_downloads_run_artifacts(
-        self, released_workspace: Path
-    ) -> None:
+    def test_no_artifact_download_for_local(self, released_workspace: Path) -> None:
+        """Local release skips artifact download (wheels already in dist/)."""
         with diny.provide():
             plan = get_plan_json("--dev")
         downloads = _commands_of_type(plan, "release", "download_run_artifacts")
-        assert len(downloads) == 1
+        assert len(downloads) == 0
 
-    def test_creates_tags_for_each_package(
-        self, released_workspace: Path
-    ) -> None:
+    def test_creates_tags_for_each_package(self, released_workspace: Path) -> None:
         with diny.provide():
             plan = get_plan_json("--dev")
         tags = _commands_of_type(plan, "release", "create_tag")
@@ -119,9 +217,7 @@ class TestReleaseJobStructure:
             assert rel["files"], f"No files for {rel['title']}"
             assert any(".whl" in f for f in rel["files"])
 
-    def test_latest_package_marked(
-        self, released_workspace: Path
-    ) -> None:
+    def test_latest_package_marked(self, released_workspace: Path) -> None:
         """pkg-c is configured as latest in [tool.uvr.config]."""
         with diny.provide():
             plan = get_plan_json("--dev")
@@ -136,19 +232,14 @@ class TestReleaseJobStructure:
 class TestPublishJobStructure:
     """Verify publish job downloads from GitHub release then publishes."""
 
-    def test_downloads_wheels_from_release(
-        self, released_workspace: Path
-    ) -> None:
+    def test_no_wheel_download_for_local(self, released_workspace: Path) -> None:
+        """Local release skips wheel download (wheels already in dist/)."""
         with diny.provide():
             plan = get_plan_json("--dev")
         downloads = _commands_of_type(plan, "publish", "download_wheels")
-        assert len(downloads) >= 1
-        for d in downloads:
-            assert d["output_dir"] == "dist"
+        assert len(downloads) == 0
 
-    def test_publishes_each_package(
-        self, released_workspace: Path
-    ) -> None:
+    def test_publishes_each_package(self, released_workspace: Path) -> None:
         with diny.provide():
             plan = get_plan_json("--dev")
         publishes = _commands_of_type(plan, "publish", "publish_to_index")
@@ -156,9 +247,7 @@ class TestPublishJobStructure:
         assert "pkg-b" in names
         assert "pkg-c" in names
 
-    def test_publish_uses_configured_index(
-        self, released_workspace: Path
-    ) -> None:
+    def test_publish_uses_configured_index(self, released_workspace: Path) -> None:
         with diny.provide():
             plan = get_plan_json("--dev")
         publishes = _commands_of_type(plan, "publish", "publish_to_index")
@@ -169,9 +258,7 @@ class TestPublishJobStructure:
 class TestBumpJobStructure:
     """Verify post-release bump job structure."""
 
-    def test_bumps_each_released_package(
-        self, released_workspace: Path
-    ) -> None:
+    def test_bumps_each_released_package(self, released_workspace: Path) -> None:
         with diny.provide():
             plan = get_plan_json("--dev")
         versions = _commands_of_type(plan, "bump", "set_version")
@@ -179,18 +266,14 @@ class TestBumpJobStructure:
         assert any("pkg-b" in n for n in names)
         assert any("pkg-c" in n for n in names)
 
-    def test_creates_baseline_tags(
-        self, released_workspace: Path
-    ) -> None:
+    def test_creates_baseline_tags(self, released_workspace: Path) -> None:
         with diny.provide():
             plan = get_plan_json("--dev")
         tags = _commands_of_type(plan, "bump", "create_tag")
         assert len(tags) >= 1
         assert all("-base" in t["tag_name"] for t in tags)
 
-    def test_commits_and_pushes(
-        self, released_workspace: Path
-    ) -> None:
+    def test_commits_and_pushes(self, released_workspace: Path) -> None:
         with diny.provide():
             plan = get_plan_json("--dev")
         commits = _commands_of_type(plan, "bump", "commit")
@@ -198,9 +281,7 @@ class TestBumpJobStructure:
         assert len(commits) == 1
         assert len(pushes) == 1
 
-    def test_syncs_lockfile(
-        self, released_workspace: Path
-    ) -> None:
+    def test_syncs_lockfile(self, released_workspace: Path) -> None:
         with diny.provide():
             plan = get_plan_json("--dev")
         syncs = _commands_of_type(plan, "bump", "sync_lockfile")
@@ -210,30 +291,22 @@ class TestBumpJobStructure:
 class TestPlanMetadata:
     """Verify plan-level metadata from the workspace config."""
 
-    def test_build_matrix(
-        self, released_workspace: Path
-    ) -> None:
+    def test_build_matrix(self, released_workspace: Path) -> None:
         with diny.provide():
             plan = get_plan_json("--dev")
         assert plan["build_matrix"] == [["ubuntu-latest"]]
 
-    def test_python_version(
-        self, released_workspace: Path
-    ) -> None:
+    def test_python_version(self, released_workspace: Path) -> None:
         with diny.provide():
             plan = get_plan_json("--dev")
         assert plan["python_version"] == "3.12"
 
-    def test_publish_environment(
-        self, released_workspace: Path
-    ) -> None:
+    def test_publish_environment(self, released_workspace: Path) -> None:
         with diny.provide():
             plan = get_plan_json("--dev")
         assert plan["publish_environment"] == "release"
 
-    def test_skip_contains_validate(
-        self, released_workspace: Path
-    ) -> None:
+    def test_skip_contains_validate(self, released_workspace: Path) -> None:
         with diny.provide():
             plan = get_plan_json("--dev")
         assert "validate" in plan["skip"]
@@ -258,18 +331,15 @@ class TestChangeDetection:
         with diny.provide():
             run_cli("status")
         out = capsys.readouterr().out
-        lines = out.splitlines()
-        changed_section = False
-        changed_names: list[str] = []
-        for line in lines:
-            if line.startswith("Changed:"):
-                changed_section = True
-                continue
-            if changed_section and line.startswith("  ") and ":" in line:
-                changed_names.append(line.strip().split(":")[0])
-        assert "pkg-a" not in changed_names
-        assert "pkg-b" in changed_names
-        assert "pkg-c" in changed_names
+        # Table rows: STATUS PACKAGE VERSION DIFF_FROM
+        # pkg-a should be "unchanged", pkg-b and pkg-c should not be.
+        lines = [line.strip() for line in out.splitlines() if line.strip()]
+        pkg_a_line = next(line for line in lines if "pkg-a" in line)
+        assert "unchanged" in pkg_a_line
+        pkg_b_line = next(line for line in lines if "pkg-b" in line)
+        assert "unchanged" not in pkg_b_line
+        pkg_c_line = next(line for line in lines if "pkg-c" in line)
+        assert "unchanged" not in pkg_c_line
 
     def test_dep_propagation(
         self, released_workspace: Path, capsys: pytest.CaptureFixture[str]
@@ -290,7 +360,7 @@ class TestChangeDetection:
         tag_all(workspace)
         with diny.provide():
             run_cli("status")
-        assert "No changes detected" in capsys.readouterr().out
+        assert "Nothing changed since last release" in capsys.readouterr().out
 
     def test_change_after_file_edit(
         self, workspace: Path, capsys: pytest.CaptureFixture[str]
@@ -325,7 +395,8 @@ class TestJobsSubcommand:
             run_cli("jobs", "validate")
 
     def test_jobs_unknown_name_errors(
-        self, released_workspace: Path,
+        self,
+        released_workspace: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
@@ -353,9 +424,7 @@ class TestJobsSubcommand:
 class TestJsonOutput:
     """Test --json flag produces valid parseable plan."""
 
-    def test_json_output_is_valid(
-        self, released_workspace: Path
-    ) -> None:
+    def test_json_output_is_valid(self, released_workspace: Path) -> None:
         with diny.provide():
             plan = get_plan_json("--dev")
         assert "jobs" in plan
@@ -370,9 +439,7 @@ class TestJsonOutput:
 class TestBumpFlags:
     """Test --force and --no-pin on bump."""
 
-    def test_force_bumps_even_after_tagging(
-        self, workspace: Path
-    ) -> None:
+    def test_force_bumps_even_after_tagging(self, workspace: Path) -> None:
         from conftest import tag_all
 
         tag_all(workspace)
@@ -382,9 +449,7 @@ class TestBumpFlags:
         a = read_toml(workspace / "packages" / "pkg-a" / "pyproject.toml")
         assert a["project"]["version"] == "0.2.0.dev0"
 
-    def test_no_pin_skips_dep_pinning(
-        self, workspace: Path
-    ) -> None:
+    def test_no_pin_skips_dep_pinning(self, workspace: Path) -> None:
         with diny.provide():
             run_cli("bump", "--minor", "--no-commit", "--no-push", "--no-pin")
         b = read_toml(workspace / "packages" / "pkg-b" / "pyproject.toml")
@@ -411,20 +476,23 @@ class TestVersionFix:
         with diny.provide():
             run_cli("release", "--dry-run", "--where", "local", "--dev")
         out = capsys.readouterr().out
-        assert "Release plan:" in out
+        assert "Pipeline" in out
 
 
 class TestLocalRelease:
     """Test --where local executes commands directly (no CI dispatch)."""
 
     def test_local_release_builds_and_tags(
-        self, workspace: Path, mock_builds: list[list[str]],
+        self,
+        workspace: Path,
+        mock_builds: list[list[str]],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Mock external commands, run local release, verify it executes."""
         _real = subprocess.run
 
         created_tags: list[str] = []
+
         def _patched(args: str | list[str], **kwargs):  # type: ignore[no-untyped-def]
             if not isinstance(args, list):
                 return _real(args, **kwargs)
@@ -456,3 +524,350 @@ class TestLocalRelease:
 
         assert len(mock_builds) >= 1
         assert any("pkg-a" in t or "pkg-b" in t for t in created_tags)
+
+
+class TestMultiRunnerMatrix:
+    """Verify build_matrix computation from [tool.uvr.runners]."""
+
+    def test_default_is_ubuntu(self, released_workspace: Path) -> None:
+        """No runners config defaults to [["ubuntu-latest"]]."""
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        assert plan["build_matrix"] == [["ubuntu-latest"]]
+
+    def test_single_package_custom_runner(self, released_workspace: Path) -> None:
+        """One package with a custom runner, others default to ubuntu."""
+        _set_runners(released_workspace, {"pkg-b": [["macos-latest"]]})
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        matrix = plan["build_matrix"]
+        assert ["macos-latest"] in matrix
+        assert ["ubuntu-latest"] in matrix
+
+    def test_multi_runner_per_package(self, released_workspace: Path) -> None:
+        """One package building on two different runners."""
+        _set_runners(
+            released_workspace,
+            {"pkg-b": [["ubuntu-latest"], ["macos-latest"]]},
+        )
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        matrix = plan["build_matrix"]
+        assert ["ubuntu-latest"] in matrix
+        assert ["macos-latest"] in matrix
+
+    def test_multi_label_runner(self, released_workspace: Path) -> None:
+        """Compound runner label like [self-hosted, linux, x64]."""
+        _set_runners(
+            released_workspace,
+            {"pkg-b": [["self-hosted", "linux", "x64"]]},
+        )
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        matrix = plan["build_matrix"]
+        assert ["self-hosted", "linux", "x64"] in matrix
+
+    def test_deduplication(self, released_workspace: Path) -> None:
+        """Same runner on two packages appears once in the matrix."""
+        _set_runners(
+            released_workspace,
+            {
+                "pkg-b": [["ubuntu-latest"]],
+                "pkg-c": [["ubuntu-latest"]],
+            },
+        )
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        assert plan["build_matrix"] == [["ubuntu-latest"]]
+
+    def test_different_runners_per_package(self, released_workspace: Path) -> None:
+        """Different runners on different packages both appear in the matrix."""
+        _set_runners(
+            released_workspace,
+            {
+                "pkg-b": [["macos-latest"]],
+                "pkg-c": [["self-hosted", "arm64"]],
+            },
+        )
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        matrix = plan["build_matrix"]
+        assert ["macos-latest"] in matrix
+        assert ["self-hosted", "arm64"] in matrix
+        assert len(matrix) == 2
+
+    def test_dedup_ignores_label_order(self, released_workspace: Path) -> None:
+        """["linux", "x64"] and ["x64", "linux"] are the same runner set."""
+        _set_runners(
+            released_workspace,
+            {
+                "pkg-b": [["linux", "x64"]],
+                "pkg-c": [["x64", "linux"]],
+            },
+        )
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        # Both sort to ("linux", "x64") so only one entry.
+        assert len(plan["build_matrix"]) == 1
+
+
+class TestSkipAndSkipTo:
+    """Verify --skip and --skip-to flags produce correct plan.skip lists."""
+
+    def test_skip_build(self, released_workspace: Path) -> None:
+        """--skip build empties the build job and adds it to plan.skip."""
+        with diny.provide():
+            plan = get_plan_json("--dev", "--skip", "build")
+        assert "build" in plan["skip"]
+        build_job = _job(plan, "build")
+        assert build_job["commands"] == []
+
+    def test_skip_release(self, released_workspace: Path) -> None:
+        """--skip release empties the release job but build still has commands."""
+        with diny.provide():
+            plan = get_plan_json("--dev", "--skip", "release")
+        assert "release" in plan["skip"]
+        release_job = _job(plan, "release")
+        assert release_job["commands"] == []
+        build_job = _job(plan, "build")
+        assert len(build_job["commands"]) > 0
+
+    def test_skip_multiple(self, released_workspace: Path) -> None:
+        """--skip build release skips both."""
+        with diny.provide():
+            plan = get_plan_json("--dev", "--skip", "build", "release")
+        assert "build" in plan["skip"]
+        assert "release" in plan["skip"]
+
+    def test_skip_to_release(self, released_workspace: Path) -> None:
+        """--skip-to release skips build but not validate or release."""
+        _add_workflow(released_workspace, _WORKFLOW_CORE_ONLY)
+        with diny.provide():
+            plan = get_plan_json("--dev", "--skip-to", "release")
+        assert "build" in plan["skip"]
+        assert "release" not in plan["skip"]
+
+    def test_skip_to_publish(self, released_workspace: Path) -> None:
+        """--skip-to publish skips build and release."""
+        _add_workflow(released_workspace, _WORKFLOW_CORE_ONLY)
+        with diny.provide():
+            plan = get_plan_json("--dev", "--skip-to", "publish")
+        assert "build" in plan["skip"]
+        assert "release" in plan["skip"]
+        assert "publish" not in plan["skip"]
+
+    def test_skip_to_bump(self, released_workspace: Path) -> None:
+        """--skip-to bump skips build, release, and publish."""
+        _add_workflow(released_workspace, _WORKFLOW_CORE_ONLY)
+        with diny.provide():
+            plan = get_plan_json("--dev", "--skip-to", "bump")
+        assert "build" in plan["skip"]
+        assert "release" in plan["skip"]
+        assert "publish" in plan["skip"]
+        assert "bump" not in plan["skip"]
+
+    def test_validate_never_skipped_by_skip_to(self, released_workspace: Path) -> None:
+        """--skip-to never skips validate (it's always first)."""
+        _add_workflow(released_workspace, _WORKFLOW_CORE_ONLY)
+        with diny.provide():
+            plan = get_plan_json("--dev", "--skip-to", "bump")
+        assert "validate" in plan["skip"]  # validate is empty, so auto-skipped
+        # But it's auto-skipped because it has no commands, not because --skip-to
+        # targeted it. Verify validate job still exists.
+        validate_job = _job(plan, "validate")
+        assert validate_job["name"] == "validate"
+
+    def test_custom_job_name_passthrough(self, released_workspace: Path) -> None:
+        """--skip with a non-core job name passes through to plan.skip for CI."""
+        with diny.provide():
+            plan = get_plan_json("--dev", "--skip", "checks")
+        assert "checks" in plan["skip"]
+        # Core jobs unaffected.
+        build_job = _job(plan, "build")
+        assert len(build_job["commands"]) > 0
+
+    def test_dry_run_shows_skip_status(
+        self, released_workspace: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--dry-run output shows (skip) for skipped jobs."""
+        with diny.provide():
+            run_cli(
+                "release", "--dry-run", "--where", "local", "--dev", "--skip", "build"
+            )
+        out = capsys.readouterr().out
+        assert "build: (skip)" in out
+        assert "release:" in out
+        # release should show commands, not skip.
+        assert "release: (skip)" not in out
+
+    def test_skip_combined_with_skip_to(self, released_workspace: Path) -> None:
+        """--skip-to release --skip publish skips build and publish."""
+        _add_workflow(released_workspace, _WORKFLOW_CORE_ONLY)
+        with diny.provide():
+            plan = get_plan_json("--dev", "--skip-to", "release", "--skip", "publish")
+        assert "build" in plan["skip"]
+        assert "publish" in plan["skip"]
+        assert "release" not in plan["skip"]
+
+    def test_skip_to_with_custom_job_between(self, released_workspace: Path) -> None:
+        """--skip-to build also skips custom jobs before build."""
+        _add_workflow(released_workspace)
+        with diny.provide():
+            plan = get_plan_json("--dev", "--skip-to", "build")
+        assert "checks" in plan["skip"]
+        assert "build" not in plan["skip"]
+
+
+_WORKFLOW_CORE_ONLY = """\
+name: Release Wheels
+on:
+  workflow_dispatch:
+    inputs:
+      plan:
+        type: string
+        required: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo validate
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo build
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo release
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo publish
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo bump
+"""
+
+_WORKFLOW_WITH_CUSTOM_JOBS = """\
+name: Release Wheels
+on:
+  workflow_dispatch:
+    inputs:
+      plan:
+        type: string
+        required: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo validate
+  checks:
+    runs-on: ubuntu-latest
+    needs: [validate]
+    if: ${{ !contains(fromJSON(inputs.plan).skip, 'checks') }}
+    steps:
+    - run: uv run poe check
+  build:
+    runs-on: ubuntu-latest
+    needs: [checks]
+    steps:
+    - run: echo build
+  release:
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+    - run: echo release
+  publish:
+    runs-on: ubuntu-latest
+    needs: [release]
+    steps:
+    - run: echo publish
+  bump:
+    runs-on: ubuntu-latest
+    needs: [publish]
+    steps:
+    - run: echo bump
+  notify:
+    runs-on: ubuntu-latest
+    needs: [bump]
+    if: ${{ !contains(fromJSON(inputs.plan).skip, 'notify') }}
+    steps:
+    - run: echo notify
+"""
+
+
+def _add_workflow(root: Path, content: str = _WORKFLOW_WITH_CUSTOM_JOBS) -> None:
+    """Write a release.yml workflow file into the workspace."""
+    wf_dir = root / ".github" / "workflows"
+    wf_dir.mkdir(parents=True, exist_ok=True)
+    (wf_dir / "release.yml").write_text(content)
+    git(root, "add", ".")
+    git(root, "commit", "-m", "add workflow")
+
+
+class TestCustomJobsDisplay:
+    """Verify custom jobs from release.yml appear in dry-run output."""
+
+    def test_custom_jobs_shown_in_dry_run(
+        self, released_workspace: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Custom jobs from the workflow YAML appear in the plan printout."""
+        _add_workflow(released_workspace)
+        with diny.provide():
+            run_cli("release", "--dry-run", "--where", "local", "--dev")
+        out = capsys.readouterr().out
+        assert "  checks" in out
+        assert "  notify" in out
+
+    def test_jobs_interleaved_in_workflow_order(
+        self, released_workspace: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Jobs print in workflow YAML order: checks between validate and build."""
+        _add_workflow(released_workspace)
+        with diny.provide():
+            run_cli("release", "--dry-run", "--where", "local", "--dev")
+        out = capsys.readouterr().out
+        lines = [
+            line.strip()
+            for line in out.splitlines()
+            if line.strip().startswith(
+                ("validate", "checks", "build", "release", "publish", "bump", "notify")
+            )
+        ]
+        names = [line.split(":")[0] for line in lines]
+        # Workflow order: validate, checks, build, release, publish, bump, notify
+        assert names.index("checks") < names.index("build")
+        assert names.index("checks") > names.index("validate")
+        assert names.index("notify") > names.index("bump")
+
+    def test_skipped_custom_job_shows_skip(
+        self, released_workspace: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--skip checks shows the custom job as (skip)."""
+        _add_workflow(released_workspace)
+        with diny.provide():
+            run_cli(
+                "release",
+                "--dry-run",
+                "--where",
+                "local",
+                "--dev",
+                "--skip",
+                "checks",
+            )
+        out = capsys.readouterr().out
+        assert "checks: (skip)" in out
+        # notify is not skipped.
+        assert "notify: (skip)" not in out
+
+    def test_only_workflow_jobs_shown(
+        self, released_workspace: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Only jobs from the workflow YAML appear in the printout."""
+        with diny.provide():
+            run_cli("release", "--dry-run", "--where", "local", "--dev")
+        out = capsys.readouterr().out
+        assert "build:" in out
+        # No custom jobs in the default fixture workflow.
+        assert "checks" not in out

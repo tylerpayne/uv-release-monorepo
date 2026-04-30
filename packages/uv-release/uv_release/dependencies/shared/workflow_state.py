@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
+import yaml
 from diny import singleton, provider
+from pydantic import Field
 
 from ...types.base import Frozen
 from .git_repo import GitRepo
@@ -20,6 +23,8 @@ class WorkflowState(Frozen):
     content: str = ""
     merge_base: str = ""
     is_dirty: bool = False
+    # All job names from the workflow YAML, in definition order.
+    job_names: list[str] = Field(default_factory=list)
 
 
 @provider(WorkflowState)
@@ -37,10 +42,27 @@ def provide_workflow_state(
 
     is_dirty = git_repo.file_is_dirty(file_path) if exists else False
 
+    job_names = _parse_job_names(content) if content else []
+
     return WorkflowState(
         file_path=file_path,
         exists=exists,
         content=content,
         merge_base=merge_base,
         is_dirty=is_dirty,
+        job_names=job_names,
     )
+
+
+def _parse_job_names(content: str) -> list[str]:
+    """Extract job names from workflow YAML content, in definition order."""
+    try:
+        doc: Any = yaml.safe_load(content)
+    except yaml.YAMLError:
+        return []
+    if not isinstance(doc, dict):
+        return []
+    jobs = doc.get("jobs", {})
+    if not isinstance(jobs, dict):
+        return []
+    return list(jobs.keys())

@@ -33,7 +33,11 @@ def _mock_one_command(
         # Succeed for all other external commands.
         if args[0] in ("uv", "gh"):
             return subprocess.CompletedProcess(args, 0)
-        if args[0] == "git" and len(args) >= 2 and args[1] in ("tag", "push", "pull", "config"):
+        if (
+            args[0] == "git"
+            and len(args) >= 2
+            and args[1] in ("tag", "push", "pull", "config")
+        ):
             return subprocess.CompletedProcess(args, 0)
         return _real(args, **kwargs)
 
@@ -117,7 +121,12 @@ class TestLocalReleaseFailures:
         def _patched(args: str | list[str], **kwargs):  # type: ignore[no-untyped-def]
             if isinstance(args, list) and args[0] in ("uv", "gh"):
                 return subprocess.CompletedProcess(args, 0)
-            if isinstance(args, list) and args[0] == "git" and len(args) >= 2 and args[1] in ("tag", "push", "pull", "config"):
+            if (
+                isinstance(args, list)
+                and args[0] == "git"
+                and len(args) >= 2
+                and args[1] in ("tag", "push", "pull", "config")
+            ):
                 return subprocess.CompletedProcess(args, 0)
             return _real(args, **kwargs)
 

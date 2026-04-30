@@ -5,7 +5,7 @@ from pathlib import Path
 import diny
 import pytest
 
-from conftest import run_cli, tag_all
+from conftest import git, run_cli, tag_all
 
 
 class TestRelease:
@@ -15,7 +15,7 @@ class TestRelease:
         with diny.provide():
             run_cli("release", "--dry-run", "--where", "local", "--dev")
         out = capsys.readouterr().out
-        assert "Release plan:" in out
+        assert "Pipeline" in out
 
     def test_nothing_changed(
         self, workspace: Path, capsys: pytest.CaptureFixture[str]
@@ -24,6 +24,53 @@ class TestRelease:
         with diny.provide():
             run_cli("release", "--dry-run", "--where", "local", "--dev")
         assert "Nothing changed" in capsys.readouterr().out
+
+    def test_missing_workflow_errors(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Release fails if no workflow file exists."""
+        import tomlkit
+
+        root = tmp_path
+        (root / "pyproject.toml").write_text(
+            tomlkit.dumps(
+                {
+                    "tool": {
+                        "uv": {"workspace": {"members": ["packages/*"]}},
+                        "uvr": {"config": {"latest": "pkg-a"}},
+                    },
+                }
+            )
+        )
+        pkg = root / "packages" / "pkg-a"
+        pkg.mkdir(parents=True)
+        (pkg / "pyproject.toml").write_text(
+            tomlkit.dumps(
+                {
+                    "project": {"name": "pkg-a", "version": "0.1.0.dev0"},
+                    "build-system": {
+                        "requires": ["hatchling"],
+                        "build-backend": "hatchling.build",
+                    },
+                }
+            )
+        )
+        (pkg / "pkg_a").mkdir()
+        (pkg / "pkg_a" / "__init__.py").write_text("")
+        git(root, "init")
+        git(root, "config", "user.name", "test")
+        git(root, "config", "user.email", "test@test")
+        git(root, "add", ".")
+        git(root, "commit", "-m", "init")
+        monkeypatch.chdir(root)
+
+        with pytest.raises(SystemExit):
+            with diny.provide():
+                run_cli("release", "--dry-run", "--where", "local", "--dev")
+        assert "Workflow file not found" in capsys.readouterr().err
 
     def test_stable_from_dev_triggers_version_fix(
         self, workspace: Path, capsys: pytest.CaptureFixture[str]
@@ -141,13 +188,16 @@ class TestRelease:
                 "pkg-a",
             )
         out = capsys.readouterr().out
-        assert "Release plan:" in out
+        assert "Pipeline" in out
         assert "pkg-a" in out
 
     def test_all_packages(
         self, workspace: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         tag_all(workspace)
+        # Bump to next dev versions so release tags don't already exist.
+        with diny.provide():
+            run_cli("bump", "--dev", "--no-push", "--force")
         with diny.provide():
             run_cli(
                 "release",
@@ -158,4 +208,4 @@ class TestRelease:
                 "--all-packages",
             )
         out = capsys.readouterr().out
-        assert "Release plan:" in out
+        assert "Pipeline" in out

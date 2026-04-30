@@ -26,4 +26,4 @@ class TestStatus:
         with diny.provide():
             run_cli("status")
         out = capsys.readouterr().out
-        assert "No changes detected" in out
+        assert "Nothing changed since last release" in out

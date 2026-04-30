@@ -38,11 +38,12 @@ def topo_layers(packages: dict[str, Package]) -> list[list[str]]:
 
     Layer 0 has no internal deps. Layer N depends on something in layer N-1.
     """
-    # Only internal deps constrain build order.
+    # Both runtime and build-system deps constrain build order.
     internal = set(packages.keys())
     deps_map: dict[str, list[str]] = {}
     for name, pkg in packages.items():
-        deps_map[name] = [d for d in pkg.dependencies if d in internal]
+        all_deps = list(pkg.dependencies) + list(pkg.build_dependencies)
+        deps_map[name] = [d for d in all_deps if d in internal]
 
     order = topo_sort(deps_map)
 

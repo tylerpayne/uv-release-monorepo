@@ -4,28 +4,39 @@ from __future__ import annotations
 
 from diny import inject
 
+from ..dependencies.shared.baseline_tags import BaselineTags
 from ..dependencies.shared.changed_packages import ChangedPackages
 from ..dependencies.shared.workspace_packages import WorkspacePackages
+from ._display import format_table
 
 
 @inject
 def cmd_status(
     workspace_packages: WorkspacePackages,
     changed_packages: ChangedPackages,
+    baseline_tags: BaselineTags,
 ) -> None:
-    print("Packages:")
-    for name, pkg in sorted(workspace_packages.items.items()):
-        changed = name in changed_packages.names
-        marker = " *" if changed else ""
-        print(f"  {name} {pkg.version.raw}{marker}")
+    if not workspace_packages.items:
+        print("No packages found.")
+        return
 
-    if changed_packages.reasons:
-        print("\nChanged:")
-        for name, reason in sorted(changed_packages.reasons.items()):
-            print(f"  {name}: {reason}")
-            log = changed_packages.commit_logs.get(name, "")
-            if log:
-                for line in log.splitlines()[:5]:
-                    print(f"    {line}")
-    else:
-        print("\nNo changes detected.")
+    print()
+    print("Packages")
+    print("--------")
+
+    headers = ("STATUS", "PACKAGE", "VERSION", "DIFF FROM")
+    rows: list[tuple[str, ...]] = []
+    for name, pkg in sorted(workspace_packages.items.items()):
+        reason = changed_packages.reasons.get(name, "unchanged")
+        baseline = baseline_tags.items.get(name)
+        diff_from = baseline.raw if baseline else "(initial)"
+        rows.append((reason, name, pkg.version.raw, diff_from))
+
+    for line in format_table(headers, rows):
+        print(line)
+
+    if not changed_packages.reasons:
+        print()
+        print("Nothing changed since last release.")
+
+    print()

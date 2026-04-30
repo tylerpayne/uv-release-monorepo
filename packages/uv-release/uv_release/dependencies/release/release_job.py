@@ -15,6 +15,7 @@ from ...commands import (
 )
 from ...types.job import Job
 from .release_notes import ReleaseNotes
+from ..params.release_target import ReleaseTarget
 from ..params.reuse_releases import ReuseReleases
 from ..params.skip_jobs import SkipJobs
 from .release_versions import ReleaseVersions
@@ -33,6 +34,7 @@ def provide_release_job(
     release_versions: ReleaseVersions,
     release_notes: ReleaseNotes,
     uvr_config: UvrConfig,
+    release_target: ReleaseTarget,
     reuse_releases: ReuseReleases,
     skip_jobs: SkipJobs,
 ) -> ReleaseJob:
@@ -48,9 +50,13 @@ def provide_release_job(
         | CreateReleaseCommand
     ] = []
 
-    # Download build artifacts from the CI run that built them.
-    commands.append(MakeDirectoryCommand(label="Create dist/", path="dist"))
-    commands.append(DownloadRunArtifactsCommand(label="Download build artifacts"))
+    is_ci = release_target.value == "ci"
+
+    # In CI, download build artifacts from the run that built them.
+    # Locally, wheels are already in dist/ from the build job.
+    if is_ci:
+        commands.append(MakeDirectoryCommand(label="Create dist/", path="dist"))
+        commands.append(DownloadRunArtifactsCommand(label="Download build artifacts"))
 
     commands.append(ConfigureGitIdentityCommand(label="Configure git identity"))
 

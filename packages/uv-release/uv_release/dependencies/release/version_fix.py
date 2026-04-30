@@ -1,4 +1,12 @@
-"""VersionFix: stabilize dev versions before a stable release."""
+"""VersionFix: stabilize dev versions locally before a stable release.
+
+When `uvr release` (without --dev) detects dev versions, the ReleaseGuard
+raises a UserRecoverableError carrying this fix Job. The CLI executes the
+fix locally with user confirmation, then restarts so the DI container
+re-resolves from the now-stable pyproject.toml versions. Nothing here
+runs in CI. The release command never modifies versions itself. It only
+reads the current git state and plans from it.
+"""
 
 from __future__ import annotations
 
@@ -25,10 +33,10 @@ from ...types.version import Version
 
 @singleton
 class VersionFix(Frozen):
-    """Fix commands to stabilize dev versions before release.
+    """Local fix commands to stabilize dev versions before release.
 
-    Empty job means no fix needed. Non-empty job means dev versions must be
-    set to their stable forms before the release can proceed.
+    Empty job means no fix needed. Non-empty job is executed locally by the
+    CLI (with user confirmation) before the release plan is computed.
     """
 
     job: Job = Field(default_factory=lambda: Job(name="version-fix"))
@@ -44,7 +52,7 @@ def provide_version_fix(
     if dev_release.value:
         return VersionFix()
 
-    # Stabilize versions in pyproject.toml so tags match the release version.
+    # Stabilize versions locally in pyproject.toml so tags match the release version.
     needs_fix: dict[str, tuple[str, Version]] = {}
     for name, pkg in build_packages.items.items():
         release_version = compute_release_version(pkg.version)
