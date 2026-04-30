@@ -83,7 +83,7 @@ class DownloadRunArtifactsCommand(Command):
                 "--dir",
                 self.output_dir,
                 "--pattern",
-                "*.whl",
+                "wheels-*",
             ]
         )
         return result.returncode
