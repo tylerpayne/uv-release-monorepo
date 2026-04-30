@@ -56,6 +56,12 @@ class BuildCommand(Command):
         )
         return result.returncode
 
+    def runs_on(self, runner: list[str]) -> bool:
+        """Check if this package builds on the given runner labels."""
+        if not self.runners:
+            return True
+        return runner in self.runners
+
     def _runner_matches(self) -> bool:
         """Check if the current CI runner matches any of this package's runners."""
         raw = os.environ.get("UVR_RUNNER", "")
@@ -67,7 +73,7 @@ class BuildCommand(Command):
             return True
         if not isinstance(current, list):
             return True
-        return current in self.runners
+        return self.runs_on(current)
 
     def _effective_out_dir(self) -> str:
         """Determine output dir based on current runner.

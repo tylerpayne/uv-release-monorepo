@@ -157,10 +157,7 @@ def _print_job_detail(job: Job, plan: Plan) -> None:
         deps = [c for c in job.commands if isinstance(c, DownloadWheelsCommand)]
         for runner in plan.build_matrix:
             label = ", ".join(runner)
-            # Filter builds to those that run on this specific runner.
-            runner_builds = [
-                b for b in all_builds if not b.runners or runner in b.runners
-            ]
+            runner_builds = [b for b in all_builds if b.runs_on(runner)]
             print(f"    {label}")
             if runner_builds:
                 print("      targets:")
