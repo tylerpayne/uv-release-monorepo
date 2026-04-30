@@ -86,7 +86,16 @@ class DownloadRunArtifactsCommand(Command):
                 "wheels-*",
             ]
         )
-        return result.returncode
+        if result.returncode != 0:
+            return result.returncode
+        # gh run download creates subdirs per artifact name. Flatten into output_dir.
+        out = Path(self.output_dir)
+        for subdir in out.iterdir():
+            if subdir.is_dir():
+                for f in subdir.iterdir():
+                    f.rename(out / f.name)
+                subdir.rmdir()
+        return 0
 
 
 def _platform_compatible(wheel_platform: str, current_platform: str) -> bool:
