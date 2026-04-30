@@ -70,6 +70,12 @@ class UvrPublishTable(Frozen, extra="allow"):
     exclude: list[str] = Field(default_factory=list)
 
 
+class UvrHooksTable(Frozen, extra="allow"):
+    """The [tool.uvr.hooks] table."""
+
+    file: str = ""
+
+
 class UvrTable(Frozen, extra="allow"):
     """The [tool.uvr] table."""
 
@@ -77,6 +83,7 @@ class UvrTable(Frozen, extra="allow"):
     # { pkg: [[label, ...], ...] } -- each inner list is one CI matrix row.
     runners: dict[str, list[list[str]]] = Field(default_factory=dict)
     publish: UvrPublishTable = Field(default_factory=UvrPublishTable)
+    hooks: UvrHooksTable = Field(default_factory=UvrHooksTable)
 
 
 class ToolTable(Frozen, extra="allow"):

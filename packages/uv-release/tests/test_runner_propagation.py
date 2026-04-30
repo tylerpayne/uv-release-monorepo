@@ -1,7 +1,18 @@
 """Tests for runner propagation in multi-runner monorepos.
 
 Uses the _compute_effective_runners function directly with a topology
-modeled after a real monorepo with mixed platform requirements.
+modeled after a monorepo with mixed platform requirements.
+
+Topology:
+  core           (linux)          no deps
+  net-utils      (linux)          no deps
+  build-tools    (linux)          no deps
+  emulator       (windows, linux, macos, linux-arm64)  build-dep: build-tools
+  img-tools      (linux)          dep: core
+  distro-a       (linux, macos)   build-deps: img-tools, core, emulator, net-utils
+  distro-b       (linux, macos)   build-deps: img-tools, core, emulator, net-utils
+  agent          (linux, macos)   dep: core, distro-a; build-deps: img-tools, core, distro-a, emulator, net-utils
+  app            (linux, macos)   dep: core, agent; build-deps: img-tools, core, agent, distro-a, emulator, net-utils
 """
 
 from __future__ import annotations
@@ -9,22 +20,12 @@ from __future__ import annotations
 from uv_release.dependencies.build.build_job import _compute_effective_runners
 from uv_release.dependencies.build.build_packages import BuildPackages
 from uv_release.dependencies.config.uvr_runners import UvrRunners
+from uv_release.types.dependency import Dependency
 from uv_release.types.package import Package
 from uv_release.types.version import Version
 
+_d = Dependency.parse
 _V = Version.parse("0.1.0.dev0")
-
-# Simplified monorepo topology:
-#
-#   quicksand-core         (linux)          no deps
-#   quicksand-smb          (linux)          no deps
-#   quicksand-build-tools  (linux)          no deps
-#   quicksand-qemu         (windows, linux, macos, linux-arm64)  build-dep: build-tools
-#   quicksand-image-tools  (linux)          dep: core
-#   quicksand-ubuntu       (linux, macos)   build-deps: image-tools, core, qemu, smb
-#   quicksand-alpine       (linux, macos)   build-deps: image-tools, core, qemu, smb
-#   quicksand-agent        (linux, macos)   dep: core, ubuntu; build-deps: image-tools, core, ubuntu, qemu, smb
-#   quicksand-cua          (linux, macos)   dep: core, agent; build-deps: image-tools, core, agent, ubuntu, qemu, smb
 
 LINUX = ["self-hosted", "linux", "x64"]
 MACOS = ["self-hosted", "macos", "arm64"]
@@ -32,105 +33,105 @@ WINDOWS = ["self-hosted", "x64", "windows"]
 LINUX_ARM = ["self-hosted", "linux", "arm64"]
 
 PACKAGES: dict[str, Package] = {
-    "quicksand-core": Package(
-        name="quicksand-core",
-        path="packages/quicksand-core",
+    "core": Package(
+        name="core",
+        path="packages/core",
         version=_V,
         dependencies=[],
         build_dependencies=[],
     ),
-    "quicksand-smb": Package(
-        name="quicksand-smb",
-        path="packages/quicksand-smb",
+    "net-utils": Package(
+        name="net-utils",
+        path="packages/net-utils",
         version=_V,
         dependencies=[],
         build_dependencies=[],
     ),
-    "quicksand-build-tools": Package(
-        name="quicksand-build-tools",
-        path="packages/quicksand-build-tools",
+    "build-tools": Package(
+        name="build-tools",
+        path="packages/build-tools",
         version=_V,
         dependencies=[],
         build_dependencies=[],
     ),
-    "quicksand-qemu": Package(
-        name="quicksand-qemu",
-        path="packages/quicksand-qemu",
+    "emulator": Package(
+        name="emulator",
+        path="packages/emulator",
         version=_V,
         dependencies=[],
-        build_dependencies=["quicksand-build-tools"],
+        build_dependencies=[_d("build-tools")],
     ),
-    "quicksand-image-tools": Package(
-        name="quicksand-image-tools",
-        path="packages/quicksand-image-tools",
+    "img-tools": Package(
+        name="img-tools",
+        path="packages/img-tools",
         version=_V,
-        dependencies=["quicksand-core"],
+        dependencies=[_d("core")],
         build_dependencies=[],
     ),
-    "quicksand-ubuntu": Package(
-        name="quicksand-ubuntu",
-        path="packages/quicksand-ubuntu",
+    "distro-a": Package(
+        name="distro-a",
+        path="packages/distro-a",
         version=_V,
-        dependencies=["quicksand-core"],
+        dependencies=[_d("core")],
         build_dependencies=[
-            "quicksand-image-tools",
-            "quicksand-core",
-            "quicksand-qemu",
-            "quicksand-smb",
+            _d("img-tools"),
+            _d("core"),
+            _d("emulator"),
+            _d("net-utils"),
         ],
     ),
-    "quicksand-alpine": Package(
-        name="quicksand-alpine",
-        path="packages/quicksand-alpine",
+    "distro-b": Package(
+        name="distro-b",
+        path="packages/distro-b",
         version=_V,
-        dependencies=["quicksand-core"],
+        dependencies=[_d("core")],
         build_dependencies=[
-            "quicksand-image-tools",
-            "quicksand-core",
-            "quicksand-qemu",
-            "quicksand-smb",
+            _d("img-tools"),
+            _d("core"),
+            _d("emulator"),
+            _d("net-utils"),
         ],
     ),
-    "quicksand-agent": Package(
-        name="quicksand-agent",
-        path="packages/quicksand-agent",
+    "agent": Package(
+        name="agent",
+        path="packages/agent",
         version=_V,
-        dependencies=["quicksand-core", "quicksand-ubuntu"],
+        dependencies=[_d("core"), _d("distro-a")],
         build_dependencies=[
-            "quicksand-image-tools",
-            "quicksand-core",
-            "quicksand-ubuntu",
-            "quicksand-qemu",
-            "quicksand-smb",
+            _d("img-tools"),
+            _d("core"),
+            _d("distro-a"),
+            _d("emulator"),
+            _d("net-utils"),
         ],
     ),
-    "quicksand-cua": Package(
-        name="quicksand-cua",
-        path="packages/quicksand-cua",
+    "app": Package(
+        name="app",
+        path="packages/app",
         version=_V,
-        dependencies=["quicksand-core", "quicksand-agent"],
+        dependencies=[_d("core"), _d("agent")],
         build_dependencies=[
-            "quicksand-image-tools",
-            "quicksand-core",
-            "quicksand-agent",
-            "quicksand-ubuntu",
-            "quicksand-qemu",
-            "quicksand-smb",
+            _d("img-tools"),
+            _d("core"),
+            _d("agent"),
+            _d("distro-a"),
+            _d("emulator"),
+            _d("net-utils"),
         ],
     ),
 }
 
 RUNNERS = UvrRunners(
     items={
-        "quicksand-core": [LINUX],
-        "quicksand-smb": [LINUX],
-        "quicksand-build-tools": [LINUX],
-        "quicksand-qemu": [WINDOWS, LINUX, MACOS, LINUX_ARM],
-        "quicksand-image-tools": [LINUX],
-        "quicksand-ubuntu": [LINUX, MACOS],
-        "quicksand-alpine": [LINUX, MACOS],
-        "quicksand-agent": [LINUX, MACOS],
-        "quicksand-cua": [LINUX, MACOS],
+        "core": [LINUX],
+        "net-utils": [LINUX],
+        "build-tools": [LINUX],
+        "emulator": [WINDOWS, LINUX, MACOS, LINUX_ARM],
+        "img-tools": [LINUX],
+        "distro-a": [LINUX, MACOS],
+        "distro-b": [LINUX, MACOS],
+        "agent": [LINUX, MACOS],
+        "app": [LINUX, MACOS],
     }
 )
 
@@ -143,60 +144,56 @@ class TestMonorepoRunnerPropagation:
     def _effective(self) -> dict[str, list[list[str]]]:
         return _compute_effective_runners(PACKAGES, RUNNERS, BUILD_PACKAGES)
 
-    def test_alpine_does_not_run_on_windows(self) -> None:
-        """quicksand-alpine should NOT build on the Windows runner."""
+    def test_distro_does_not_run_on_windows(self) -> None:
+        """distro-b only runs on linux and macos, not windows."""
         eff = self._effective()
-        alpine_runners = eff.get("quicksand-alpine", [])
-        assert WINDOWS not in alpine_runners
+        assert WINDOWS not in eff.get("distro-b", [])
 
-    def test_alpine_runs_on_linux_and_macos(self) -> None:
-        """quicksand-alpine is configured for linux and macos."""
+    def test_distro_runs_on_linux_and_macos(self) -> None:
         eff = self._effective()
-        alpine_runners = eff.get("quicksand-alpine", [])
-        assert LINUX in alpine_runners
-        assert MACOS in alpine_runners
+        runners = eff.get("distro-b", [])
+        assert LINUX in runners
+        assert MACOS in runners
 
-    def test_qemu_runs_on_all_four(self) -> None:
-        """quicksand-qemu has its own 4 runners."""
+    def test_emulator_runs_on_all_four(self) -> None:
+        """emulator has its own 4 runners."""
         eff = self._effective()
-        qemu_runners = eff.get("quicksand-qemu", [])
-        assert WINDOWS in qemu_runners
-        assert LINUX in qemu_runners
-        assert MACOS in qemu_runners
-        assert LINUX_ARM in qemu_runners
+        runners = eff.get("emulator", [])
+        assert WINDOWS in runners
+        assert LINUX in runners
+        assert MACOS in runners
+        assert LINUX_ARM in runners
 
-    def test_build_tools_inherits_from_qemu(self) -> None:
-        """quicksand-build-tools is a build dep of qemu, inherits qemu's runners."""
+    def test_build_tools_inherits_from_emulator(self) -> None:
+        """build-tools is a build dep of emulator, inherits emulator's runners."""
         eff = self._effective()
-        bt_runners = eff.get("quicksand-build-tools", [])
-        assert WINDOWS in bt_runners
-        assert LINUX in bt_runners
-        assert MACOS in bt_runners
+        runners = eff.get("build-tools", [])
+        assert WINDOWS in runners
+        assert LINUX in runners
+        assert MACOS in runners
 
-    def test_smb_inherits_from_all_dependents(self) -> None:
-        """quicksand-smb is a build dep of ubuntu, alpine, agent, cua."""
+    def test_net_utils_inherits_from_dependents(self) -> None:
+        """net-utils is a build dep of distro-a, distro-b, agent, app."""
         eff = self._effective()
-        smb_runners = eff.get("quicksand-smb", [])
-        assert LINUX in smb_runners
-        assert MACOS in smb_runners
+        runners = eff.get("net-utils", [])
+        assert LINUX in runners
+        assert MACOS in runners
 
-    def test_smb_does_not_inherit_windows(self) -> None:
-        """No package that depends on smb runs on windows, so smb shouldn't either."""
+    def test_net_utils_does_not_inherit_windows(self) -> None:
+        """No package that depends on net-utils runs on windows."""
         eff = self._effective()
-        smb_runners = eff.get("quicksand-smb", [])
-        assert WINDOWS not in smb_runners
+        assert WINDOWS not in eff.get("net-utils", [])
 
     def test_core_inherits_from_all_dependents(self) -> None:
-        """quicksand-core is depended on by almost everything."""
         eff = self._effective()
-        core_runners = eff.get("quicksand-core", [])
-        assert LINUX in core_runners
-        assert MACOS in core_runners
+        runners = eff.get("core", [])
+        assert LINUX in runners
+        assert MACOS in runners
 
-    def test_cua_only_on_own_runners(self) -> None:
-        """quicksand-cua should only run on its own linux and macos."""
+    def test_leaf_only_on_own_runners(self) -> None:
+        """app (a leaf) should only run on its own linux and macos."""
         eff = self._effective()
-        cua_runners = eff.get("quicksand-cua", [])
-        assert WINDOWS not in cua_runners
-        assert LINUX_ARM not in cua_runners
-        assert len(cua_runners) == 2
+        runners = eff.get("app", [])
+        assert WINDOWS not in runners
+        assert LINUX_ARM not in runners
+        assert len(runners) == 2

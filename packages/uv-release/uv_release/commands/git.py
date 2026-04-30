@@ -31,13 +31,22 @@ class ConfigureGitIdentityCommand(Command):
 
 
 class CommitCommand(Command):
-    """git commit -am with a message and optional body."""
+    """git commit -am with a message and optional body. Skips if nothing to commit."""
 
     type: Literal["commit"] = "commit"
     message: str
     body: str = ""
 
     def execute(self) -> int:
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+        )
+        if not status.stdout.strip():
+            if self.label:
+                print(f"  {self.label} (nothing to commit, skipping)")
+            return 0
         if self.label:
             print(f"  {self.label}")
         args = ["git", "commit", "-am", self.message]

@@ -10,10 +10,10 @@ from diny import singleton, provider
 from packaging.utils import canonicalize_name
 
 from ...types.base import Frozen
+from ...types.dependency import Dependency
 from ...types.package import Package
 from ...types.pyproject import PackagePyProject, RootPyProject
 from ...types.version import Version
-from ...utils.deps import parse_dep_name
 
 
 @singleton
@@ -44,17 +44,17 @@ def provide_workspace_packages() -> WorkspacePackages:
             name = canonicalize_name(pkg_doc.project.name or pkg_dir.name)
             version = Version.parse(pkg_doc.project.version or "0.0.0")
 
-            dep_names = [parse_dep_name(d) for d in pkg_doc.project.dependencies]
+            deps = [Dependency.parse(d) for d in pkg_doc.project.dependencies]
 
             # Include build-system.requires workspace deps in build plan (#23).
-            build_dep_names = [parse_dep_name(d) for d in pkg_doc.build_system.requires]
+            build_deps = [Dependency.parse(d) for d in pkg_doc.build_system.requires]
 
             packages[name] = Package(
                 name=name,
                 path=str(pkg_dir),
                 version=version,
-                dependencies=dep_names,
-                build_dependencies=build_dep_names,
+                dependencies=deps,
+                build_dependencies=build_deps,
             )
 
     return WorkspacePackages(items=packages, root=root)

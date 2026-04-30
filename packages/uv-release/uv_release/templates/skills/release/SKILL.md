@@ -7,7 +7,7 @@ description: Release packages to GitHub via uvr. Use when user says "release", "
 
 Prerequisites: `uvr` (`uv add --dev uv-release`) and `gh`.
 
-For first-time setup, scaffold the workflow with `uvr workflow init` (see `references/cmd-init.md`). To install the Claude skills into your project, see `references/cmd-skill-init.md`.
+For first-time setup, scaffold the workflow with `uvr workflow install` (see `references/cmd-init.md`). To install the Claude skills into your project, see `references/cmd-skill-init.md`.
 
 If the project has existing CI checks (tests, linting, etc.) that aren't yet wired into the release workflow, see `references/custom-jobs.md` before your first release.
 
@@ -29,10 +29,10 @@ Present the output to the user. For each changed package, show:
 - The package name and its new version
 - Why it changed (summarize the relevant commits)
 
-Ask the user whether any packages need a minor bump instead of patch. Patch is the default — bump minor for new features, new public API, or breaking changes. See `references/cmd-bump.md` for all bump types and flags.
+Ask the user whether any packages need a minor bump instead of patch. Patch is the default — bump minor for new features, new public API, or breaking changes. See `references/cmd-version.md` for all bump types and flags.
 
 ```bash
-uvr bump --packages <package-name> --minor
+uvr version --packages <package-name> --bump minor
 ```
 
 ## 3. Review
@@ -167,7 +167,7 @@ User says: "Let's release the new changes"
 1. Verify not on main, create a release branch
 2. Run `uvr release`, decline the prompt — shows `my-lib` is dirty (2 commits: added export, fixed parser)
 3. Present to user: "my-lib will bump 0.2.1 -> 0.2.2 (patch). It has a new public export — should this be a minor bump instead?"
-4. User says "yes, bump minor" — run `uvr bump --packages my-lib --minor`
+4. User says "yes, bump minor" — run `uvr version --packages my-lib --bump minor`
 5. Review docstrings and docs against current API — new `Parser` class exported but not documented. Fix docs.
 6. Draft release notes: "Added `Parser` class for structured input handling. Fixed crash on empty input." Present to user for approval.
 7. Write approved notes to `.uvr/release-notes/my-lib/0.3.0.md`
@@ -178,7 +178,7 @@ User says: "Let's release the new changes"
 ## References
 
 **Commands:**
-- `references/cmd-bump.md` — bump package versions (major, minor, patch, pre-release, stable)
+- `references/cmd-version.md` — read, set, bump, or promote package versions
 - `references/cmd-init.md` — scaffold the release workflow
 - `references/cmd-install.md` — install from GitHub releases
 - `references/cmd-release.md` — plan and dispatch a release (all flags)

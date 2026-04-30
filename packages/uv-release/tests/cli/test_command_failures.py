@@ -29,16 +29,26 @@ def _mock_one_command(
             return _real(args, **kwargs)
         if args[0] == fail_cmd:
             if not fail_subcmd or (len(args) >= 2 and args[1] == fail_subcmd):
-                return subprocess.CompletedProcess(args, exit_code)
+                # Don't fail read-only pre-checks (git tag -l, git status).
+                if not (args[0] == "git" and len(args) >= 3 and args[2] == "-l"):
+                    if not (args[0] == "git" and args[1] == "status"):
+                        return subprocess.CompletedProcess(
+                            args, exit_code, stdout="", stderr=""
+                        )
         # Succeed for all other external commands.
-        if args[0] in ("uv", "gh"):
-            return subprocess.CompletedProcess(args, 0)
+        if args[0] == "gh":
+            if len(args) >= 3 and args[1] == "release" and args[2] == "view":
+                return subprocess.CompletedProcess(args, 1, stdout="", stderr="")
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+        if args[0] == "uv":
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
         if (
             args[0] == "git"
             and len(args) >= 2
             and args[1] in ("tag", "push", "pull", "config")
         ):
-            return subprocess.CompletedProcess(args, 0)
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+        # Let git status run for real so CommitCommand can detect changes.
         return _real(args, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", _patched)
@@ -84,7 +94,7 @@ class TestBumpFailures:
         """SyncLockfileCommand has check=False. Failure should not abort."""
         _mock_one_command(monkeypatch, "uv", "sync")
         with diny.provide():
-            run_cli("bump", "--minor", "--no-commit", "--no-push")
+            run_cli("version", "--bump", "minor", "--no-commit", "--no-push")
         # Should complete. Version should be bumped despite sync failure.
         ver = read_toml(workspace / "packages" / "pkg-a" / "pyproject.toml")
         assert ver["project"]["version"] == "0.2.0.dev0"
@@ -98,7 +108,7 @@ class TestBumpFailures:
         _mock_one_command(monkeypatch, "git", "commit")
         with pytest.raises(SystemExit):
             with diny.provide():
-                run_cli("bump", "--minor", "--no-push")
+                run_cli("version", "--bump", "minor", "--no-push")
 
     def test_git_push_failure_aborts(
         self,
@@ -109,7 +119,7 @@ class TestBumpFailures:
         _mock_one_command(monkeypatch, "git", "push")
         with pytest.raises(SystemExit):
             with diny.provide():
-                run_cli("bump", "--minor")
+                run_cli("version", "--bump", "minor")
 
 
 class TestLocalReleaseFailures:
@@ -119,15 +129,20 @@ class TestLocalReleaseFailures:
         _real = subprocess.run
 
         def _patched(args: str | list[str], **kwargs):  # type: ignore[no-untyped-def]
-            if isinstance(args, list) and args[0] in ("uv", "gh"):
-                return subprocess.CompletedProcess(args, 0)
+            if isinstance(args, list) and args[0] == "gh":
+                # gh release view should return 1 (not found) so create proceeds.
+                if len(args) >= 3 and args[1] == "release" and args[2] == "view":
+                    return subprocess.CompletedProcess(args, 1, stdout="", stderr="")
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+            if isinstance(args, list) and args[0] == "uv":
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
             if (
                 isinstance(args, list)
                 and args[0] == "git"
                 and len(args) >= 2
-                and args[1] in ("tag", "push", "pull", "config")
+                and args[1] in ("tag", "push", "pull", "config", "status")
             ):
-                return subprocess.CompletedProcess(args, 0)
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
             return _real(args, **kwargs)
 
         monkeypatch.setattr(subprocess, "run", _patched)

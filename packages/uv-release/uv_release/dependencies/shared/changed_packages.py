@@ -85,7 +85,7 @@ def _propagate_dirtiness(
 
     reverse_deps: dict[str, list[str]] = defaultdict(list)
     for name, pkg in packages.items():
-        for dep in pkg.dependencies:
+        for dep in pkg.dep_names:
             if dep in packages:
                 reverse_deps[dep].append(name)
 

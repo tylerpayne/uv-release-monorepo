@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
@@ -34,6 +35,13 @@ class BuildCommand(Command):
         # On a runner where this package is only a dependency (not a target),
         # output to deps/ instead of dist/.
         out_dir = self._effective_out_dir()
+        # Skip if a wheel for this package already exists in the output dir.
+        dist_name = Path(self.package_path).name.replace("-", "_")
+        existing = list(Path(out_dir).glob(f"{dist_name}-*.whl"))
+        if existing:
+            if self.label:
+                print(f"  {self.label} (wheel exists, skipping)")
+            return 0
         if self.label:
             print(f"  {self.label}")
         result = subprocess.run(

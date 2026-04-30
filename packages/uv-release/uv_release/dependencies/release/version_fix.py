@@ -1,11 +1,11 @@
-"""VersionFix: stabilize dev versions locally before a stable release.
+"""StripDev: remove .devN suffixes from versions before a non-dev release.
 
 When `uvr release` (without --dev) detects dev versions, the ReleaseGuard
 raises a UserRecoverableError carrying this fix Job. The CLI executes the
 fix locally with user confirmation, then restarts so the DI container
-re-resolves from the now-stable pyproject.toml versions. Nothing here
-runs in CI. The release command never modifies versions itself. It only
-reads the current git state and plans from it.
+re-resolves from the updated pyproject.toml versions. Nothing here runs
+in CI. The release command never modifies versions itself. It only reads
+the current git state and plans from it.
 """
 
 from __future__ import annotations
@@ -32,35 +32,36 @@ from ...types.version import Version
 
 
 @singleton
-class VersionFix(Frozen):
-    """Local fix commands to stabilize dev versions before release.
+class StripDev(Frozen):
+    """Commands to strip .devN suffixes before release.
 
-    Empty job means no fix needed. Non-empty job is executed locally by the
-    CLI (with user confirmation) before the release plan is computed.
+    Empty job means versions are already non-dev. Non-empty job is executed
+    locally by the CLI (with user confirmation) before the release plan is
+    computed.
     """
 
-    job: Job = Field(default_factory=lambda: Job(name="version-fix"))
+    job: Job = Field(default_factory=lambda: Job(name="strip-dev"))
 
 
-@provider(VersionFix)
-def provide_version_fix(
+@provider(StripDev)
+def provide_strip_dev(
     build_packages: BuildPackages,
     dev_release: DevRelease,
     workspace_packages: WorkspacePackages,
     release_target: ReleaseTarget,
-) -> VersionFix:
+) -> StripDev:
     if dev_release.value:
-        return VersionFix()
+        return StripDev()
 
-    # Stabilize versions locally in pyproject.toml so tags match the release version.
-    needs_fix: dict[str, tuple[str, Version]] = {}
+    # Find packages whose current version has a .devN suffix.
+    needs_strip: dict[str, tuple[str, Version]] = {}
     for name, pkg in build_packages.items.items():
         release_version = compute_release_version(pkg.version)
         if pkg.version.raw != release_version.raw:
-            needs_fix[name] = (pkg.path, release_version)
+            needs_strip[name] = (pkg.path, release_version)
 
-    if not needs_fix:
-        return VersionFix()
+    if not needs_strip:
+        return StripDev()
 
     commands: list[
         SetVersionCommand
@@ -70,7 +71,7 @@ def provide_version_fix(
         | PushCommand
     ] = []
 
-    for name, (path, version) in needs_fix.items():
+    for name, (path, version) in needs_strip.items():
         commands.append(
             SetVersionCommand(
                 label=f"Set {name} to {version.raw}",
@@ -79,7 +80,7 @@ def provide_version_fix(
             )
         )
 
-    release_versions = {name: ver for name, (_, ver) in needs_fix.items()}
+    release_versions = {name: ver for name, (_, ver) in needs_strip.items()}
     pins = compute_dependency_pins(release_versions, workspace_packages.items)
     for pin in pins:
         commands.append(
@@ -92,7 +93,7 @@ def provide_version_fix(
 
     commands.append(SyncLockfileCommand(label="Sync lockfile"))
 
-    body_lines = [f"  {n}: {v.raw}" for n, (_, v) in needs_fix.items()]
+    body_lines = [f"  {n}: {v.raw}" for n, (_, v) in needs_strip.items()]
     commands.append(
         CommitCommand(
             label="Commit release versions",
@@ -104,4 +105,4 @@ def provide_version_fix(
     if release_target.value == "ci":
         commands.append(PushCommand(label="Push", follow_tags=False))
 
-    return VersionFix(job=Job(name="version-fix", commands=commands))  # type: ignore[arg-type]
+    return StripDev(job=Job(name="strip-dev", commands=commands))  # type: ignore[arg-type]

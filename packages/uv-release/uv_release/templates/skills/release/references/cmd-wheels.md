@@ -12,6 +12,8 @@ uvr download PKG --repo ORG/REPO --run-id ID  # from CI artifacts
 
 | Flag | Description |
 |------|-------------|
+| `--repo OWNER/REPO` | GitHub repository |
+| `--all-platforms` | Download wheels for all platforms instead of just the current one |
 | `-o`, `--output` | Directory to save wheels into (default: `dist/`) |
 | `--release-tag` | Download from a specific GitHub release tag |
 | `--run-id` | Download from a GitHub Actions run's artifacts |

@@ -63,7 +63,7 @@ def provide_package_dependencies(
         if pkg is None:
             continue
         # Include build-system deps that are workspace packages (#23).
-        all_deps = list(pkg.dependencies) + list(pkg.build_dependencies)
+        all_deps = pkg.all_dep_names
         for dep in all_deps:
             if dep in seen or dep not in workspace_packages.items:
                 continue

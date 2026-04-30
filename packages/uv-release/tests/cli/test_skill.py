@@ -13,7 +13,7 @@ class TestSkillUpgrade:
         self, workspace: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with diny.provide():
-            run_cli("skill", "upgrade")
+            run_cli("skill", "install")
         out = capsys.readouterr().out
         assert "Create" in out or "skill-upgrade" in out
         # Skill files should now exist in the workspace.

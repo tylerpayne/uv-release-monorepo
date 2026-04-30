@@ -69,15 +69,15 @@ uvr release --skip-to release --reuse-run <RUN_ID>
 GitHub releases already exist. Skip straight to publish with `--reuse-run` to fetch artifacts from the original build:
 
 ```bash
-uvr release --skip-to publish --reuse-run <RUN_ID> --reuse-release --all-packages
+uvr release --skip-to publish --reuse-run <RUN_ID> --reuse-releases --all-packages
 ```
 
-`--reuse-release` skips the release job (tags already exist). `--all-packages` is needed so the planner treats packages with clean versions as changed.
+`--reuse-releases` skips the release job (tags already exist). `--all-packages` is needed so the planner treats packages with clean versions as changed.
 
 For bump-only retry:
 
 ```bash
-uvr release --skip-to bump --reuse-release --all-packages
+uvr release --skip-to bump --reuse-releases --all-packages
 ```
 
 ### Skipping custom jobs
@@ -98,9 +98,9 @@ Custom jobs must check the plan's skip list in their `if` condition for this to 
 
 ### Constraints
 
-- `--reuse-run` and `--reuse-release` are only required when `release` or `publish` will run (they need wheel artifacts)
+- `--reuse-run` and `--reuse-releases` are only required when `release` or `publish` will run (they need wheel artifacts)
 - `--skip-to bump` does not require any `--reuse-*` flag (bump doesn't need wheels)
-- `--reuse-run` and `--reuse-release` are mutually exclusive
+- `--reuse-run` and `--reuse-releases` are mutually exclusive
 - Use `--all-packages` when packages have clean versions (no `.devN`) from a prior release commit
 
 ## Main moved ahead of the release branch

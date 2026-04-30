@@ -15,6 +15,8 @@ from ..types.base import Frozen
 from ..types.bump_kind import BumpKind
 from ..dependencies.params.bump_params import NoPinDeps
 from ..dependencies.params.bump_type import BumpType
+from ..dependencies.params.version_mode import VersionMode, VersionOp
+from ..dependencies.params.version_set import VersionSet
 from ..dependencies.params.dev_release import DevRelease
 from ..dependencies.params.package_selection import PackageSelection
 from ..dependencies.params.no_commit import NoCommit
@@ -94,19 +96,33 @@ def parse_args() -> ParsedArgs:
     build_p.add_argument("--all-packages", action="store_true")
     build_p.add_argument("--packages", nargs="*")
 
-    # -- bump --
-    bump_p = sub.add_parser("bump", help="Bump package versions.")
-    bump_p.add_argument("--all-packages", action="store_true")
-    bump_p.add_argument("--packages", nargs="*")
-    bump_p.add_argument("--no-commit", action="store_true")
-    bump_p.add_argument("--no-push", action="store_true")
-    bump_p.add_argument("--no-pin", action="store_true")
-    bump_p.add_argument("--force", action="store_true")
-    bump_group = bump_p.add_mutually_exclusive_group(required=True)
-    for kind in BumpKind:
-        bump_group.add_argument(
-            f"--{kind.value}", action="store_const", const=kind.value, dest="bump_kind"
-        )
+    # -- version --
+    ver_p = sub.add_parser(
+        "version", help="Read, set, bump, or promote package versions."
+    )
+    ver_p.add_argument("--all-packages", action="store_true")
+    ver_p.add_argument("--packages", nargs="*")
+    ver_p.add_argument("--not-packages", nargs="*", default=[])
+    ver_p.add_argument("--no-commit", action="store_true")
+    ver_p.add_argument("--no-push", action="store_true")
+    ver_p.add_argument("--no-pin", action="store_true")
+    ver_p.add_argument("--force", action="store_true")
+    ver_mode = ver_p.add_mutually_exclusive_group()
+    ver_mode.add_argument("--set", default="", dest="version_set")
+    ver_mode.add_argument(
+        "--bump",
+        choices=["dev", "patch", "minor", "major", "post"],
+        default="",
+        dest="bump_kind",
+    )
+    ver_mode.add_argument(
+        "--promote",
+        nargs="?",
+        const="next",
+        choices=["next", "a", "alpha", "b", "beta", "rc", "final"],
+        default="",
+        dest="promote_target",
+    )
 
     # -- status --
     sub.add_parser("status", help="Show workspace status.")
@@ -163,21 +179,21 @@ def parse_args() -> ParsedArgs:
     wf_val = wf_sub.add_parser("validate", help="Validate workflow against template.")
     wf_val.add_argument("--workflow-dir", default=".github/workflows")
     wf_val.add_argument("--diff", action="store_true", dest="show_diff")
-    wf_upg = wf_sub.add_parser("upgrade", help="Scaffold or upgrade the workflow.")
-    wf_upg.add_argument("--force", action="store_true")
-    wf_upg.add_argument("--upgrade", action="store_true")
-    wf_upg.add_argument("--base-only", action="store_true")
-    wf_upg.add_argument("--workflow-dir", default=".github/workflows")
-    wf_upg.add_argument("--editor", default="")
+    wf_inst = wf_sub.add_parser("install", help="Install or upgrade the workflow.")
+    wf_inst.add_argument("--force", action="store_true")
+    wf_inst.add_argument("--upgrade", action="store_true")
+    wf_inst.add_argument("--base-only", action="store_true")
+    wf_inst.add_argument("--workflow-dir", default=".github/workflows")
+    wf_inst.add_argument("--editor", default="")
 
     # -- skill --
     sk_p = sub.add_parser("skill", help="Manage Claude Code skills.")
     sk_sub = sk_p.add_subparsers(dest="sk_subcommand")
-    sk_upg = sk_sub.add_parser("upgrade", help="Scaffold or upgrade skill files.")
-    sk_upg.add_argument("--force", action="store_true")
-    sk_upg.add_argument("--upgrade", action="store_true")
-    sk_upg.add_argument("--base-only", action="store_true")
-    sk_upg.add_argument("--editor", default="")
+    sk_inst = sk_sub.add_parser("install", help="Install or upgrade skill files.")
+    sk_inst.add_argument("--force", action="store_true")
+    sk_inst.add_argument("--upgrade", action="store_true")
+    sk_inst.add_argument("--base-only", action="store_true")
+    sk_inst.add_argument("--editor", default="")
 
     # -- jobs (CI-only, hidden) --
     jobs_p = sub.add_parser("jobs", help="Execute a job from a plan (CI).")
@@ -226,7 +242,41 @@ def provide_release_target(args: ParsedArgs) -> ReleaseTarget:
 
 @provider(BumpType)
 def provide_bump_type(args: ParsedArgs) -> BumpType:
-    return BumpType(value=BumpKind(args.values.get("bump_kind", "dev") or "dev"))
+    # --bump <axis> maps directly to a BumpKind.
+    bump_kind = args.values.get("bump_kind", "") or ""
+    if bump_kind:
+        return BumpType(value=BumpKind(bump_kind))
+    # --promote maps to PROMOTE (auto) or a specific pre-release kind.
+    promote = args.values.get("promote_target", "") or ""
+    if promote:
+        promote_map = {
+            "next": "promote",
+            "a": "alpha",
+            "alpha": "alpha",
+            "b": "beta",
+            "beta": "beta",
+            "rc": "rc",
+            "final": "stable",
+        }
+        return BumpType(value=BumpKind(promote_map[promote]))
+    # --set has no bump kind, defaults to DEV for release pipeline usage.
+    return BumpType(value=BumpKind.DEV)
+
+
+@provider(VersionSet)
+def provide_version_set(args: ParsedArgs) -> VersionSet:
+    return VersionSet(value=args.values.get("version_set", "") or "")
+
+
+@provider(VersionMode)
+def provide_version_mode(args: ParsedArgs) -> VersionMode:
+    if args.values.get("version_set", ""):
+        return VersionMode(value=VersionOp.SET)
+    if args.values.get("bump_kind", ""):
+        return VersionMode(value=VersionOp.BUMP)
+    if args.values.get("promote_target", ""):
+        return VersionMode(value=VersionOp.PROMOTE)
+    return VersionMode(value=VersionOp.READ)
 
 
 @provider(NoCommit)
@@ -391,10 +441,10 @@ def cli(params: Params, hooks: Hooks, workspace: WorkspacePackages) -> None:
                 from .build import cmd_build
 
                 cmd_build()
-            case "bump":
-                from .bump import cmd_bump
+            case "version":
+                from .version import cmd_version
 
-                cmd_bump()
+                cmd_version()
             case "status":
                 from .status import cmd_status
 

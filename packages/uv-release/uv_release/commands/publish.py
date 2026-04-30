@@ -30,5 +30,16 @@ class PublishToIndexCommand(Command):
         if self.index:
             args.extend(["--index", self.index])
         args.extend(str(w) for w in wheels)
-        result = subprocess.run(args)
+        result = subprocess.run(args, capture_output=True, text=True)
+        if result.returncode != 0:
+            stderr = result.stderr or ""
+            # PyPI rejects duplicate uploads. Treat as success on re-run.
+            if "already exists" in stderr or "File already exists" in stderr:
+                print("    Already published, skipping")
+                return 0
+            # Print stderr for real failures.
+            if stderr:
+                print(stderr, end="")
+        if result.stdout:
+            print(result.stdout, end="")
         return result.returncode

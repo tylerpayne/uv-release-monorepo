@@ -42,8 +42,7 @@ def topo_layers(packages: dict[str, Package]) -> list[list[str]]:
     internal = set(packages.keys())
     deps_map: dict[str, list[str]] = {}
     for name, pkg in packages.items():
-        all_deps = list(pkg.dependencies) + list(pkg.build_dependencies)
-        deps_map[name] = [d for d in all_deps if d in internal]
+        deps_map[name] = [d for d in pkg.all_dep_names if d in internal]
 
     order = topo_sort(deps_map)
 

@@ -1,6 +1,6 @@
 # Release Pipeline
 
-`uvr workflow init` scaffolds a `release.yml` with five core jobs:
+`uvr workflow install` scaffolds a `release.yml` with five core jobs:
 
 ```
 validate → build → release → publish → bump

@@ -112,8 +112,7 @@ def _compute_effective_runners(
     while changed:
         changed = False
         for name, pkg in all_to_build.items():
-            all_deps = list(pkg.dependencies) + list(pkg.build_dependencies)
-            for dep in all_deps:
+            for dep in pkg.all_dep_names:
                 if dep in internal and not effective[name] <= effective.get(dep, set()):
                     before = len(effective.get(dep, set()))
                     effective.setdefault(dep, set()).update(effective[name])

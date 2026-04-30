@@ -88,6 +88,28 @@ def compute_bumped_version(version: Version, bump_kind: BumpKind) -> Version:
             return _bump_pre(version, "b")
         case BumpKind.RC:
             return _bump_pre(version, "rc")
+        case BumpKind.PROMOTE:
+            return _promote(version)
+
+
+def _promote(version: Version) -> Version:
+    """Advance to the next release stage.
+
+    dev -> strip dev (0.1.0a2.dev0 -> 0.1.0a2, 0.1.0.dev0 -> 0.1.0)
+    alpha -> beta   (0.1.0a2 -> 0.1.0b0.dev0)
+    beta -> rc      (0.1.0b1 -> 0.1.0rc0.dev0)
+    rc -> final     (0.1.0rc1 -> 0.1.0)
+    """
+    if version.is_dev:
+        return version.without_dev()
+    if version.pre_kind == "a":
+        return Version.build(version.base, pre_kind="b", pre_number=0, dev_number=0)
+    if version.pre_kind == "b":
+        return Version.build(version.base, pre_kind="rc", pre_number=0, dev_number=0)
+    if version.pre_kind == "rc":
+        return Version.build(version.base)
+    msg = f"Cannot promote: {version.raw} is already a final release"
+    raise ValueError(msg)
 
 
 def _bump_pre(version: Version, target_kind: str) -> Version:
@@ -129,19 +151,21 @@ def compute_dependency_pins(
     """Compute dependency pins for packages whose deps are being bumped.
 
     For each package in all_packages, if any of its internal deps are in
-    new_versions, generate a Pin with the new version range.
+    new_versions, generate a Pin with the new version range. Dev versions
+    are skipped because they are not installable from PyPI without --pre.
     """
     bumped_names = set(new_versions.keys())
     pins: list[Pin] = []
 
     for pkg in all_packages.values():
         pkg_pins: dict[str, str] = {}
-        for dep in pkg.dependencies:
-            # Only pin internal deps that are part of this release.
+        for dep in pkg.dep_names:
             if dep in bumped_names:
                 nv = new_versions[dep]
+                # Never pin to dev versions. They are not installable from PyPI.
+                if nv.is_dev:
+                    continue
                 lower = nv.raw
-                # Upper bound: next minor (exclusive) to allow patch releases.
                 upper = f"{nv.major}.{nv.minor + 1}.0"
                 pkg_pins[dep] = f"{dep}>={lower},<{upper}"
         if pkg_pins:

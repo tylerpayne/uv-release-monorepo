@@ -16,10 +16,10 @@ def cmd_workflow(params: WorkflowParams) -> None:
             from .workflow_validate import cmd_workflow_validate
 
             cmd_workflow_validate()
-        case "upgrade":
+        case "install":
             from .workflow_upgrade import cmd_workflow_upgrade
 
             cmd_workflow_upgrade()
         case _:
-            print("Usage: uvrd workflow {validate,upgrade}")
+            print("Usage: uvr workflow {validate,install}")
             sys.exit(1)
