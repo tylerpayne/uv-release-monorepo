@@ -153,14 +153,18 @@ def _print_job_detail(job: Job, plan: Plan) -> None:
     )
 
     if job.name == "build":
-        targets = [c for c in job.commands if isinstance(c, BuildCommand)]
+        all_builds = [c for c in job.commands if isinstance(c, BuildCommand)]
         deps = [c for c in job.commands if isinstance(c, DownloadWheelsCommand)]
         for runner in plan.build_matrix:
             label = ", ".join(runner)
+            # Filter builds to those that run on this specific runner.
+            runner_builds = [
+                b for b in all_builds if not b.runners or runner in b.runners
+            ]
             print(f"    {label}")
-            if targets:
+            if runner_builds:
                 print("      targets:")
-                for t in targets:
+                for t in runner_builds:
                     print(f"        {t.label.removeprefix('Build ')}")
             if deps:
                 print("      deps:")
