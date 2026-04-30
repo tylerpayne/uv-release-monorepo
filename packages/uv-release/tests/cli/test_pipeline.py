@@ -306,10 +306,11 @@ class TestPlanMetadata:
             plan = get_plan_json("--dev")
         assert plan["publish_environment"] == "release"
 
-    def test_skip_contains_validate(self, released_workspace: Path) -> None:
+    def test_validate_not_skipped(self, released_workspace: Path) -> None:
+        """Validate is never auto-skipped even though it has no uvr commands."""
         with diny.provide():
             plan = get_plan_json("--dev")
-        assert "validate" in plan["skip"]
+        assert "validate" not in plan["skip"]
 
 
 class TestChangeDetection:
@@ -666,16 +667,13 @@ class TestSkipAndSkipTo:
         assert "publish" in plan["skip"]
         assert "bump" not in plan["skip"]
 
-    def test_validate_never_skipped_by_skip_to(self, released_workspace: Path) -> None:
-        """--skip-to never skips validate (it's always first)."""
+    def test_validate_not_skipped_by_skip_to(self, released_workspace: Path) -> None:
+        """--skip-to bump skips build/release/publish but never validate."""
         _add_workflow(released_workspace, _WORKFLOW_CORE_ONLY)
         with diny.provide():
             plan = get_plan_json("--dev", "--skip-to", "bump")
-        assert "validate" in plan["skip"]  # validate is empty, so auto-skipped
-        # But it's auto-skipped because it has no commands, not because --skip-to
-        # targeted it. Verify validate job still exists.
-        validate_job = _job(plan, "validate")
-        assert validate_job["name"] == "validate"
+        assert "validate" not in plan["skip"]
+        assert "build" in plan["skip"]
 
     def test_custom_job_name_passthrough(self, released_workspace: Path) -> None:
         """--skip with a non-core job name passes through to plan.skip for CI."""
@@ -696,8 +694,8 @@ class TestSkipAndSkipTo:
             )
         out = capsys.readouterr().out
         assert "build: (skip)" in out
-        assert "release:" in out
-        # release should show commands, not skip.
+        assert "  release" in out
+        # release should not be skipped.
         assert "release: (skip)" not in out
 
     def test_skip_combined_with_skip_to(self, released_workspace: Path) -> None:
@@ -868,6 +866,6 @@ class TestCustomJobsDisplay:
         with diny.provide():
             run_cli("release", "--dry-run", "--where", "local", "--dev")
         out = capsys.readouterr().out
-        assert "build:" in out
+        assert "  build" in out
         # No custom jobs in the default fixture workflow.
         assert "checks" not in out

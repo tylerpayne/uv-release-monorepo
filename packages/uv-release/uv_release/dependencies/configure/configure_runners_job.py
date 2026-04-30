@@ -38,16 +38,13 @@ def provide_configure_runners_job(
 
         pkg_runners = list(matrix.get(params.package, []))
 
-        # Strip brackets so '[self-hosted, linux]' parses like 'self-hosted, linux'.
         for spec in params.add:
-            stripped = spec.strip().strip("[]")
-            labels = [label.strip() for label in stripped.split(",")]
+            labels = _parse_runner_spec(spec)
             if labels not in pkg_runners:
                 pkg_runners.append(labels)
 
         for spec in params.remove:
-            stripped = spec.strip().strip("[]")
-            labels = [label.strip() for label in stripped.split(",")]
+            labels = _parse_runner_spec(spec)
             if labels in pkg_runners:
                 pkg_runners.remove(labels)
 
@@ -64,3 +61,18 @@ def provide_configure_runners_job(
             )
         ],
     )  # type: ignore[arg-type]
+
+
+def _parse_runner_spec(spec: str) -> list[str]:
+    """Parse a runner spec like 'self-hosted, linux, x64'.
+
+    Rejects JSON-style input with quotes to avoid double-escaping in TOML.
+    """
+    stripped = spec.strip()
+    if '"' in stripped or "'" in stripped:
+        raise ValueError(
+            f"Runner spec must not contain quotes: {spec}. "
+            "Use comma-separated labels like: self-hosted, linux, x64"
+        )
+    stripped = stripped.strip("[]")
+    return [label.strip() for label in stripped.split(",")]

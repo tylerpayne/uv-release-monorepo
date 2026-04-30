@@ -32,6 +32,7 @@ class DownloadWheelsCommand(Command):
                 self.pattern,
                 "--dir",
                 self.output_dir,
+                "--clobber",
             ]
         )
         if result.returncode != 0:

@@ -137,7 +137,40 @@ def _print_job_status(name: str, job: Job | None, plan: Plan) -> None:
     """Print a single job's status line."""
     if name in plan.skip:
         print(f"  {name}: (skip)")
-    elif job and job.commands:
-        print(f"  {name}: ({len(job.commands)} commands)")
-    else:
-        print(f"  {name}")
+        return
+    print(f"  {name}")
+    if job and job.commands:
+        _print_job_detail(job, plan)
+
+
+def _print_job_detail(job: Job, plan: Plan) -> None:
+    """Print structured detail lines under a job."""
+    from ..commands import (
+        BuildCommand,
+        CreateReleaseCommand,
+        DownloadWheelsCommand,
+        PublishToIndexCommand,
+    )
+
+    if job.name == "build":
+        targets = [c for c in job.commands if isinstance(c, BuildCommand)]
+        deps = [c for c in job.commands if isinstance(c, DownloadWheelsCommand)]
+        for runner in plan.build_matrix:
+            label = ", ".join(runner)
+            print(f"    {label}")
+            if targets:
+                print("      targets:")
+                for t in targets:
+                    print(f"        {t.label.removeprefix('Build ')}")
+            if deps:
+                print("      deps:")
+                for d in deps:
+                    print(f"        {d.tag_name}")
+    elif job.name == "release":
+        releases = [c for c in job.commands if isinstance(c, CreateReleaseCommand)]
+        for rel in releases:
+            print(f"    {rel.title}")
+    elif job.name == "publish":
+        publishes = [c for c in job.commands if isinstance(c, PublishToIndexCommand)]
+        for pub in publishes:
+            print(f"    {pub.package_name}")

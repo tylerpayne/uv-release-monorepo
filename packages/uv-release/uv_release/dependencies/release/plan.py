@@ -55,8 +55,11 @@ def provide_plan(
     validate_job = Job(name="validate")
     jobs: list[Job] = [validate_job, build_job, release_job, publish_job, bump_job]
 
-    # Skip user-requested jobs and empty (no-op) jobs.
-    skip = list(skip_jobs.value) + [j.name for j in jobs if not j.commands]
+    # Skip user-requested jobs and empty (no-op) jobs. Validate is always
+    # kept because CI uses it to confirm the plan JSON is parseable.
+    skip = list(skip_jobs.value) + [
+        j.name for j in jobs if not j.commands and j.name != "validate"
+    ]
 
     # Flatten and deduplicate runner labels across all build targets.
     all_runners: list[list[str]] = []
