@@ -42,7 +42,13 @@ def provide_build_packages(
             if name in workspace_packages.items
         }
 
-    # Apply include (allowlist) then exclude (denylist) filters.
+    # Apply CLI exclusions, then config include/exclude filters.
+    if package_selection.exclude_packages:
+        items = {
+            n: p
+            for n, p in items.items()
+            if n not in package_selection.exclude_packages
+        }
     if uvr_config.include:
         items = {n: p for n, p in items.items() if n in uvr_config.include}
     items = {n: p for n, p in items.items() if n not in uvr_config.exclude}
