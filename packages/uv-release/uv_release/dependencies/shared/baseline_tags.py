@@ -73,7 +73,8 @@ def _find_baseline_tag(name: str, version: Version, repo: GitRepo) -> Tag | None
         tag_name = Tag.release_tag_name(name, base_version)
         return repo.resolve_tag(name, tag_name, is_baseline=False)
 
-    return None
+    msg = f"Unhandled version state: {state}"
+    raise AssertionError(msg)
 
 
 def _previous_release(name: str, version: Version, repo: GitRepo) -> Tag | None:
