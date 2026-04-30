@@ -83,9 +83,13 @@ class TestDownloadWheelsCommand:
 
 
 class TestDownloadRunArtifactsCommand:
-    def test_calls_gh_run_download(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_calls_gh_run_download(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setenv("RUN_ID", "99999")
-        cmd = DownloadRunArtifactsCommand(label="Download", output_dir="dist")
+        out = tmp_path / "dist"
+        out.mkdir()
+        cmd = DownloadRunArtifactsCommand(label="Download", output_dir=str(out))
         calls: list[list[str]] = []
 
         def _mock(args, **kwargs):  # type: ignore[no-untyped-def]
