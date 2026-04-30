@@ -7,13 +7,13 @@ the correct jobs, commands, and ordering for various workspace configurations.
 from __future__ import annotations
 
 import json
-import os
+import subprocess
 from pathlib import Path
 
 import diny
 import pytest
 
-from conftest import get_plan_json, git, read_toml, run_cli, _make_package
+from conftest import get_plan_json, git, read_toml, run_cli
 
 
 def _commands_of_type(plan: dict, job_name: str, cmd_type: str) -> list[dict]:
@@ -456,7 +456,3 @@ class TestLocalRelease:
 
         assert len(mock_builds) >= 1
         assert any("pkg-a" in t or "pkg-b" in t for t in created_tags)
-
-
-import subprocess
-from conftest import read_toml

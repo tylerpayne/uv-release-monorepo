@@ -10,7 +10,7 @@ from pathlib import Path
 import diny
 import pytest
 
-from conftest import git, run_cli, _make_package, read_toml
+from conftest import git, run_cli, _make_package
 import tomlkit
 
 
