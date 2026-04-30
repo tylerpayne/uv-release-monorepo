@@ -1,12 +1,12 @@
-# `uvr skill init`
+# `uvr skill install`
 
 Copy bundled Claude Code skills into your project.
 
 ```bash
-uvr skill init                   # write skills to .claude/skills/
-uvr skill init --force           # overwrite existing skill files
-uvr skill init --upgrade         # three-way merge latest skills into existing files
-uvr skill init --base-only       # write merge bases without touching actual files
+uvr skill install                   # write skills to .claude/skills/
+uvr skill install --force           # overwrite existing skill files
+uvr skill install --upgrade         # three-way merge latest skills into existing files
+uvr skill install --base-only       # write merge bases without touching actual files
 ```
 
 Copies the release skill and its references into `.claude/skills/` in the current directory. Existing files are skipped unless `--force` is used.
@@ -27,12 +27,12 @@ Copies the release skill and its references into `.claude/skills/` in the curren
 When a new version of `uvr` ships skill changes, run:
 
 ```bash
-uvr skill init --upgrade
+uvr skill install --upgrade
 ```
 
 If merge bases are missing, recover them first:
 
 ```bash
-uvx --from uv-release==<old-version> uvr skill init --base-only
-uvr skill init --upgrade
+uvx --from uv-release==<old-version> uvr skill install --base-only
+uvr skill install --upgrade
 ```

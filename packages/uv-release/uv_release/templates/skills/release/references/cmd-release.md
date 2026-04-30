@@ -21,12 +21,12 @@ uvr release --dry-run    # preview only
 | `1.2.3a2.dev0` | `1.2.3a2` (pre-release) | `1.2.3a3.dev0` |
 | `1.2.3.post0.dev0` | `1.2.3.post0` (post-release) | `1.2.3.post1.dev0` |
 
-To change what gets released, use `uvr bump` before releasing:
+To change what gets released, use `uvr version` before releasing:
 
 ```bash
-uvr bump --all --minor       # prepare a minor release
-uvr bump --all --alpha       # enter alpha pre-release cycle
-uvr bump --all --post        # advance post-release number
+uvr version --all-packages --bump minor       # prepare a minor release
+uvr version --all-packages --promote alpha    # enter alpha pre-release cycle
+uvr version --all-packages --bump post        # advance post-release number
 ```
 
 ## Mode flags
@@ -50,6 +50,8 @@ uvr bump --all --post        # advance post-release number
 |------|-------------|
 | `--all-packages` | Release all packages, not just changed ones |
 | `--packages PKG...` | Release specific packages |
+| `--not-packages PKG...` | Exclude specific packages from the release |
+| `--runners LABEL...` | Only build on specified CI runner labels |
 
 ## Dispatch options (CI mode)
 
@@ -59,15 +61,16 @@ uvr bump --all --post        # advance post-release number
 | `--skip JOB` | Skip a CI job (repeatable). Validated against jobs in `release.yml`. Warns if a custom job lacks the skip guard in its `if` condition. |
 | `--skip-to JOB` | Skip all jobs before JOB (reads job order from `release.yml`). Works with both core and custom jobs. `validate` is never skipped. |
 | `--reuse-run RUN_ID` | Reuse build artifacts from a prior workflow run. Requires `build` to be skipped. |
-| `--reuse-release` | Assume GitHub releases already exist. Requires both `build` and `release` to be skipped. |
+| `--reuse-releases` | Assume GitHub releases already exist. Requires both `build` and `release` to be skipped. |
 
-`--reuse-run` and `--reuse-release` are mutually exclusive.
+`--reuse-run` and `--reuse-releases` are mutually exclusive.
 
 ## Local mode options
 
 | Flag | Description |
 |------|-------------|
 | `--no-push` | Skip `git push` after a local release |
+| `--no-commit` | Skip git commit after a local release |
 
 ## Output options
 
@@ -89,7 +92,7 @@ uvr release -y
 uvr release --skip-to release --reuse-run 12345678
 
 # Resume after release succeeded but bump failed
-uvr release --skip-to bump --reuse-release
+uvr release --skip-to bump --reuse-releases
 
 # Skip a custom job (e.g., tests you already ran locally)
 uvr release --skip checks

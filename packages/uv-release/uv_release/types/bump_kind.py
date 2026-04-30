@@ -16,3 +16,5 @@ class BumpKind(Enum):
     DEV = "dev"
     # Strips pre/dev suffix to produce a clean release.
     STABLE = "stable"
+    # Advance to the next release stage: dev->strip, a->b, b->rc, rc->final.
+    PROMOTE = "promote"

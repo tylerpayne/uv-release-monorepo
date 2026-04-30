@@ -66,7 +66,7 @@ class TestWorkflowUpgrade:
     ) -> None:
         (workspace / ".github" / "workflows" / "release.yml").unlink()
         with diny.provide():
-            run_cli("workflow", "upgrade")
+            run_cli("workflow", "install")
         out = capsys.readouterr().out
         assert "Write" in out or "workflow-upgrade" in out
         wf = workspace / ".github" / "workflows" / "release.yml"

@@ -14,7 +14,7 @@ from ..shared.workspace_packages import WorkspacePackages
 from ..shared.worktree import Worktree
 from ..params.release_target import ReleaseTarget
 from .release_versions import ReleaseVersions
-from .version_fix import VersionFix
+from .version_fix import StripDev
 
 
 class UserRecoverableError(ValueError):
@@ -39,7 +39,7 @@ class ReleaseGuard(Frozen):
 def provide_release_guard(
     worktree: Worktree,
     release_target: ReleaseTarget,
-    version_fix: VersionFix,
+    strip_dev: StripDev,
     workflow_state: WorkflowState,
     release_versions: ReleaseVersions,
     build_packages: BuildPackages,
@@ -49,7 +49,7 @@ def provide_release_guard(
     if not workflow_state.exists:
         raise ValueError(
             f"Workflow file not found at {workflow_state.file_path}. "
-            "Run 'uvr workflow upgrade' to create it."
+            "Run 'uvr workflow install' to create it."
         )
     if worktree.is_dirty:
         raise ValueError("Working tree is dirty. Commit or stash changes first.")
@@ -67,11 +67,11 @@ def provide_release_guard(
             + ", ".join(already_tagged)
             + ". Bump versions before releasing."
         )
-    # Check version fix last because the fix itself commits.
-    if version_fix.job.commands:
+    # Strip .devN suffixes last because the fix itself commits.
+    if strip_dev.job.commands:
         raise UserRecoverableError(
-            "Dev versions need to be stabilized before release.",
-            fix_job=version_fix.job,
+            "Dev versions need .devN stripped before release.",
+            fix_job=strip_dev.job,
         )
     # Warn if any build target depends on a workspace package at a dev version
     # that is not being released in this same release. The released wheel will
@@ -83,7 +83,7 @@ def provide_release_guard(
         pkg = workspace_packages.items.get(name)
         if pkg is None:
             continue
-        for dep in pkg.dependencies:
+        for dep in pkg.dep_names:
             if dep in releasing or dep not in workspace_packages.items:
                 continue
             dep_pkg = workspace_packages.items[dep]

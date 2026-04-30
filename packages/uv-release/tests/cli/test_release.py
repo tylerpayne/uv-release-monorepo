@@ -78,7 +78,7 @@ class TestRelease:
         with pytest.raises(SystemExit):
             with diny.provide():
                 run_cli("release", "--dry-run", "--where", "local")
-        assert "Dev versions need to be stabilized" in capsys.readouterr().err
+        assert "Dev versions need .devN stripped" in capsys.readouterr().err
 
     def test_skip_build(
         self, workspace: Path, capsys: pytest.CaptureFixture[str]
@@ -197,7 +197,7 @@ class TestRelease:
         tag_all(workspace)
         # Bump to next dev versions so release tags don't already exist.
         with diny.provide():
-            run_cli("bump", "--dev", "--no-push", "--force")
+            run_cli("version", "--bump", "dev", "--no-push", "--force")
         with diny.provide():
             run_cli(
                 "release",

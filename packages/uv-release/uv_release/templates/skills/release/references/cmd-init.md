@@ -1,9 +1,9 @@
-# `uvr workflow init`
+# `uvr workflow install`
 
 Scaffold the GitHub Actions release workflow into your repo.
 
 ```bash
-uvr workflow init
+uvr workflow install
 ```
 
 Creates `.github/workflows/release.yml` with five core jobs: **validate**, **build**, **release**, **publish**, and **bump**. Run this once when setting up a new repo.
@@ -27,7 +27,7 @@ The generated workflow contains only the core pipeline. You can add custom jobs 
 When a new version of `uvr` ships template changes, run:
 
 ```bash
-uvr workflow init --upgrade
+uvr workflow install --upgrade
 ```
 
 This performs a three-way merge between your current workflow, the old template (stored in `.uvr/bases/`), and the new template. Custom jobs you added are preserved. If conflicts arise, your `--editor` is opened.
@@ -35,8 +35,8 @@ This performs a three-way merge between your current workflow, the old template 
 If merge bases are missing (e.g. you upgraded from an older `uvr` that didn't track them), `uvr` will prompt you. To recover bases without modifying files:
 
 ```bash
-uvx --from uv-release==<old-version> uvr workflow init --base-only
-uvr workflow init --upgrade
+uvx --from uv-release==<old-version> uvr workflow install --base-only
+uvr workflow install --upgrade
 ```
 
 ## Notes

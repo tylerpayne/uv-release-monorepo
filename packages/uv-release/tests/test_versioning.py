@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from uv_release.types.bump_kind import BumpKind
+from uv_release.types.dependency import Dependency
 from uv_release.types.package import Package
 from uv_release.types.version import Version
 from uv_release.utils.versioning import (
@@ -13,6 +14,8 @@ from uv_release.utils.versioning import (
     compute_next_version,
     compute_release_version,
 )
+
+_d = Dependency.parse
 
 
 class TestComputeReleaseVersion:
@@ -185,9 +188,52 @@ class TestComputeBumpedVersion:
         with pytest.raises(ValueError, match="Cannot bump a from post-release"):
             compute_bumped_version(Version.parse("1.0.0.post1"), BumpKind.ALPHA)
 
+    def test_promote_strips_dev_from_alpha(self) -> None:
+        v = compute_bumped_version(Version.parse("0.1.0a2.dev0"), BumpKind.PROMOTE)
+        assert v.raw == "0.1.0a2"
+
+    def test_promote_strips_dev_from_stable(self) -> None:
+        v = compute_bumped_version(Version.parse("1.0.0.dev0"), BumpKind.PROMOTE)
+        assert v.raw == "1.0.0"
+
+    def test_promote_alpha_to_beta(self) -> None:
+        v = compute_bumped_version(Version.parse("0.1.0a2"), BumpKind.PROMOTE)
+        assert v.raw == "0.1.0b0.dev0"
+
+    def test_promote_beta_to_rc(self) -> None:
+        v = compute_bumped_version(Version.parse("0.1.0b1"), BumpKind.PROMOTE)
+        assert v.raw == "0.1.0rc0.dev0"
+
+    def test_promote_rc_to_final(self) -> None:
+        v = compute_bumped_version(Version.parse("0.1.0rc1"), BumpKind.PROMOTE)
+        assert v.raw == "0.1.0"
+
+    def test_promote_final_errors(self) -> None:
+        with pytest.raises(ValueError, match="already a final release"):
+            compute_bumped_version(Version.parse("1.0.0"), BumpKind.PROMOTE)
+
 
 class TestComputeDependencyPins:
     def test_pins_internal_dep(self) -> None:
+        versions = {"pkg-a": Version.parse("2.0.0")}
+        packages = {
+            "pkg-a": Package(
+                name="pkg-a", path="packages/pkg-a", version=Version.parse("2.0.0")
+            ),
+            "pkg-b": Package(
+                name="pkg-b",
+                path="packages/pkg-b",
+                version=Version.parse("1.0.0"),
+                dependencies=[_d("pkg-a")],
+            ),
+        }
+        pins = compute_dependency_pins(versions, packages)
+        assert len(pins) == 1
+        assert pins[0].package_path == "packages/pkg-b"
+        assert "pkg-a>=2.0.0" in pins[0].pins["pkg-a"]
+
+    def test_dev_versions_not_pinned(self) -> None:
+        """Dev versions are skipped because they are not installable from PyPI."""
         versions = {"pkg-a": Version.parse("2.0.0.dev0")}
         packages = {
             "pkg-a": Package(
@@ -196,14 +242,12 @@ class TestComputeDependencyPins:
             "pkg-b": Package(
                 name="pkg-b",
                 path="packages/pkg-b",
-                version=Version.parse("1.0.0.dev0"),
-                dependencies=["pkg-a"],
+                version=Version.parse("1.0.0"),
+                dependencies=[_d("pkg-a")],
             ),
         }
         pins = compute_dependency_pins(versions, packages)
-        assert len(pins) == 1
-        assert pins[0].package_path == "packages/pkg-b"
-        assert "pkg-a>=2.0.0.dev0" in pins[0].pins["pkg-a"]
+        assert len(pins) == 0
 
     def test_no_pins_for_external_deps(self) -> None:
         versions = {"pkg-a": Version.parse("2.0.0")}
@@ -215,7 +259,7 @@ class TestComputeDependencyPins:
                 name="pkg-b",
                 path="packages/pkg-b",
                 version=Version.parse("1.0.0"),
-                dependencies=["requests"],
+                dependencies=[_d("requests")],
             ),
         }
         pins = compute_dependency_pins(versions, packages)
@@ -231,7 +275,7 @@ class TestComputeDependencyPins:
                 name="pkg-b",
                 path="packages/pkg-b",
                 version=Version.parse("1.0.0"),
-                dependencies=["pkg-c"],
+                dependencies=[_d("pkg-c")],
             ),
         }
         pins = compute_dependency_pins(versions, packages)

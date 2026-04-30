@@ -20,6 +20,7 @@
 * [0014 - Restructure Shared Module Architecture](0014-restructure-shared-module-architecture.md)
 * [0015 - Allow Dev Release From Clean Versions](0015-allow-dev-release-from-clean-versions.md)
 * [0016 - Inject State Dependencies Into Intents](0016-inject-state-dependencies-into-intents.md)
+* [0017 - Unify Version Management Under Single Command](0017-unify-version-management-under-single-command.md)
 
 ## Rejected Records
 

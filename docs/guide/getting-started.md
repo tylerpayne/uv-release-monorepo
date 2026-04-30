@@ -8,19 +8,19 @@ uv add --dev uv-release
 
 ## Prerequisites
 
-<code class="brand-code">uvr</code> works with uv workspace monorepos. Your root `pyproject.toml` must define workspace members.
+`uvr` works with uv workspace monorepos. Your root `pyproject.toml` must define workspace members.
 
 ```toml
 [tool.uv.workspace]
 members = ["packages/*"]
 ```
 
-You also need the [GitHub CLI](https://cli.github.com/) (`gh`) authenticated. <code class="brand-code">uvr</code> uses it to create releases, download artifacts, and dispatch workflows. It always prompts for confirmation before committing, pushing, or dispatching on your behalf.
+You also need the [GitHub CLI](https://cli.github.com/) (`gh`) authenticated. `uvr` uses it to create releases, download artifacts, and dispatch workflows. It always prompts for confirmation before committing, pushing, or dispatching on your behalf.
 
 ## Scaffold the release workflow
 
 ```bash
-uvr workflow init
+uvr workflow install
 ```
 
 This writes `.github/workflows/release.yml` from a bundled template. Commit and push it.
@@ -36,8 +36,8 @@ git push
 ```bash
 uvr workflow validate             # check structure and frozen fields
 uvr workflow validate --diff      # show diff against template
-uvr workflow init --upgrade       # three-way merge template changes
-uvr workflow init --upgrade --editor code  # resolve merge conflicts in your editor of choice
+uvr workflow install --upgrade    # three-way merge template changes
+uvr workflow install --upgrade --editor code  # resolve merge conflicts in your editor of choice
 ```
 
 Custom jobs survive upgrades. The three-way merge preserves your additions while picking up template changes.
@@ -57,7 +57,7 @@ Packages
 
 ## Your first release
 
-You can also release interactively with the [Claude Code skill](03-claude.md).
+You can also release interactively with the [Claude Code skill](claude.md).
 
 Preview the plan without making changes.
 
@@ -75,9 +75,9 @@ This generates a release plan locally, commits release versions, pushes, and dis
 
 ## Next steps
 
-To release a minor or major version instead of patch, bump first. See [Managing Versions](04-versions.md) for the full version lifecycle.
+To release a minor or major version instead of patch, bump first. See [Managing Versions](versions.md) for the full version lifecycle.
 
 ```bash
-uvr bump --minor
+uvr version --bump minor
 uvr release
 ```

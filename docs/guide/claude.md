@@ -1,11 +1,11 @@
 # Release with Claude
 
-<code class="brand-code">uvr</code> ships with a Claude Code skill that handles the entire release flow interactively.
+`uvr` ships with a Claude Code skill that handles the entire release flow interactively.
 
 ## Install the skill
 
 ```bash
-uvr skill init
+uvr skill install
 ```
 
 This copies the `/release` skill into your project's `.claude/skills/` directory.
@@ -18,12 +18,12 @@ This copies the `/release` skill into your project's `.claude/skills/` directory
 
 Claude will:
 
-1. **Branch.** Create a release branch if you're on main.
+1. **Branch.** Create a release branch if you are on main.
 2. **Preview.** Run `uvr release --dry-run` and show what changed.
 3. **Bump.** Ask if any packages need a minor or major bump instead of patch.
 4. **Review.** Audit public API against docstrings and docs.
 5. **Release notes.** Draft user-facing notes for your approval.
-6. **Dispatch.** Commit, push, and run <code class="brand-code">uvr release</code>.
+6. **Dispatch.** Commit, push, and run `uvr release`.
 7. **Monitor.** Watch the workflow and handle failures.
 8. **Merge.** Merge the release branch back to main.
 
@@ -37,7 +37,7 @@ Claude will:
 ## Upgrade the skill
 
 ```bash
-uvr skill init --upgrade
+uvr skill install --upgrade
 ```
 
 Three-way merges the latest skill template while preserving your customizations.

@@ -4,16 +4,16 @@ Post-releases publish a corrected version of an already-released package without
 
 ## Usage
 
-Use `uvr bump` to enter the post-release cycle, then `uvr release` to publish:
+Use `uvr version` to enter the post-release cycle, then `uvr release` to publish:
 
 ```bash
-uvr bump --all --post        # advance post number → 1.2.3.post1.dev0
+uvr version --all-packages --bump post        # advance post number → 1.2.3.post1.dev0
 uvr release                  # publishes 1.2.3.post1
 ```
 
 ## How it works
 
-1. `uvr bump --post` increments the post-release number (e.g., `.post0` → `.post1`)
+1. `uvr version --bump post` increments the post-release number (e.g., `.post0` → `.post1`)
 2. `uvr release` strips `.devN` and publishes `X.Y.Z.postN`
 3. After release, the pyproject.toml version is bumped to `X.Y.Z.post(N+1).dev0`
 
@@ -41,9 +41,9 @@ These tags/releases already exist and would conflict:
   my-pkg/v1.2.3
 
 To resolve, either:
-  1. Use uvr bump --post to publish a post-release
+  1. Use uvr version --bump post to publish a post-release
   2. Bump past the conflict:
-     uvr bump --packages my-pkg --patch
+     uvr version --packages my-pkg --bump patch
 ```
 
 ## Workflow
@@ -66,7 +66,7 @@ git commit -m "fix: correct widget parsing in my-pkg"
 git push -u origin post-release/my-pkg/v1.2.3
 
 # 5. Enter post-release cycle and publish
-uvr bump --all --post
+uvr version --all-packages --bump post
 uvr release
 ```
 

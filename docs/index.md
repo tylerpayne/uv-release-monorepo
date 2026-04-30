@@ -7,24 +7,24 @@ hero:
   actions:
     - theme: brand
       text: Get Started
-      link: /user-guide/01-getting-started
+      link: /guide/getting-started
     - theme: alt
       text: Go Under the Hood
-      link: /under-the-hood/architecture
+      link: /internals/architecture
 
 features:
-  - title: 🏗️ Scaffold
-    details: "<code class=\"brand-code\">uvr workflow init</code><br>Generate a complete release workflow in one command. Runner matrices, PyPI publishing, and hooks built in."
-    link: /user-guide/01-getting-started#scaffold-the-release-workflow
-  - title: ⬆️ Bump
-    details: "<code class=\"brand-code\">uvr bump</code><br>Bump versions without breaking internal dependencies. Downstream pins update automatically."
-    link: /user-guide/04-versions
-  - title: 🚀 Release
+  - title: Scaffold
+    details: "<code class=\"brand-code\">uvr workflow install</code><br>Generate a complete release workflow in one command. Runner matrices, PyPI publishing, and hooks built in."
+    link: /guide/getting-started#scaffold-the-release-workflow
+  - title: Version
+    details: "<code class=\"brand-code\">uvr version</code><br>Bump versions without breaking internal dependencies. Downstream pins update automatically."
+    link: /guide/versions
+  - title: Release
     details: "<code class=\"brand-code\">uvr release</code><br>Release with confidence. Catch errors before dispatch, only rebuild what changed, and recover from failures without starting over."
-    link: /user-guide/02-releasing
-  - title: 🤖 Claude
+    link: /guide/releasing
+  - title: Claude
     details: "<code class=\"brand-code\">/release</code><br>Ship interactively. Claude handles branching, release notes, dispatch, and failure recovery."
-    link: /user-guide/03-claude
+    link: /guide/claude
 ---
 
 ## Quick Start
@@ -40,7 +40,7 @@ uv add --dev uv-release
 Scaffold the release workflow.
 
 ```bash
-uvr workflow init
+uvr workflow install
 ```
 
 Plan, confirm, and dispatch.
@@ -67,4 +67,4 @@ Pipeline
 Proceed? [y/N]
 ```
 
-Change detection, topological build ordering, GitHub releases, PyPI publishing, and version bumping. All planned locally before anything touches CI. See the [setup guide](/user-guide/01-getting-started) for the full walkthrough.
+Change detection, topological build ordering, GitHub releases, PyPI publishing, and version bumping. All planned locally before anything touches CI. See the [setup guide](/guide/getting-started) for the full walkthrough.

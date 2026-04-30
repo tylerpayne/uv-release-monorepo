@@ -446,32 +446,34 @@ class TestBumpFlags:
         tag_all(workspace)
         # Without --force/--all-packages, nothing to bump.
         with diny.provide():
-            run_cli("bump", "--minor", "--no-commit", "--no-push", "--force")
+            run_cli("version", "--bump", "minor", "--no-commit", "--no-push", "--force")
         a = read_toml(workspace / "packages" / "pkg-a" / "pyproject.toml")
         assert a["project"]["version"] == "0.2.0.dev0"
 
     def test_no_pin_skips_dep_pinning(self, workspace: Path) -> None:
         with diny.provide():
-            run_cli("bump", "--minor", "--no-commit", "--no-push", "--no-pin")
+            run_cli(
+                "version", "--bump", "minor", "--no-commit", "--no-push", "--no-pin"
+            )
         b = read_toml(workspace / "packages" / "pkg-b" / "pyproject.toml")
         deps = b["project"]["dependencies"]
         # Original dep should be unchanged (not pinned to new version).
         assert deps == ["pkg-a>=0.1.0"]
 
 
-class TestVersionFix:
-    """Test the version stabilization flow."""
+class TestStripDev:
+    """Test the .devN stripping flow."""
 
-    def test_stable_release_from_dev_shows_fix_commands(
+    def test_non_dev_release_from_dev_shows_strip_commands(
         self, workspace: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with pytest.raises(SystemExit):
             with diny.provide():
                 run_cli("release", "--dry-run", "--where", "local")
         err = capsys.readouterr().err
-        assert "Dev versions need to be stabilized" in err
+        assert "Dev versions need .devN stripped" in err
 
-    def test_dev_release_skips_version_fix(
+    def test_dev_release_skips_strip_dev(
         self, workspace: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with diny.provide():
@@ -497,19 +499,27 @@ class TestLocalRelease:
         def _patched(args: str | list[str], **kwargs):  # type: ignore[no-untyped-def]
             if not isinstance(args, list):
                 return _real(args, **kwargs)
-            # Mock git tag
-            if len(args) >= 2 and args[0] == "git" and args[1] == "tag":
+            # Mock git tag (skip -l checks, only track creates)
+            if len(args) >= 3 and args[0] == "git" and args[1] == "tag":
+                if args[2] == "-l":
+                    return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
                 created_tags.append(args[2])
-                return subprocess.CompletedProcess(args, 0)
-            # Mock git push and git pull
-            if len(args) >= 2 and args[0] == "git" and args[1] in ("push", "pull"):
-                return subprocess.CompletedProcess(args, 0)
-            # Mock gh release create
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+            # Mock git push, pull, config, status
+            if (
+                len(args) >= 2
+                and args[0] == "git"
+                and args[1] in ("push", "pull", "config", "status")
+            ):
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+            # Mock gh release (view returns 1 = not found, create returns 0)
             if len(args) >= 3 and args[0] == "gh" and args[1] == "release":
-                return subprocess.CompletedProcess(args, 0)
+                if args[2] == "view":
+                    return subprocess.CompletedProcess(args, 1, stdout="", stderr="")
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
             # Mock gh run download
             if len(args) >= 3 and args[0] == "gh" and args[1] == "run":
-                return subprocess.CompletedProcess(args, 0)
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
             # Mock all uv commands (build, publish, sync)
             if len(args) >= 2 and args[0] == "uv":
                 if args[1] == "build":
