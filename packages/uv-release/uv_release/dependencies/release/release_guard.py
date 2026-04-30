@@ -7,8 +7,10 @@ from diny import singleton, provider
 from ...types.base import Frozen
 from ...types.job import Job
 from ...types.tag import Tag
+from ..build.build_packages import BuildPackages
 from ..shared.git_repo import GitRepo
 from ..shared.workflow_state import WorkflowState
+from ..shared.workspace_packages import WorkspacePackages
 from ..shared.worktree import Worktree
 from ..params.release_target import ReleaseTarget
 from .release_versions import ReleaseVersions
@@ -40,6 +42,8 @@ def provide_release_guard(
     version_fix: VersionFix,
     workflow_state: WorkflowState,
     release_versions: ReleaseVersions,
+    build_packages: BuildPackages,
+    workspace_packages: WorkspacePackages,
     git_repo: GitRepo,
 ) -> ReleaseGuard:
     if not workflow_state.exists:
@@ -69,4 +73,30 @@ def provide_release_guard(
             "Dev versions need to be stabilized before release.",
             fix_job=version_fix.job,
         )
+    # Warn if any build target depends on a workspace package at a dev version
+    # that is not being released in this same release. The released wheel will
+    # carry the dep spec from pyproject.toml, and if no stable version of that
+    # dep exists on PyPI, pip install will fail.
+    releasing = set(build_packages.items.keys())
+    warnings: list[str] = []
+    for name in releasing:
+        pkg = workspace_packages.items.get(name)
+        if pkg is None:
+            continue
+        for dep in pkg.dependencies:
+            if dep in releasing or dep not in workspace_packages.items:
+                continue
+            dep_pkg = workspace_packages.items[dep]
+            if dep_pkg.version.is_dev:
+                warnings.append(f"{name} depends on {dep} ({dep_pkg.version.raw})")
+    if warnings:
+        import sys
+
+        print(
+            "WARNING: Build targets depend on unreleased dev versions:", file=sys.stderr
+        )
+        for w in warnings:
+            print(f"  {w}", file=sys.stderr)
+        print("These deps may not be installable from PyPI.", file=sys.stderr)
+        print(file=sys.stderr)
     return ReleaseGuard()

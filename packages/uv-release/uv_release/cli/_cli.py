@@ -22,6 +22,7 @@ from ..dependencies.params.no_push import NoPush
 from ..dependencies.params.release_target import ReleaseTarget
 from ..dependencies.params.reuse_releases import ReuseReleases
 from ..dependencies.params.reuse_run import ReuseRun
+from ..dependencies.params.runner_filter import RunnerFilter
 from ..dependencies.params.skip_jobs import SkipJobs
 from ..dependencies.params.dry_run import DryRun
 from ..dependencies.params.user_release_notes import UserReleaseNotes
@@ -78,6 +79,7 @@ def parse_args() -> ParsedArgs:
     release_p.add_argument("--no-push", action="store_true")
     release_p.add_argument("--reuse-run", default="")
     release_p.add_argument("--reuse-releases", action="store_true")
+    release_p.add_argument("--runners", nargs="*", default=[])
     release_p.add_argument("--skip", nargs="*", default=[])
     release_p.add_argument("--skip-to", default="")
     release_p.add_argument(
@@ -247,6 +249,12 @@ def provide_reuse_run(args: ParsedArgs) -> ReuseRun:
 @provider(ReuseReleases)
 def provide_reuse_releases(args: ParsedArgs) -> ReuseReleases:
     return ReuseReleases(value=args.values.get("reuse_releases", False))
+
+
+@provider(RunnerFilter)
+def provide_runner_filter(args: ParsedArgs) -> RunnerFilter:
+    runners = args.values.get("runners") or []
+    return RunnerFilter(value=frozenset(runners))
 
 
 @provider(SkipJobs)

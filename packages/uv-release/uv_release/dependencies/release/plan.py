@@ -19,6 +19,7 @@ from ..config.uvr_publishing import UvrPublishing
 from ..config.uvr_runners import UvrRunners
 from ..params.reuse_run import ReuseRun
 from ..params.reuse_releases import ReuseReleases
+from ..params.runner_filter import RunnerFilter
 from ..params.skip_jobs import SkipJobs
 
 
@@ -47,6 +48,7 @@ def provide_plan(
     uvr_runners: UvrRunners,
     reuse_run: ReuseRun,
     reuse_releases: ReuseReleases,
+    runner_filter: RunnerFilter,
     skip_jobs: SkipJobs,
     # ReleaseGuard: side-effect only, raises if preconditions fail.
     release_guard: ReleaseGuard,
@@ -71,6 +73,12 @@ def provide_plan(
             if key not in seen:
                 seen.add(key)
                 all_runners.append(labels)
+    # Filter to --runners if specified. Each CLI arg matches any runner set
+    # that contains that label (e.g. --runners ubuntu-latest keeps [ubuntu-latest]).
+    if runner_filter.value:
+        all_runners = [
+            r for r in all_runners if any(label in runner_filter.value for label in r)
+        ]
     if not all_runners:
         all_runners = [["ubuntu-latest"]]
 
