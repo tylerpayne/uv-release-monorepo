@@ -26,6 +26,12 @@ class Hooks:
     def post_plan(self, root: Path, command: str, plan: Any) -> Any:
         return plan
 
+    def pre_command(self, job_name: str, command: Any) -> None:
+        pass
+
+    def post_command(self, job_name: str, command: Any, returncode: int) -> None:
+        pass
+
     def pre_build(self) -> None:
         pass
 

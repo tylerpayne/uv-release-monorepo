@@ -62,6 +62,12 @@ class BuildCommand(Command):
             return True
         return runner in self.runners
 
+    def is_target_on(self, runner: list[str]) -> bool:
+        """Check if this package is a release target on the given runner."""
+        if not self.target_runners:
+            return self.out_dir == "dist"
+        return runner in self.target_runners
+
     def _runner_matches(self) -> bool:
         """Check if the current CI runner matches any of this package's runners."""
         raw = os.environ.get("UVR_RUNNER", "")

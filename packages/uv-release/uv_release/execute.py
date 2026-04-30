@@ -34,7 +34,11 @@ def execute_job(job: Job, hooks: Hooks | None = None) -> None:
 
     print(f"\n--- {job.name} ---")
     for cmd in job.commands:
+        if hooks:
+            hooks.pre_command(job.name, cmd)
         returncode = cmd.execute()
+        if hooks:
+            hooks.post_command(job.name, cmd, returncode)
         if cmd.check and returncode != 0:
             print(f"ERROR: Command failed with exit code {returncode}", file=sys.stderr)
             sys.exit(returncode)

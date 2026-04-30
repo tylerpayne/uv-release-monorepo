@@ -154,18 +154,24 @@ def _print_job_detail(job: Job, plan: Plan) -> None:
 
     if job.name == "build":
         all_builds = [c for c in job.commands if isinstance(c, BuildCommand)]
-        deps = [c for c in job.commands if isinstance(c, DownloadWheelsCommand)]
+        downloaded_deps = [
+            c for c in job.commands if isinstance(c, DownloadWheelsCommand)
+        ]
         for runner in plan.build_matrix:
             label = ", ".join(runner)
             runner_builds = [b for b in all_builds if b.runs_on(runner)]
+            targets = [b for b in runner_builds if b.is_target_on(runner)]
+            build_deps = [b for b in runner_builds if not b.is_target_on(runner)]
             print(f"    {label}")
-            if runner_builds:
+            if targets:
                 print("      targets:")
-                for t in runner_builds:
+                for t in targets:
                     print(f"        {t.label.removeprefix('Build ')}")
-            if deps:
+            if build_deps or downloaded_deps:
                 print("      deps:")
-                for d in deps:
+                for b in build_deps:
+                    print(f"        {b.label.removeprefix('Build ')} (build)")
+                for d in downloaded_deps:
                     print(f"        {d.tag_name}")
     elif job.name == "release":
         releases = [c for c in job.commands if isinstance(c, CreateReleaseCommand)]
