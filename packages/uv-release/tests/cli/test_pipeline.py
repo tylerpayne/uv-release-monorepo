@@ -612,6 +612,189 @@ class TestMultiRunnerMatrix:
         assert len(plan["build_matrix"]) == 1
 
 
+class TestRunnerAwareBuild:
+    """Verify build commands carry runner labels and filter by UVR_RUNNER."""
+
+    def test_build_commands_carry_runners(self, released_workspace: Path) -> None:
+        """Each BuildCommand includes effective runners (own + inherited)."""
+        _set_runners(
+            released_workspace,
+            {
+                "pkg-b": [["ubuntu-latest"]],
+                "pkg-c": [["ubuntu-latest"], ["macos-latest"]],
+            },
+        )
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        builds = _commands_of_type(plan, "build", "build")
+        pkg_b = next(b for b in builds if "pkg-b" in b["label"])
+        pkg_c = next(b for b in builds if "pkg-c" in b["label"])
+        # pkg-b inherits macos-latest from pkg-c (which depends on pkg-b).
+        assert ["ubuntu-latest"] in pkg_b["runners"]
+        assert ["macos-latest"] in pkg_b["runners"]
+        assert pkg_c["runners"] == [["macos-latest"], ["ubuntu-latest"]]
+
+    def test_default_runners_for_targets(self, released_workspace: Path) -> None:
+        """Targets without explicit runners default to ubuntu-latest."""
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        builds = _commands_of_type(plan, "build", "build")
+        for b in builds:
+            assert b["runners"] == [["ubuntu-latest"]]
+
+    def test_build_command_skips_wrong_runner(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BuildCommand.execute() returns 0 without building on wrong runner."""
+        from uv_release.commands import BuildCommand
+
+        cmd = BuildCommand(
+            label="Build pkg-a",
+            package_path="packages/pkg-a",
+            runners=[["macos-latest"]],
+        )
+        monkeypatch.setenv("UVR_RUNNER", '["ubuntu-latest"]')
+        assert cmd.execute() == 0
+
+    def test_build_command_runs_on_matching_runner(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BuildCommand.execute() runs on a matching runner."""
+        from unittest.mock import patch
+
+        from uv_release.commands import BuildCommand
+
+        cmd = BuildCommand(
+            label="Build pkg-a",
+            package_path="packages/pkg-a",
+            runners=[["ubuntu-latest"], ["macos-latest"]],
+        )
+        monkeypatch.setenv("UVR_RUNNER", '["macos-latest"]')
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess([], 0)
+            rc = cmd.execute()
+        assert rc == 0
+        assert mock_run.called
+
+    def test_build_command_runs_without_uvr_runner(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BuildCommand.execute() runs when UVR_RUNNER is not set."""
+        from unittest.mock import patch
+
+        from uv_release.commands import BuildCommand
+
+        cmd = BuildCommand(
+            label="Build pkg-a",
+            package_path="packages/pkg-a",
+            runners=[["macos-latest"]],
+        )
+        monkeypatch.delenv("UVR_RUNNER", raising=False)
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess([], 0)
+            rc = cmd.execute()
+        assert rc == 0
+        assert mock_run.called
+
+    def test_build_command_runs_with_empty_runners(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BuildCommand with no runners assigned runs on any runner."""
+        from unittest.mock import patch
+
+        from uv_release.commands import BuildCommand
+
+        cmd = BuildCommand(
+            label="Build pkg-a",
+            package_path="packages/pkg-a",
+            runners=[],
+        )
+        monkeypatch.setenv("UVR_RUNNER", '["some-runner"]')
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess([], 0)
+            rc = cmd.execute()
+        assert rc == 0
+        assert mock_run.called
+
+    def test_dep_inherits_runners_from_dependent(
+        self, released_workspace: Path
+    ) -> None:
+        """pkg-b inherits macos runner from pkg-c because pkg-c depends on pkg-b."""
+        _set_runners(
+            released_workspace,
+            {
+                "pkg-b": [["ubuntu-latest"]],
+                "pkg-c": [["macos-latest"]],
+            },
+        )
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        builds = _commands_of_type(plan, "build", "build")
+        pkg_b = next(b for b in builds if "pkg-b" in b["label"])
+        assert ["macos-latest"] in pkg_b["runners"]
+        assert ["ubuntu-latest"] in pkg_b["runners"]
+
+    def test_target_runners_only_own(self, released_workspace: Path) -> None:
+        """target_runners only includes the package's own runners, not inherited."""
+        _set_runners(
+            released_workspace,
+            {
+                "pkg-b": [["ubuntu-latest"]],
+                "pkg-c": [["macos-latest"]],
+            },
+        )
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        builds = _commands_of_type(plan, "build", "build")
+        pkg_b = next(b for b in builds if "pkg-b" in b["label"])
+        assert pkg_b["target_runners"] == [["ubuntu-latest"]]
+
+    def test_out_dir_deps_on_inherited_runner(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """On an inherited runner, BuildCommand outputs to deps/ not dist/."""
+        from uv_release.commands import BuildCommand
+
+        cmd = BuildCommand(
+            label="Build pkg-b",
+            package_path="packages/pkg-b",
+            out_dir="dist",
+            runners=[["ubuntu-latest"], ["macos-latest"]],
+            target_runners=[["ubuntu-latest"]],
+        )
+        monkeypatch.setenv("UVR_RUNNER", '["macos-latest"]')
+        assert cmd._effective_out_dir() == "deps"
+
+    def test_out_dir_dist_on_own_runner(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """On the package's own runner, BuildCommand outputs to dist/."""
+        from uv_release.commands import BuildCommand
+
+        cmd = BuildCommand(
+            label="Build pkg-b",
+            package_path="packages/pkg-b",
+            out_dir="dist",
+            runners=[["ubuntu-latest"], ["macos-latest"]],
+            target_runners=[["ubuntu-latest"]],
+        )
+        monkeypatch.setenv("UVR_RUNNER", '["ubuntu-latest"]')
+        assert cmd._effective_out_dir() == "dist"
+
+    def test_build_order_preserved_with_runners(self, released_workspace: Path) -> None:
+        """Topo ordering still correct when packages have different runners."""
+        _set_runners(
+            released_workspace,
+            {
+                "pkg-b": [["ubuntu-latest"]],
+                "pkg-c": [["macos-latest"]],
+            },
+        )
+        with diny.provide():
+            plan = get_plan_json("--dev")
+        builds = _commands_of_type(plan, "build", "build")
+        labels = [b["label"] for b in builds]
+        assert labels.index("Build pkg-b") < labels.index("Build pkg-c")
+
+
 class TestSkipAndSkipTo:
     """Verify --skip and --skip-to flags produce correct plan.skip lists."""
 
