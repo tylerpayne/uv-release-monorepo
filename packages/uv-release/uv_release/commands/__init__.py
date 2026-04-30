@@ -7,7 +7,7 @@ from pydantic import Discriminator
 from .base import Command
 from .build import BuildCommand
 from .dispatch import DispatchWorkflowCommand
-from .download import DownloadWheelsCommand
+from .download import DownloadRunArtifactsCommand, DownloadWheelsCommand
 from .file import MakeDirectoryCommand, RemoveDirectoryCommand, WriteFileCommand
 from .git import CommitCommand, ConfigureGitIdentityCommand, PushCommand
 from .group import CommandGroup
@@ -28,6 +28,7 @@ AnyCommand = Annotated[
     | PinDepsCommand
     | BuildCommand
     | DownloadWheelsCommand
+    | DownloadRunArtifactsCommand
     | CreateReleaseCommand
     | PublishToIndexCommand
     | WriteFileCommand
@@ -56,6 +57,7 @@ __all__ = [
     "CreateReleaseCommand",
     "CreateTagCommand",
     "DispatchWorkflowCommand",
+    "DownloadRunArtifactsCommand",
     "DownloadWheelsCommand",
     "InstallWheelsCommand",
     "MakeDirectoryCommand",

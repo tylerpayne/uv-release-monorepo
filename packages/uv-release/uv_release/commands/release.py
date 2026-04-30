@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import glob
 import subprocess
 from typing import Literal
 
@@ -11,7 +12,7 @@ from .base import Command
 
 
 class CreateReleaseCommand(Command):
-    """Create a GitHub release."""
+    """Create a GitHub release with wheel files attached."""
 
     type: Literal["create_release"] = "create_release"
     tag_name: str
@@ -33,11 +34,13 @@ class CreateReleaseCommand(Command):
             "--notes",
             self.notes,
         ]
-        # Explicit --latest=false prevents GitHub from auto-promoting pre-releases.
         if self.make_latest:
             args.append("--latest")
         else:
             args.append("--latest=false")
-        args.extend(self.files)
+        # Expand globs at execution time since wheels don't exist at plan time.
+        for pattern in self.files:
+            expanded = glob.glob(pattern)
+            args.extend(expanded if expanded else [pattern])
         result = subprocess.run(args)
         return result.returncode

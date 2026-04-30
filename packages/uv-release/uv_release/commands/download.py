@@ -1,7 +1,8 @@
-"""Download wheels from a GitHub release."""
+"""Download wheels from a GitHub release or CI run artifacts."""
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from typing import Literal
@@ -54,6 +55,38 @@ class DownloadWheelsCommand(Command):
                 wheel_platform = parts[-1]
                 if not _platform_compatible(wheel_platform, platform_tag):
                     whl.unlink()
+
+
+class DownloadRunArtifactsCommand(Command):
+    """Download build artifacts from a GitHub Actions run.
+
+    Reads RUN_ID from the environment at execution time because the
+    current run ID is not known at plan time (before CI dispatch).
+    """
+
+    type: Literal["download_run_artifacts"] = "download_run_artifacts"
+    output_dir: str = "dist"
+
+    def execute(self) -> int:
+        if self.label:
+            print(f"  {self.label}")
+        run_id = os.environ.get("RUN_ID", "")
+        if not run_id:
+            print("    RUN_ID not set, skipping artifact download")
+            return 0
+        result = subprocess.run(
+            [
+                "gh",
+                "run",
+                "download",
+                run_id,
+                "--dir",
+                self.output_dir,
+                "--pattern",
+                "*.whl",
+            ]
+        )
+        return result.returncode
 
 
 def _platform_compatible(wheel_platform: str, current_platform: str) -> bool:

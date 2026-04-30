@@ -24,7 +24,15 @@ class TestWorkflowValidate:
         wf_dir.mkdir(parents=True)
         (wf_dir / "release.yml").write_text(
             yaml.dump(
-                {"jobs": {"validate": {}, "build": {}, "release": {}, "publish": {}, "bump": {}}}
+                {
+                    "jobs": {
+                        "validate": {},
+                        "build": {},
+                        "release": {},
+                        "publish": {},
+                        "bump": {},
+                    }
+                }
             )
         )
         with diny.provide():
@@ -51,7 +59,15 @@ class TestWorkflowValidate:
         custom.mkdir()
         (custom / "release.yml").write_text(
             yaml.dump(
-                {"jobs": {"validate": {}, "build": {}, "release": {}, "publish": {}, "bump": {}}}
+                {
+                    "jobs": {
+                        "validate": {},
+                        "build": {},
+                        "release": {},
+                        "publish": {},
+                        "bump": {},
+                    }
+                }
             )
         )
         with diny.provide():

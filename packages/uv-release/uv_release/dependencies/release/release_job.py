@@ -1,4 +1,4 @@
-"""ReleaseJob: create tags and GitHub releases."""
+"""ReleaseJob: download build artifacts, create tags and GitHub releases."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from ...commands import (
     ConfigureGitIdentityCommand,
     CreateReleaseCommand,
     CreateTagCommand,
+    DownloadRunArtifactsCommand,
+    MakeDirectoryCommand,
     ShellCommand,
 )
 from ...types.job import Job
@@ -22,7 +24,7 @@ from ..config.uvr_config import UvrConfig
 
 @singleton
 class ReleaseJob(Job):
-    """Release job: create tags and GitHub releases."""
+    """Release job: download artifacts, tag, create GitHub releases with wheels."""
 
 
 @provider(ReleaseJob)
@@ -38,11 +40,17 @@ def provide_release_job(
         return ReleaseJob(name="release")
 
     commands: list[
-        ConfigureGitIdentityCommand
+        MakeDirectoryCommand
+        | DownloadRunArtifactsCommand
+        | ConfigureGitIdentityCommand
         | CreateTagCommand
         | ShellCommand
         | CreateReleaseCommand
     ] = []
+
+    # Download build artifacts from the CI run that built them.
+    commands.append(MakeDirectoryCommand(label="Create dist/", path="dist"))
+    commands.append(DownloadRunArtifactsCommand(label="Download build artifacts"))
 
     commands.append(ConfigureGitIdentityCommand(label="Configure git identity"))
 
@@ -68,12 +76,14 @@ def provide_release_job(
     for name, version in non_latest + latest:
         tag_name = Tag.release_tag_name(name, version)
         notes = release_notes.items.get(name, "")
+        dist_name = name.replace("-", "_")
         commands.append(
             CreateReleaseCommand(
                 label=f"Release {name} {version.raw}",
                 tag_name=tag_name,
                 title=f"{name} {version.raw}",
                 notes=notes,
+                files=[f"dist/{dist_name}-*.whl"],
                 make_latest=(name == uvr_config.latest_package),
             )
         )
