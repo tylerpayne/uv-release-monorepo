@@ -42,6 +42,7 @@ def provide_build_job(
                 label=f"Download {dep.package_name} wheels",
                 tag_name=dep.tag_name,
                 pattern="*.whl",
+                output_dir="deps",
             )
         )
 
