@@ -1,0 +1,55 @@
+"""Version and dependency pinning commands."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Literal
+
+from .base import Command
+from ..utils.deps import parse_dep_name
+
+
+class SetVersionCommand(Command):
+    """Set a package's version in its pyproject.toml."""
+
+    type: Literal["set_version"] = "set_version"
+    package_path: str
+    version: str
+
+    def execute(self) -> int:
+        import tomlkit
+
+        if self.label:
+            print(f"  {self.label}")
+        path = Path(self.package_path) / "pyproject.toml"
+        doc = tomlkit.loads(path.read_text())
+        doc["project"]["version"] = self.version  # type: ignore[index]
+        path.write_text(tomlkit.dumps(doc))
+        return 0
+
+
+class PinDepsCommand(Command):
+    """Pin internal dependency versions in a package's pyproject.toml."""
+
+    type: Literal["pin_deps"] = "pin_deps"
+    package_path: str
+    pins: dict[str, str]
+
+    def execute(self) -> int:
+        import tomlkit
+
+        if self.label:
+            print(f"  {self.label}")
+        path = Path(self.package_path) / "pyproject.toml"
+        doc = tomlkit.loads(path.read_text())
+        deps = doc["project"].get("dependencies", [])  # type: ignore[union-attr]
+        new_deps: list[Any] = []
+        for dep in deps:
+            name = parse_dep_name(str(dep))
+            if name in self.pins:
+                new_deps.append(self.pins[name])
+            else:
+                new_deps.append(dep)
+        doc["project"]["dependencies"] = new_deps  # type: ignore[index]
+        path.write_text(tomlkit.dumps(doc))
+        return 0

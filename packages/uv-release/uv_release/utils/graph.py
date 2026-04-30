@@ -1,88 +1,64 @@
-"""Topological sorting for DAGs (package deps, job ordering)."""
+"""DAG utilities. Pure functions, no DI."""
 
 from __future__ import annotations
 
-from collections import defaultdict
-
-from ..types import Package
+from ..types.package import Package
 
 
 def topo_sort(nodes: dict[str, list[str]]) -> list[str]:
-    """Topological sort of a DAG. Returns nodes in dependency order.
-
-    Args:
-        nodes: mapping of node name to its dependencies (names it depends ON).
-
-    Returns:
-        List of node names in topological order (dependencies first).
-
-    Raises RuntimeError on cycles.
-    """
-    if not nodes:
-        return []
-
-    in_degree: dict[str, int] = {name: 0 for name in nodes}
-    dependents: dict[str, list[str]] = defaultdict(list)
-
+    """Topological sort of a DAG. nodes maps name -> list of dependencies."""
+    # Kahn's algorithm with sorted queues for deterministic output.
+    in_degree = {n: 0 for n in nodes}
+    reverse: dict[str, list[str]] = {n: [] for n in nodes}
     for name, deps in nodes.items():
         for dep in deps:
             if dep in nodes:
                 in_degree[name] += 1
-                dependents[dep].append(name)
+                reverse[dep].append(name)
 
-    queue = sorted(name for name, deg in in_degree.items() if deg == 0)
-    order: list[str] = []
-
+    queue = sorted(n for n in nodes if in_degree[n] == 0)
+    result: list[str] = []
     while queue:
         node = queue.pop(0)
-        order.append(node)
-        for dep in sorted(dependents[node]):
-            in_degree[dep] -= 1
-            if in_degree[dep] == 0:
-                queue.append(dep)
-
-    if len(order) != len(nodes):
-        msg = f"Dependency cycle detected: processed {len(order)} of {len(nodes)} nodes"
-        raise RuntimeError(msg)
-
-    return order
-
-
-def topo_layers(packages: dict[str, Package]) -> dict[str, int]:
-    """Assign each package a build layer based on dependency depth.
-
-    Layer 0 = packages with no internal deps.
-    Layer N = packages whose deepest dependency is in layer N-1.
-
-    Raises RuntimeError on dependency cycles.
-    """
-    if not packages:
-        return {}
-
-    in_degree: dict[str, int] = {name: 0 for name in packages}
-    reverse_deps: dict[str, list[str]] = defaultdict(list)
-
-    for name, pkg in packages.items():
-        for dep in pkg.dependencies:
-            if dep in packages:
-                in_degree[name] += 1
-                reverse_deps[dep].append(name)
-
-    queue: list[str] = [name for name, deg in in_degree.items() if deg == 0]
-    layers: dict[str, int] = {name: 0 for name in queue}
-
-    processed = 0
-    while queue:
-        node = queue.pop(0)
-        processed += 1
-        for dependent in reverse_deps[node]:
+        result.append(node)
+        for dependent in sorted(reverse.get(node, [])):
             in_degree[dependent] -= 1
-            layers[dependent] = max(layers.get(dependent, 0), layers[node] + 1)
             if in_degree[dependent] == 0:
                 queue.append(dependent)
 
-    if processed != len(packages):
-        msg = f"Dependency cycle detected: processed {processed} of {len(packages)} packages"
+    if len(result) != len(nodes):
+        msg = "Dependency cycle detected"
         raise RuntimeError(msg)
+
+    return result
+
+
+def topo_layers(packages: dict[str, Package]) -> list[list[str]]:
+    """Group packages into build layers by dependency depth.
+
+    Layer 0 has no internal deps. Layer N depends on something in layer N-1.
+    """
+    # Both runtime and build-system deps constrain build order.
+    internal = set(packages.keys())
+    deps_map: dict[str, list[str]] = {}
+    for name, pkg in packages.items():
+        all_deps = list(pkg.dependencies) + list(pkg.build_dependencies)
+        deps_map[name] = [d for d in all_deps if d in internal]
+
+    order = topo_sort(deps_map)
+
+    # Depth = max(dep depths) + 1. Same-layer packages can build in parallel.
+    depth: dict[str, int] = {}
+    for name in order:
+        pkg_deps = deps_map[name]
+        if not pkg_deps:
+            depth[name] = 0
+        else:
+            depth[name] = max(depth[d] for d in pkg_deps if d in depth) + 1
+
+    max_depth = max(depth.values()) if depth else 0
+    layers: list[list[str]] = [[] for _ in range(max_depth + 1)]
+    for name in order:
+        layers[depth[name]].append(name)
 
     return layers

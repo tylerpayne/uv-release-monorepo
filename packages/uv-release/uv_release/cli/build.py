@@ -1,41 +1,20 @@
-"""The ``uvr build`` command."""
+"""uvr build: build changed packages locally."""
 
 from __future__ import annotations
 
-import argparse
+from diny import inject
 
-from diny import provide
-
-from ._args import CommandArgs, compute_plan_or_exit
-from ..intents.build import BuildIntent
-from ..execute import execute_plan
-from ..types import PlanParams
+from ..dependencies.build.build_job import BuildJob
+from ..dependencies.shared.hooks import Hooks
+from ..execute import execute_job
 
 
-class BuildArgs(CommandArgs):
-    """Typed arguments for ``uvr build``."""
-
-    all_packages: bool = False
-    packages: list[str] | None = None
-
-
-def cmd_build(args: argparse.Namespace) -> None:
-    """Build changed workspace packages locally."""
-    parsed = BuildArgs.from_namespace(args)
-
-    params = PlanParams(
-        all_packages=parsed.all_packages,
-        packages=frozenset(parsed.packages or []),
-    )
-    intent = BuildIntent()
-    with provide(params):
-        plan = compute_plan_or_exit(intent)
-
-    if not plan.jobs or not plan.jobs[0].commands:
+@inject
+def cmd_build(build_job: BuildJob, hooks: Hooks) -> None:
+    if not build_job.commands:
         print("Nothing to build. No packages have changed since last release.")
-        print("Use --all-packages to build all packages.")
         return
 
     print("Building packages:\n")
-    execute_plan(plan, hooks=None)
+    execute_job(build_job, hooks)
     print("\nDone.")

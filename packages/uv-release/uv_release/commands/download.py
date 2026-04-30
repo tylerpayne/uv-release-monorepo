@@ -1,0 +1,114 @@
+"""Download wheels from a GitHub release or CI run artifacts."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+from pathlib import Path
+from typing import Literal
+
+from .base import Command
+
+
+class DownloadWheelsCommand(Command):
+    """Download wheels from a GitHub release, filtering to the current platform."""
+
+    type: Literal["download_wheels"] = "download_wheels"
+    tag_name: str
+    pattern: str
+    output_dir: str = "dist"
+    all_platforms: bool = False
+
+    def execute(self) -> int:
+        if self.label:
+            print(f"  {self.label}")
+        result = subprocess.run(
+            [
+                "gh",
+                "release",
+                "download",
+                self.tag_name,
+                "--pattern",
+                self.pattern,
+                "--dir",
+                self.output_dir,
+                "--clobber",
+            ]
+        )
+        if result.returncode != 0:
+            return result.returncode
+        if not self.all_platforms:
+            self._filter_platform_wheels()
+        return 0
+
+    def _filter_platform_wheels(self) -> None:
+        """Remove downloaded wheels that don't match the current platform."""
+        import sysconfig
+
+        platform_tag = sysconfig.get_platform().replace("-", "_").replace(".", "_")
+        out = Path(self.output_dir)
+        for whl in out.glob("*.whl"):
+            name = whl.name
+            if name.endswith("-none-any.whl"):
+                continue
+            parts = name[:-4].split("-")
+            if len(parts) >= 3:
+                wheel_platform = parts[-1]
+                if not _platform_compatible(wheel_platform, platform_tag):
+                    whl.unlink()
+
+
+class DownloadRunArtifactsCommand(Command):
+    """Download build artifacts from a GitHub Actions run.
+
+    Reads RUN_ID from the environment at execution time because the
+    current run ID is not known at plan time (before CI dispatch).
+    """
+
+    type: Literal["download_run_artifacts"] = "download_run_artifacts"
+    output_dir: str = "dist"
+
+    def execute(self) -> int:
+        if self.label:
+            print(f"  {self.label}")
+        run_id = os.environ.get("RUN_ID", "")
+        if not run_id:
+            print("    RUN_ID not set, skipping artifact download")
+            return 0
+        result = subprocess.run(
+            [
+                "gh",
+                "run",
+                "download",
+                run_id,
+                "--dir",
+                self.output_dir,
+                "--pattern",
+                "wheels-*",
+            ]
+        )
+        if result.returncode != 0:
+            return result.returncode
+        # gh run download creates subdirs per artifact name. Flatten into output_dir.
+        out = Path(self.output_dir)
+        for subdir in out.iterdir():
+            if subdir.is_dir():
+                for f in subdir.iterdir():
+                    f.rename(out / f.name)
+                subdir.rmdir()
+        return 0
+
+
+def _platform_compatible(wheel_platform: str, current_platform: str) -> bool:
+    """Check if a wheel's platform tag is compatible with the current platform."""
+    if wheel_platform == "any" or wheel_platform == current_platform:
+        return True
+    if "arm64" in current_platform and "x86_64" in wheel_platform:
+        return False
+    if "aarch64" in current_platform and "x86_64" in wheel_platform:
+        return False
+    if "x86_64" in current_platform and (
+        "arm64" in wheel_platform or "aarch64" in wheel_platform
+    ):
+        return False
+    return True

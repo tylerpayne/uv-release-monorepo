@@ -1,44 +1,75 @@
-"""All command types. Each command is frozen and knows how to execute itself."""
+"""Command types. Each is an atomic executable step."""
 
-from __future__ import annotations
-
-from typing import Annotated, Union
+from typing import Annotated
 
 from pydantic import Discriminator
 
-from ..types import CommandGroup
-from .build import BuildCommand as BuildCommand
-from .build import DownloadWheelsCommand as DownloadWheelsCommand
-from .file import MakeDirectoryCommand as MakeDirectoryCommand
-from .file import WriteFileCommand as WriteFileCommand
-from .pyproject import PinDepsCommand as PinDepsCommand
-from .pyproject import SetVersionCommand as SetVersionCommand
-from .pyproject import UpdateTomlCommand as UpdateTomlCommand
-from .pyproject import WriteUvrSectionCommand as WriteUvrSectionCommand
-from .release import CreateReleaseCommand as CreateReleaseCommand
-from .release import PublishToIndexCommand as PublishToIndexCommand
-from .shell import CreateTagCommand as CreateTagCommand
-from .shell import ShellCommand as ShellCommand
-from .workflow import DispatchWorkflowCommand as DispatchWorkflowCommand
-from .workflow import MergeUpgradeCommand as MergeUpgradeCommand
+from .base import Command
+from .build import BuildCommand
+from .dispatch import DispatchWorkflowCommand
+from .download import DownloadRunArtifactsCommand, DownloadWheelsCommand
+from .file import MakeDirectoryCommand, RemoveDirectoryCommand, WriteFileCommand
+from .git import CommitCommand, ConfigureGitIdentityCommand, PushCommand
+from .group import CommandGroup
+from .install import InstallWheelsCommand
+from .merge import MergeUpgradeCommand
+from .publish import PublishToIndexCommand
+from .release import CreateReleaseCommand
+from .shell import CreateTagCommand, ShellCommand
+from .sync import SyncLockfileCommand
+from .toml import UpdateTomlCommand, WriteUvrSectionCommand
+from .version import PinDepsCommand, SetVersionCommand
 
+# Discriminated union for polymorphic Pydantic serialization via the "type" field.
 AnyCommand = Annotated[
-    Union[
-        ShellCommand,
-        CreateTagCommand,
-        SetVersionCommand,
-        PinDepsCommand,
-        CreateReleaseCommand,
-        PublishToIndexCommand,
-        BuildCommand,
-        DownloadWheelsCommand,
-        MakeDirectoryCommand,
-        WriteFileCommand,
-        UpdateTomlCommand,
-        WriteUvrSectionCommand,
-        DispatchWorkflowCommand,
-        MergeUpgradeCommand,
-        CommandGroup,
-    ],
+    ShellCommand
+    | CreateTagCommand
+    | SetVersionCommand
+    | PinDepsCommand
+    | BuildCommand
+    | DownloadWheelsCommand
+    | DownloadRunArtifactsCommand
+    | CreateReleaseCommand
+    | PublishToIndexCommand
+    | WriteFileCommand
+    | MakeDirectoryCommand
+    | RemoveDirectoryCommand
+    | UpdateTomlCommand
+    | WriteUvrSectionCommand
+    | MergeUpgradeCommand
+    | InstallWheelsCommand
+    | ConfigureGitIdentityCommand
+    | CommitCommand
+    | PushCommand
+    | SyncLockfileCommand
+    | DispatchWorkflowCommand
+    | CommandGroup,
     Discriminator("type"),
+]
+
+__all__ = [
+    "AnyCommand",
+    "BuildCommand",
+    "Command",
+    "CommandGroup",
+    "CommitCommand",
+    "ConfigureGitIdentityCommand",
+    "CreateReleaseCommand",
+    "CreateTagCommand",
+    "DispatchWorkflowCommand",
+    "DownloadRunArtifactsCommand",
+    "DownloadWheelsCommand",
+    "InstallWheelsCommand",
+    "MakeDirectoryCommand",
+    "MergeUpgradeCommand",
+    "PinDepsCommand",
+    "PublishToIndexCommand",
+    "PushCommand",
+    "RemoveDirectoryCommand",
+    "SetVersionCommand",
+    "ShellCommand",
+    "SyncLockfileCommand",
+    "UpdateTomlCommand",
+    "WriteFileCommand",
+    "WriteUvrSectionCommand",
 ]

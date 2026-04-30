@@ -1,23 +1,11 @@
-"""Commands for filesystem operations."""
+"""Filesystem commands."""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
-from ..types import Command
-
-
-class MakeDirectoryCommand(Command):
-    """Create a directory, including parent directories."""
-
-    type: Literal["make_directory"] = "make_directory"
-    path: str
-
-    def execute(self) -> int:
-        from pathlib import Path
-
-        Path(self.path).mkdir(parents=True, exist_ok=True)
-        return 0
+from .base import Command
 
 
 class WriteFileCommand(Command):
@@ -28,9 +16,39 @@ class WriteFileCommand(Command):
     content: str
 
     def execute(self) -> int:
-        from pathlib import Path
+        if self.label:
+            print(f"  {self.label}")
+        p = Path(self.path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(self.content)
+        return 0
 
-        dest = Path(self.path)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(self.content, encoding="utf-8")
+
+class MakeDirectoryCommand(Command):
+    """Create a directory, including parents."""
+
+    type: Literal["make_directory"] = "make_directory"
+    path: str
+
+    def execute(self) -> int:
+        if self.label:
+            print(f"  {self.label}")
+        Path(self.path).mkdir(parents=True, exist_ok=True)
+        return 0
+
+
+class RemoveDirectoryCommand(Command):
+    """Remove a directory tree."""
+
+    type: Literal["remove_directory"] = "remove_directory"
+    path: str
+
+    def execute(self) -> int:
+        import shutil
+
+        if self.label:
+            print(f"  {self.label}")
+        p = Path(self.path)
+        if p.exists():
+            shutil.rmtree(p)
         return 0

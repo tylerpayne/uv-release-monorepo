@@ -1,70 +1,104 @@
-"""Commands for building and downloading wheels."""
+"""Build command."""
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 from typing import Literal
 
 from pydantic import Field
 
-from ..types import Command, Package
-
-_UVR_RUNNER_ENV = "UVR_RUNNER"
+from .base import Command
 
 
 class BuildCommand(Command):
-    """Build a package via uv build."""
+    """Build a package with uv build."""
 
     type: Literal["build"] = "build"
-    package: Package
+    package_path: str
+    out_dir: str = "dist"
+    # All runners this package needs to build on (own + inherited from dependents).
     runners: list[list[str]] = Field(default_factory=list)
-    out_dir: str = "dist/"
-    find_links: list[str] = Field(default_factory=lambda: ["dist/", "deps/"])
+    # Runners where this package is an actual release target (wheel goes to dist/).
+    # On other runners the wheel goes to deps/ so dependents can find it.
+    target_runners: list[list[str]] = Field(default_factory=list)
 
     def execute(self) -> int:
-        import json
-        import os
-        import subprocess
+        # In CI, UVR_RUNNER is set to the current runner's labels as JSON.
+        # Skip this build if the current runner is not in the package's runner list.
+        if self.runners and not self._runner_matches():
+            if self.label:
+                print(f"  {self.label} (skipped, wrong runner)")
+            return 0
+        # On a runner where this package is only a dependency (not a target),
+        # output to deps/ instead of dist/.
+        out_dir = self._effective_out_dir()
+        if self.label:
+            print(f"  {self.label}")
+        result = subprocess.run(
+            [
+                "uv",
+                "build",
+                self.package_path,
+                "--out-dir",
+                out_dir,
+                # --find-links tells uv where to find pre-built workspace deps.
+                # dist/ has release targets, deps/ has unreleased internal deps.
+                "--find-links",
+                "dist",
+                "--find-links",
+                "deps",
+                # --no-sources prevents uv from resolving workspace deps from
+                # source, forcing it to use only the pre-built wheels.
+                "--no-sources",
+            ]
+        )
+        return result.returncode
 
-        # If UVR_RUNNER is set, skip if this command's runners don't match
-        runner_json = os.environ.get(_UVR_RUNNER_ENV, "")
-        if runner_json and self.runners:
-            current_runner = json.loads(runner_json)
-            if current_runner not in self.runners:
-                return 0
+    def runs_on(self, runner: list[str]) -> bool:
+        """Check if this package builds on the given runner labels."""
+        if not self.runners:
+            return True
+        return runner in self.runners
 
-        args = ["uv", "build", self.package.path, "--out-dir", self.out_dir]
-        for link_dir in self.find_links:
-            args.extend(["--find-links", link_dir])
-        args.append("--no-sources")
-        return subprocess.run(args).returncode
+    def is_target_on(self, runner: list[str]) -> bool:
+        """Check if this package is a release target on the given runner."""
+        if not self.target_runners:
+            return self.out_dir == "dist"
+        return runner in self.target_runners
 
+    def _runner_matches(self) -> bool:
+        """Check if the current CI runner matches any of this package's runners."""
+        raw = os.environ.get("UVR_RUNNER", "")
+        if not raw:
+            return True
+        try:
+            current = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return True
+        if not isinstance(current, list):
+            return True
+        return self.runs_on(current)
 
-class DownloadWheelsCommand(Command):
-    """Download wheels from GitHub releases for unchanged deps."""
+    def _effective_out_dir(self) -> str:
+        """Determine output dir based on current runner.
 
-    type: Literal["download_wheels"] = "download_wheels"
-    packages: list[Package]
-    release_tags: dict[str, str]  # {package_name: release_tag_name} — from plan context
-    directory: str = "deps"
-
-    def execute(self) -> int:
-        import subprocess
-
-        for pkg in self.packages:
-            tag = self.release_tags.get(pkg.name)
-            if not tag:
-                continue
-            result = subprocess.run(
-                [
-                    "gh",
-                    "release",
-                    "download",
-                    tag,
-                    "--dir",
-                    self.directory,
-                    "--clobber",
-                ],
-            )
-            if result.returncode != 0:
-                return result.returncode
-        return 0
+        If this is a target on the current runner, output to dist/.
+        If this is only building as a dependency, output to deps/.
+        Without UVR_RUNNER (local builds), use the configured out_dir.
+        """
+        if not self.target_runners:
+            return self.out_dir
+        raw = os.environ.get("UVR_RUNNER", "")
+        if not raw:
+            return self.out_dir
+        try:
+            current = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return self.out_dir
+        if not isinstance(current, list):
+            return self.out_dir
+        if current in self.target_runners:
+            return "dist"
+        return "deps"
