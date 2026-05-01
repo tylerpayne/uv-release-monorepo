@@ -7,13 +7,17 @@ from pydantic import Field
 from diny import singleton, provider
 
 from ...types.base import Frozen
+from ...types.release import Release
 from ..build.build_job import BuildJob
 from ..build.build_packages import BuildPackages
 from .release_bump_job import ReleaseBumpJob
+from .release_bump_versions import ReleaseBumpVersions
 from .release_guard import ReleaseGuard
 from ...types.job import Job
 from .publish_job import PublishJob
 from .release_job import ReleaseJob
+from .release_versions import ReleaseVersions
+from ..shared.baseline_tags import BaselineTags
 from ..config.uvr_config import UvrConfig
 from ..config.uvr_publishing import UvrPublishing
 from ..config.uvr_runners import UvrRunners
@@ -28,6 +32,7 @@ class Plan(Frozen):
     """The release pipeline. Contains all jobs and CI metadata."""
 
     jobs: list[Job] = Field(default_factory=list)
+    releases: list[Release] = Field(default_factory=list)
     build_matrix: list[list[str]] = Field(default_factory=list)
     python_version: str = "3.12"
     publish_environment: str = ""
@@ -46,6 +51,9 @@ def provide_plan(
     uvr_config: UvrConfig,
     uvr_publishing: UvrPublishing,
     uvr_runners: UvrRunners,
+    release_versions: ReleaseVersions,
+    bump_versions: ReleaseBumpVersions,
+    baseline_tags: BaselineTags,
     reuse_run: ReuseRun,
     reuse_releases: ReuseReleases,
     runner_filter: RunnerFilter,
@@ -88,6 +96,30 @@ def provide_plan(
         python_version=uvr_config.python_version,
         publish_environment=uvr_publishing.environment,
         skip=sorted(set(skip)),
+        releases=_build_releases(
+            build_packages, release_versions, bump_versions, baseline_tags
+        ),
         reuse_run=reuse_run.value,
         reuse_releases=reuse_releases.value,
     )
+
+
+def _build_releases(
+    build_packages: BuildPackages,
+    release_versions: ReleaseVersions,
+    bump_versions: ReleaseBumpVersions,
+    baseline_tags: BaselineTags,
+) -> list[Release]:
+    releases: list[Release] = []
+    for name in release_versions.items:
+        tag = baseline_tags.items.get(name)
+        releases.append(
+            Release(
+                name=name,
+                current_version=build_packages.items[name].version,
+                release_version=release_versions.items[name],
+                next_version=bump_versions.items[name],
+                baseline_tag=tag.raw if tag else "",
+            )
+        )
+    return releases
