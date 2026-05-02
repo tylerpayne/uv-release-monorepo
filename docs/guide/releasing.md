@@ -6,105 +6,81 @@
 uvr release
 ```
 
-`uvr release` detects changes, pins dependencies, and plans a topologically ordered build, publish, and bump. It validates everything locally before dispatch. Version conflicts, stale pins, and dirty working trees are caught on your machine, not in CI. See [Architecture](../internals/architecture.md) for the full pipeline.
+`uvr release` detects what changed, pins dependencies, and plans a topologically ordered build, publish, and bump. Everything is validated locally before dispatch. Version conflicts, stale pins, and dirty working trees are caught on your machine, not in CI. See [Architecture](../internals/architecture.md) for the full pipeline.
 
-## Preview without releasing
+A clean working tree is required. `uvr release` errors if you have uncommitted changes or if your local branch is out of sync with the remote.
+
+## Preview before dispatching
+
+Run a dry run to see the plan without changing anything.
 
 ```bash
 uvr release --dry-run
 ```
 
-Runs all detection and planning logic but makes no changes.
-
-## Export plan as JSON
+Export the plan as JSON for inspection or for re-dispatching later through the GitHub Actions UI.
 
 ```bash
 uvr release --json
 ```
 
-## Bump versions before releasing
+## Choose what to release
 
-To release a minor or major version instead of patch, bump first and then release.
+By default, `uvr release` releases every package whose files changed since its last release (and any dependents). Override the selection when you need to.
+
+```bash
+uvr release --packages pkg-alpha pkg-beta    # force specific packages (and their dependents)
+uvr release --not-packages pkg-debug         # exclude specific packages
+uvr release --all-packages                   # treat every package as changed
+```
+
+To bump major or minor instead of patch, run `uvr version` before `uvr release`. See [Managing Versions](versions.md) for the full version lifecycle.
 
 ```bash
 uvr version --bump minor
 uvr release
 ```
 
-Available bump types are `--bump minor`, `--bump major`, `--bump patch`, `--bump dev`, `--bump post`, `--promote alpha`, `--promote beta`, `--promote rc`, and `--promote final`. See [Managing Versions](versions.md) for the full version lifecycle.
-
-## Publish dev versions
-
-```bash
-uvr release --dev
-```
-
-Publishes the `.devN` version as-is instead of stripping it.
-
-## Set release notes
+## Customize the release
 
 ```bash
 uvr release --release-notes pkg-alpha "Fixed the widget serializer"
 uvr release --release-notes pkg-alpha @notes/alpha.md
 ```
 
-The flag is repeatable for multiple packages.
-
-## Skip confirmation
-
-```bash
-uvr release -y
-```
-
-## Build and release locally
-
-```bash
-uvr release --where local
-```
-
-Runs the full pipeline on your machine instead of dispatching to CI. Add `--no-push` to skip git push. Add `--no-commit` to skip git commit.
-
-## Clean working tree
-
-A clean working tree is required. `uvr release` will error if you have uncommitted changes or if your local branch is out of sync with the remote.
-
-## Release specific packages
-
-```bash
-uvr release --packages pkg-alpha pkg-beta
-```
-
-Force specific packages to be treated as changed (and their dependents).
-
-## Exclude specific packages
-
-```bash
-uvr release --not-packages pkg-debug pkg-internal
-```
-
-Exclude specific packages from the release even if they have changes.
-
-## Release all packages
-
-```bash
-uvr release --all-packages
-```
-
-Treats all packages as changed regardless of what files were modified.
-
-## Filter runners
+`--release-notes` is repeatable for multiple packages. Use `@path` to read from a file.
 
 ```bash
 uvr release --runners ubuntu-latest macos-latest
 ```
 
-Only build on specified runner labels.
+`--runners` filters the build matrix to specific runner labels.
 
-## Python version
+```bash
+uvr release --dev
+```
 
-The Python version for CI builds is configured in `[tool.uvr.config]` in your root `pyproject.toml`. See [Reference](reference.md) for all configuration keys.
+`--dev` publishes the `.devN` version as is instead of stripping it. Useful for testing packages from an index before committing to a real release.
 
-## Recovery from failures
+```bash
+uvr release -y
+```
+
+`-y` skips the interactive confirmation prompt.
+
+The Python version for CI builds is set in `[tool.uvr.config]`. See [Configuration](configuration.md) for all configuration keys.
+
+## Run the pipeline locally
+
+```bash
+uvr release --where local
+```
+
+Runs the full pipeline on your machine instead of dispatching to CI. Add `--no-push` to skip git push and `--no-commit` to skip git commit.
+
+## Recover from a failure
+
+The release pipeline runs five jobs in order. `validate`, `build`, `release`, `publish`, then `bump`. If any job fails, resume from where it broke. You do not need to start over.
 
 ### Build failed
 
@@ -116,7 +92,7 @@ uvr release
 
 ### Build succeeded, release failed
 
-Reuse the build artifacts and skip ahead without rebuilding.
+Reuse the build artifacts from the prior run.
 
 ```bash
 uvr release --skip-to release --reuse-run <RUN_ID>
@@ -126,16 +102,16 @@ Get the run ID from the GitHub Actions URL or `gh run list`.
 
 ### Release succeeded, publish or bump failed
 
-Skip straight to bump. No `--reuse-*` flag is needed since bump does not use wheel artifacts. Use `--all-packages` so the planner treats packages with clean versions as changed.
+Pass `--packages` to name the packages you just released. Bump does not need wheel artifacts, so no `--reuse-*` flag is required.
 
 ```bash
-uvr release --skip-to bump --all-packages
+uvr release --skip-to bump --packages pkg-alpha pkg-beta
 ```
 
 If publish failed and you want to retry it before bump, reuse the existing GitHub releases.
 
 ```bash
-uvr release --skip-to publish --reuse-releases --all-packages
+uvr release --skip-to publish --reuse-releases --packages pkg-alpha pkg-beta
 ```
 
 ### Custom job failed
@@ -146,50 +122,49 @@ Skip the core jobs and re-dispatch.
 uvr release --skip build --skip release --skip bump
 ```
 
-Or re-dispatch via the GitHub Actions UI with the original plan JSON.
+Or re-dispatch through the GitHub Actions UI with the original plan JSON.
 
-## Skip and reuse flags
+### Skip and reuse flag reference
 
 | Flag | Description |
 |------|-------------|
-| `--skip JOB` | Skip a job (repeatable) |
-| `--skip-to JOB` | Skip all jobs before JOB (except `validate`) |
+| `--skip JOB` | Skip a single job (repeatable) |
+| `--skip-to JOB` | Skip every job before JOB (except `validate`) |
 | `--reuse-run RUN_ID` | Download artifacts from a prior CI run instead of building |
 | `--reuse-releases` | Download wheels from existing GitHub releases instead of CI artifacts |
-| `--all-packages` | Treat all packages as changed (needed when versions are clean after a prior release commit) |
 
-`--reuse-run` and `--reuse-releases` are mutually exclusive.
+`--reuse-run` and `--reuse-releases` are mutually exclusive. Either one is only required when `release` or `publish` will run. `--skip-to bump` does not need any `--reuse-*` flag.
 
-`--reuse-run` and `--reuse-releases` are only required when `release` or `publish` will run. `--skip-to bump` does not need any `--reuse-*` flag.
+## Other commands
 
-## Build locally for testing
+Build and install locally for testing.
 
 ```bash
-uvr build                        # build changed packages to dist/
-uvr build --packages pkg-alpha   # build specific packages and their deps
-uvr build --all-packages         # build everything
-uvr install --dist dist/         # install from local build
+uvr build                          # build changed packages to dist/
+uvr build --packages pkg-alpha     # build specific packages and their deps
+uvr build --all-packages           # build everything
+uvr install --dist dist/           # install from a local build
 ```
 
-## Install and download
+Install or download released wheels from GitHub.
 
 ```bash
-uvr install pkg-alpha            # from GitHub releases
-uvr install pkg-alpha@1.2.0     # specific version
-uvr install --run-id 12345678   # from CI artifacts
-uvr download pkg-alpha           # download wheels without installing
+uvr install pkg-alpha              # latest release
+uvr install pkg-alpha==1.2.0       # specific version
+uvr install --run-id 12345678      # from CI artifacts
+uvr download pkg-alpha             # download wheels without installing
 uvr download pkg-alpha --all-platforms
 ```
 
-## Upgrade uvr
+Upgrade uvr and its bundled templates.
 
 ```bash
 uv add --dev uv-release
-uvr workflow install --upgrade   # merge template changes
-uvr skill install --upgrade      # merge skill changes
+uvr workflow install --upgrade     # merge template changes
+uvr skill install --upgrade        # merge skill changes
 ```
 
-## Clean caches
+Remove build caches.
 
 ```bash
 uvr clean

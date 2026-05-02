@@ -31,16 +31,7 @@ git commit -m "chore: add release workflow"
 git push
 ```
 
-### Validate and upgrade
-
-```bash
-uvr workflow validate             # check structure and frozen fields
-uvr workflow validate --diff      # show diff against template
-uvr workflow install --upgrade    # three-way merge template changes
-uvr workflow install --upgrade --editor code  # resolve merge conflicts in your editor of choice
-```
-
-Custom jobs survive upgrades. The three-way merge preserves your additions while picking up template changes.
+The workflow can be customized and upgraded over time. See [Configuration](configuration.md#workflow-management) for validation and upgrade flows.
 
 ## Check workspace status
 
@@ -51,8 +42,9 @@ uvr status
 ```
 Packages
 --------
-  files changed     pkg-alpha   0.2.0.dev0
-  unchanged         pkg-beta    0.1.1.dev0
+  STATUS         PACKAGE    VERSION      DIFF FROM
+  files changed  pkg-alpha  0.2.0.dev0   pkg-alpha/v0.1.0.dev0-base
+  unchanged      pkg-beta   0.1.2.dev0   pkg-beta/v0.1.2.dev0-base
 ```
 
 ## Your first release
