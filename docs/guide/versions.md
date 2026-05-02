@@ -30,19 +30,26 @@ uvr version --packages pkg-alpha --bump major --force
 
 ## Bump types
 
+`--bump` advances along a release axis.
+
 | Flag | Example | Description |
 |---|---|---|
 | `--bump major` | `1.2.3.dev0` → `2.0.0.dev0` | Next major version |
 | `--bump minor` | `1.2.3.dev0` → `1.3.0.dev0` | Next minor version |
 | `--bump patch` | `1.2.3.dev0` → `1.2.4.dev0` | Next patch version |
 | `--bump dev` | `1.3.0.dev0` → `1.3.0.dev1` | Increment the dev number |
-| `--bump post` | `1.2.3` → `1.2.3.post0.dev0` | Enter [post-release](https://peps.python.org/pep-0440/#post-releases) cycle |
-| `--promote alpha` | `1.3.0.dev0` → `1.3.0a0.dev0` | Enter alpha [pre-release](https://peps.python.org/pep-0440/#pre-releases) cycle |
+| `--bump post` | `1.2.3` → `1.2.3.post0.dev0` | Start or advance the [post-release](https://peps.python.org/pep-0440/#post-releases) counter |
+
+`--promote` enters or advances a [pre-release](https://peps.python.org/pep-0440/#pre-releases) track.
+
+| Flag | Example | Description |
+|---|---|---|
+| `--promote alpha` | `1.3.0.dev0` → `1.3.0a0.dev0` | Enter alpha pre-release cycle |
 | `--promote beta` | `1.3.0a2.dev0` → `1.3.0b0.dev0` | Enter beta pre-release cycle |
 | `--promote rc` | `1.3.0b1.dev0` → `1.3.0rc0.dev0` | Enter release candidate cycle |
 | `--promote final` | `1.3.0a2.dev0` → `1.3.0` | Strip pre-release markers |
 
-Repeating the same pre-release type increments it. `--promote alpha` twice goes `1.0.0a0.dev0` → `1.0.0a1.dev0`.
+If the version is already in a pre-release cycle, repeating `--promote` for the same kind bumps the pre-release number. `--promote alpha` from `1.0.0a0.dev0` produces `1.0.0a1.dev0`.
 
 ## Skip dependency pinning
 
