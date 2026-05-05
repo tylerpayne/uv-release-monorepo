@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from diny import inject
 
+from ..dependencies.config.uvr_config import UvrConfig
 from ..dependencies.shared.baseline_tags import BaselineTags
 from ..dependencies.shared.changed_packages import ChangedPackages
 from ..dependencies.shared.workspace_packages import WorkspacePackages
@@ -15,8 +16,16 @@ def cmd_status(
     workspace_packages: WorkspacePackages,
     changed_packages: ChangedPackages,
     baseline_tags: BaselineTags,
+    uvr_config: UvrConfig,
 ) -> None:
-    if not workspace_packages.items:
+    # Apply [tool.uvr.config].include / exclude so status matches the
+    # workspace view that build/release/version operate on.
+    items = dict(workspace_packages.items)
+    if uvr_config.include:
+        items = {n: p for n, p in items.items() if n in uvr_config.include}
+    items = {n: p for n, p in items.items() if n not in uvr_config.exclude}
+
+    if not items:
         print("No packages found.")
         return
 
@@ -26,7 +35,7 @@ def cmd_status(
 
     headers = ("STATUS", "PACKAGE", "VERSION", "DIFF FROM")
     rows: list[tuple[str, ...]] = []
-    for name, pkg in sorted(workspace_packages.items.items()):
+    for name, pkg in sorted(items.items()):
         reason = changed_packages.reasons.get(name, "unchanged")
         baseline = baseline_tags.items.get(name)
         diff_from = baseline.raw if baseline else "(initial)"
