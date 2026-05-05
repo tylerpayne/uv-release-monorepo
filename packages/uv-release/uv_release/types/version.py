@@ -48,6 +48,9 @@ class Version(Frozen):
     pre_kind: str | None = None
     pre_number: int | None = None
     post_number: int | None = None
+    # PEP 440 local version identifier (the part after `+`). PyPI rejects
+    # versions with locals, so any release-bound operation must strip them.
+    local: str | None = None
 
     @property
     def base(self) -> str:
@@ -78,6 +81,7 @@ class Version(Frozen):
             pre_kind=pre_kind,
             pre_number=pre_number,
             post_number=post_number,
+            local=pv.local,
         )
 
     @staticmethod
@@ -88,6 +92,7 @@ class Version(Frozen):
         pre_number: int | None = None,
         post_number: int | None = None,
         dev_number: int | None = None,
+        local: str | None = None,
     ) -> Version:
         """Construct a Version from components."""
         # Assemble then re-parse to guarantee consistent canonicalization.
@@ -98,6 +103,8 @@ class Version(Frozen):
             raw += f".post{post_number}"
         if dev_number is not None:
             raw += f".dev{dev_number}"
+        if local is not None:
+            raw += f"+{local}"
         return Version.parse(raw)
 
     def with_dev(self, dev_number: int) -> Version:
@@ -107,6 +114,7 @@ class Version(Frozen):
             pre_number=self.pre_number,
             post_number=self.post_number,
             dev_number=dev_number,
+            local=self.local,
         )
 
     def without_dev(self) -> Version:
@@ -115,6 +123,16 @@ class Version(Frozen):
             pre_kind=self.pre_kind,
             pre_number=self.pre_number,
             post_number=self.post_number,
+            local=self.local,
+        )
+
+    def without_local(self) -> Version:
+        return Version.build(
+            self.base,
+            pre_kind=self.pre_kind,
+            pre_number=self.pre_number,
+            post_number=self.post_number,
+            dev_number=self.dev_number,
         )
 
     def bump_major(self) -> Version:

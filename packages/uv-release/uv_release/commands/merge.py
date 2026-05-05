@@ -11,39 +11,49 @@ from ..utils.merge import merge_texts
 
 
 class MergeUpgradeCommand(Command):
-    """Three-way merge of a file using git merge-file."""
+    """Three-way merge of a file using git merge-file.
+
+    Reads base content from `base_path` (a transient cache path, populated
+    earlier in the same job by a FetchWorkflowBaseCommand or
+    FetchSkillBasesCommand). Merges with `incoming_content` and the file
+    currently on disk at `file_path`. The base path is not modified by this
+    command; the authoritative version record lives in pyproject.toml and is
+    updated by a separate UpdateTomlCommand only on successful merge.
+    """
 
     type: Literal["merge_upgrade"] = "merge_upgrade"
     file_path: str
-    base_content: str
+    base_path: str
     incoming_content: str
-    base_path: str = ""
     editor: str = ""
 
     def execute(self) -> int:
         if self.label:
             print(f"  {self.label}")
         current_path = Path(self.file_path)
-        if not current_path.exists():
-            current_path.parent.mkdir(parents=True, exist_ok=True)
-            current_path.write_text(self.incoming_content)
-            self._update_base()
-            return 0
-        current = current_path.read_text()
+        base = Path(self.base_path)
+        # Missing base means we have no common ancestor to compare against.
+        # That should have been caught upstream (the fetch command runs first).
+        base_content = base.read_text(encoding="utf-8") if base.exists() else ""
+        current = current_path.read_text(encoding="utf-8")
         merged, has_conflicts = merge_texts(
-            current, self.base_content, self.incoming_content
+            current, base_content, self.incoming_content
         )
         if merged == current:
             print(f"    {self.file_path}: already up to date")
             return 0
-        current_path.write_text(merged)
-        self._update_base()
+        current_path.write_text(merged, encoding="utf-8")
         if has_conflicts:
             return self._resolve_conflicts(current_path, current)
         return 0
 
     def _resolve_conflicts(self, path: Path, original: str) -> int:
-        """Open editor for conflict resolution if configured."""
+        """Open editor for conflict resolution if configured.
+
+        On revert, the file is restored to `original`. Returning a non-zero
+        exit code halts the surrounding job, so any UpdateTomlCommand queued
+        after this command will not run, leaving workflow-version unchanged.
+        """
         if not self.editor:
             print(f"    {self.file_path}: merged with conflicts (resolve manually)")
             return 0
@@ -59,8 +69,7 @@ class MergeUpgradeCommand(Command):
         if answer == "n":
             return 0
         subprocess.run([self.editor, str(path)])
-        # Check if conflicts were resolved.
-        content = path.read_text()
+        content = path.read_text(encoding="utf-8")
         if "<<<<<<< " in content:
             try:
                 revert = (
@@ -70,15 +79,8 @@ class MergeUpgradeCommand(Command):
                 print()
                 return 1
             if revert != "n":
-                path.write_text(original)
+                path.write_text(original, encoding="utf-8")
                 print(f"    Reverted {self.file_path}")
             return 1
         print(f"    Conflicts resolved in {self.file_path}")
         return 0
-
-    def _update_base(self) -> None:
-        """Write the incoming content as the new merge base."""
-        if self.base_path:
-            p = Path(self.base_path)
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(self.incoming_content)

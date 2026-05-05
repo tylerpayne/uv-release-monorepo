@@ -8,6 +8,7 @@ from .base import Command
 from .build import BuildCommand
 from .dispatch import DispatchWorkflowCommand
 from .download import DownloadRunArtifactsCommand, DownloadWheelsCommand
+from .fetch import FetchSkillBasesCommand, FetchWorkflowBaseCommand
 from .file import MakeDirectoryCommand, RemoveDirectoryCommand, WriteFileCommand
 from .git import CommitCommand, ConfigureGitIdentityCommand, PushCommand
 from .group import CommandGroup
@@ -36,6 +37,8 @@ AnyCommand = Annotated[
     | RemoveDirectoryCommand
     | UpdateTomlCommand
     | WriteUvrSectionCommand
+    | FetchWorkflowBaseCommand
+    | FetchSkillBasesCommand
     | MergeUpgradeCommand
     | InstallWheelsCommand
     | ConfigureGitIdentityCommand
@@ -59,6 +62,8 @@ __all__ = [
     "DispatchWorkflowCommand",
     "DownloadRunArtifactsCommand",
     "DownloadWheelsCommand",
+    "FetchSkillBasesCommand",
+    "FetchWorkflowBaseCommand",
     "InstallWheelsCommand",
     "MakeDirectoryCommand",
     "MergeUpgradeCommand",

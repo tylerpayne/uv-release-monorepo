@@ -1,4 +1,15 @@
-"""WorkflowUpgradeJob: scaffold or upgrade the release workflow."""
+"""WorkflowUpgradeJob: scaffold or upgrade the release workflow.
+
+Three install modes:
+- no flags: scaffold if missing, error if file exists.
+- --upgrade: three-way merge using the base from the previously-recorded
+  workflow-version (fetched via uvx). Updates workflow-version after success.
+- --force: overwrite with the current template. Updates workflow-version.
+
+The .uvr/bases/ folder is a transient cache. The authoritative record of
+"what version did the user last accept" lives in [tool.uvr.config].workflow-version
+in pyproject.toml.
+"""
 
 from __future__ import annotations
 
@@ -6,8 +17,14 @@ from pathlib import Path
 
 from diny import singleton, provider
 
-from ...commands import MergeUpgradeCommand, WriteFileCommand
+from ...commands import (
+    FetchWorkflowBaseCommand,
+    MergeUpgradeCommand,
+    UpdateTomlCommand,
+    WriteFileCommand,
+)
 from ...types.job import Job
+from ..config.uvr_config import UvrConfig
 from ..params.workflow_params import WorkflowParams
 from ..shared.workflow_state import WorkflowState
 from ..shared.workflow_template import WorkflowTemplate
@@ -23,15 +40,21 @@ def provide_workflow_upgrade_job(
     params: WorkflowParams,
     state: WorkflowState,
     template: WorkflowTemplate,
+    config: UvrConfig,
 ) -> WorkflowUpgradeJob:
     if not template.content:
-        raise ValueError(
-            "No workflow template found. Is uv-release installed correctly?"
-        )
+        msg = "No workflow template found. Is uv-release installed correctly?"
+        raise ValueError(msg)
 
-    commands: list[WriteFileCommand | MergeUpgradeCommand] = []
+    commands: list[
+        WriteFileCommand
+        | FetchWorkflowBaseCommand
+        | MergeUpgradeCommand
+        | UpdateTomlCommand
+    ] = []
     base_path = str(Path(".uvr") / "bases" / state.file_path)
 
+    # Scaffold path: file missing, just write it and record the version.
     if not state.exists:
         commands.append(
             WriteFileCommand(
@@ -41,30 +64,73 @@ def provide_workflow_upgrade_job(
             )
         )
         commands.append(
-            WriteFileCommand(
-                label="Write merge base", path=base_path, content=template.content
+            UpdateTomlCommand(
+                label=f"Record workflow-version={template.version}",
+                key="workflow-version",
+                value=template.version,
             )
         )
-    elif state.is_dirty and not params.force:
-        raise ValueError(
-            f"{state.file_path} has uncommitted changes. Commit first or use --force."
+        return WorkflowUpgradeJob(name="workflow-upgrade", commands=commands)  # type: ignore[arg-type]
+
+    # File exists. Bare `install` is a no-op error; user must pick a mode.
+    if not params.upgrade and not params.force:
+        msg = (
+            f"{state.file_path} already exists. "
+            "Use --upgrade to three-way-merge with the bundled template, "
+            "or --force to overwrite."
         )
-    elif params.base_only:
+        raise ValueError(msg)
+
+    if state.is_dirty and not params.force:
+        msg = f"{state.file_path} has uncommitted changes. Commit first or use --force."
+        raise ValueError(msg)
+
+    if params.upgrade:
+        if not config.workflow_version:
+            msg = (
+                "No workflow-version recorded in [tool.uvr.config]. "
+                "Cannot --upgrade without knowing the previous template version. "
+                "Use --force to reset to the current template."
+            )
+            raise ValueError(msg)
         commands.append(
-            WriteFileCommand(
-                label="Update merge base", path=base_path, content=template.content
+            FetchWorkflowBaseCommand(
+                label=f"Fetch base from uv-release {config.workflow_version}",
+                from_version=config.workflow_version,
+                output_path=base_path,
             )
         )
-    else:
         commands.append(
             MergeUpgradeCommand(
                 label=f"Upgrade {state.file_path}",
                 file_path=state.file_path,
-                base_content=state.merge_base,
-                incoming_content=template.content,
                 base_path=base_path,
+                incoming_content=template.content,
                 editor=params.editor,
             )
         )
+        commands.append(
+            UpdateTomlCommand(
+                label=f"Record workflow-version={template.version}",
+                key="workflow-version",
+                value=template.version,
+            )
+        )
+        return WorkflowUpgradeJob(name="workflow-upgrade", commands=commands)  # type: ignore[arg-type]
 
+    # --force: overwrite and record version.
+    commands.append(
+        WriteFileCommand(
+            label=f"Overwrite {state.file_path}",
+            path=state.file_path,
+            content=template.content,
+        )
+    )
+    commands.append(
+        UpdateTomlCommand(
+            label=f"Record workflow-version={template.version}",
+            key="workflow-version",
+            value=template.version,
+        )
+    )
     return WorkflowUpgradeJob(name="workflow-upgrade", commands=commands)  # type: ignore[arg-type]

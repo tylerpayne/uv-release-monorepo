@@ -19,6 +19,9 @@ class UvrConfig(Frozen):
     python_version: str = "3.12"
     include: frozenset[str] = frozenset()
     exclude: frozenset[str] = frozenset()
+    # uv-release version whose templates were last accepted (empty if never).
+    workflow_version: str = ""
+    skill_version: str = ""
 
 
 @provider(UvrConfig)
@@ -32,4 +35,6 @@ def provide_uvr_config() -> UvrConfig:
         python_version=config.python_version,
         include=frozenset(config.include),
         exclude=frozenset(config.exclude),
+        workflow_version=config.workflow_version,
+        skill_version=config.skill_version,
     )

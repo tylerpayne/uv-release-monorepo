@@ -57,6 +57,11 @@ class UvrConfigTable(Frozen, extra="allow"):
     python_version: str = "3.12"
     include: list[str] = Field(default_factory=list)
     exclude: list[str] = Field(default_factory=list)
+    # uv-release version whose workflow/skill templates were last accepted.
+    # Used by `uvr workflow install --upgrade` and `uvr skill install --upgrade`
+    # to fetch the correct base for three-way merge via uvx.
+    workflow_version: str = Field(default="", alias="workflow-version")
+    skill_version: str = Field(default="", alias="skill-version")
 
 
 class UvrPublishTable(Frozen, extra="allow"):

@@ -14,7 +14,7 @@ class WorkflowParams(Frozen):
     subcommand: str = ""
     force: bool = False
     upgrade: bool = False
-    base_only: bool = False
+    print_template: bool = False
     workflow_dir: str = ".github/workflows"
     editor: str = ""
     show_diff: bool = False

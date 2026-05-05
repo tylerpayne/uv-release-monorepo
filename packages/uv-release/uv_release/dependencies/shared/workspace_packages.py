@@ -42,7 +42,13 @@ def provide_workspace_packages() -> WorkspacePackages:
                 tomlkit.loads(pyproject_path.read_text())
             )
             name = canonicalize_name(pkg_doc.project.name or pkg_dir.name)
-            version = Version.parse(pkg_doc.project.version or "0.0.0")
+            if not pkg_doc.project.version:
+                msg = (
+                    f"Package {name} ({pyproject_path}) has no [project].version. "
+                    "Set a version before running uvr."
+                )
+                raise ValueError(msg)
+            version = Version.parse(pkg_doc.project.version)
 
             deps = [Dependency.parse(d) for d in pkg_doc.project.dependencies]
 

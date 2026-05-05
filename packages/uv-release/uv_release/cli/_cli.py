@@ -182,9 +182,12 @@ def parse_args() -> ParsedArgs:
     wf_inst = wf_sub.add_parser("install", help="Install or upgrade the workflow.")
     wf_inst.add_argument("--force", action="store_true")
     wf_inst.add_argument("--upgrade", action="store_true")
-    wf_inst.add_argument("--base-only", action="store_true")
     wf_inst.add_argument("--workflow-dir", default=".github/workflows")
     wf_inst.add_argument("--editor", default="")
+    # Hidden flag: print the bundled template to stdout and exit. Used by
+    # --upgrade via `uvx --with uv-release=={prev} uvr workflow install
+    # --print-template` to fetch the base for three-way merge.
+    wf_inst.add_argument("--print-template", action="store_true")
 
     # -- skill --
     sk_p = sub.add_parser("skill", help="Manage Claude Code skills.")
@@ -192,8 +195,10 @@ def parse_args() -> ParsedArgs:
     sk_inst = sk_sub.add_parser("install", help="Install or upgrade skill files.")
     sk_inst.add_argument("--force", action="store_true")
     sk_inst.add_argument("--upgrade", action="store_true")
-    sk_inst.add_argument("--base-only", action="store_true")
     sk_inst.add_argument("--editor", default="")
+    # Hidden flag: print the bundled templates to stdout (concatenated with
+    # path markers) and exit. Used by --upgrade via uvx to fetch base content.
+    sk_inst.add_argument("--print-template", action="store_true")
 
     # -- jobs (CI-only, hidden) --
     jobs_p = sub.add_parser("jobs", help="Execute a job from a plan (CI).")
@@ -407,7 +412,7 @@ def provide_workflow_params(args: ParsedArgs) -> WorkflowParams:
         subcommand=args.values.get("wf_subcommand", "") or "",
         force=args.values.get("force", False),
         upgrade=args.values.get("upgrade", False),
-        base_only=args.values.get("base_only", False),
+        print_template=args.values.get("print_template", False),
         workflow_dir=args.values.get("workflow_dir", ".github/workflows")
         or ".github/workflows",
         editor=editor,
@@ -423,7 +428,7 @@ def provide_skill_params(args: ParsedArgs) -> SkillParams:
     return SkillParams(
         force=args.values.get("force", False),
         upgrade=args.values.get("upgrade", False),
-        base_only=args.values.get("base_only", False),
+        print_template=args.values.get("print_template", False),
         editor=editor,
     )
 
@@ -496,7 +501,7 @@ def cli(params: Params, hooks: Hooks, workspace: WorkspacePackages) -> None:
                 sys.exit(1)
         from ..execute import execute_job
 
-        execute_job(exc.fix_job)
+        execute_job(exc.fix_job, hooks)
         os.execvp(sys.argv[0], sys.argv)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

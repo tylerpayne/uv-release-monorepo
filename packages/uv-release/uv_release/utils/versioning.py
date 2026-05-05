@@ -9,13 +9,18 @@ from ..types.version import Version
 
 
 def compute_release_version(version: Version, *, dev_release: bool = False) -> Version:
-    """Compute the version that will be published."""
+    """Compute the version that will be published.
+
+    PyPI rejects local version identifiers, so they are always stripped here
+    regardless of dev_release mode.
+    """
+    cleaned = version.without_local() if version.local is not None else version
     if dev_release:
-        if version.is_dev:
-            return version
+        if cleaned.is_dev:
+            return cleaned
         msg = f"Cannot do a dev release from non-dev version: {version.raw}"
         raise ValueError(msg)
-    return version.without_dev() if version.is_dev else version
+    return cleaned.without_dev() if cleaned.is_dev else cleaned
 
 
 def compute_next_version(version: Version, *, dev_release: bool = False) -> Version:
@@ -51,6 +56,12 @@ def compute_next_version(version: Version, *, dev_release: bool = False) -> Vers
 
 def compute_bumped_version(version: Version, bump_kind: BumpKind) -> Version:
     """Compute the version that results from a bump."""
+    if version.local is not None:
+        msg = (
+            f"Cannot bump version with local segment: {version.raw}. "
+            "Strip the local segment first (set the version explicitly)."
+        )
+        raise ValueError(msg)
     match bump_kind:
         case BumpKind.MAJOR:
             return Version.build(f"{version.major + 1}.0.0", dev_number=0)
@@ -108,6 +119,9 @@ def _promote(version: Version) -> Version:
         return Version.build(version.base, pre_kind="rc", pre_number=0, dev_number=0)
     if version.pre_kind == "rc":
         return Version.build(version.base)
+    if version.post_number is not None:
+        msg = f"Cannot promote post-release {version.raw}. Bump first, then promote."
+        raise ValueError(msg)
     msg = f"Cannot promote: {version.raw} is already a final release"
     raise ValueError(msg)
 

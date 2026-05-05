@@ -16,14 +16,18 @@ from ..params.workflow_params import WorkflowParams
 
 @singleton
 class WorkflowState(Frozen):
-    """The current workflow file state: content, existence, merge base."""
+    """The current workflow file state on disk.
+
+    The merge base is no longer tracked here. With version tracking in
+    [tool.uvr.config].workflow-version, the base is fetched on demand at
+    execute time via uvx (FetchWorkflowBaseCommand) rather than read from a
+    persistent cache.
+    """
 
     file_path: str = ""
     exists: bool = False
     content: str = ""
-    merge_base: str = ""
     is_dirty: bool = False
-    # All job names from the workflow YAML, in definition order.
     job_names: list[str] = Field(default_factory=list)
 
 
@@ -35,10 +39,7 @@ def provide_workflow_state(
     workflow_path = Path(params.workflow_dir) / "release.yml"
     file_path = str(workflow_path)
     exists = workflow_path.exists()
-    content = workflow_path.read_text() if exists else ""
-
-    base_path = Path(".uvr") / "bases" / file_path
-    merge_base = base_path.read_text() if base_path.exists() else ""
+    content = workflow_path.read_text(encoding="utf-8") if exists else ""
 
     is_dirty = git_repo.file_is_dirty(file_path) if exists else False
 
@@ -48,7 +49,6 @@ def provide_workflow_state(
         file_path=file_path,
         exists=exists,
         content=content,
-        merge_base=merge_base,
         is_dirty=is_dirty,
         job_names=job_names,
     )

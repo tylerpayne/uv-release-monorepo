@@ -11,5 +11,5 @@ class SkillParams(Frozen):
 
     force: bool = False
     upgrade: bool = False
-    base_only: bool = False
+    print_template: bool = False
     editor: str = ""

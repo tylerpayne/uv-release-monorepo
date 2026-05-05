@@ -38,7 +38,7 @@ class GitRepo:
             for ref in self._repo.listall_references():
                 if ref.startswith(full_prefix):
                     result.append(ref[len("refs/tags/") :])
-        except (AttributeError, OSError):
+        except (AttributeError, OSError, pygit2.GitError):
             pass
         return result
 
@@ -46,7 +46,7 @@ class GitRepo:
         try:
             from_tree = self._repo.revparse_single(from_commit).peel(pygit2.Tree)
             to_tree = self._repo.revparse_single(to_commit).peel(pygit2.Tree)
-        except (KeyError, AttributeError):
+        except (KeyError, AttributeError, pygit2.GitError):
             return True
         try:
             from_oid = from_tree[path].id
@@ -71,7 +71,11 @@ class GitRepo:
             return ""
 
     def head_commit(self) -> str:
-        return str(self._repo.revparse_single("HEAD").id)
+        try:
+            return str(self._repo.revparse_single("HEAD").id)
+        except (KeyError, pygit2.GitError) as exc:
+            msg = "No commits found in repository (HEAD is unset)"
+            raise ValueError(msg) from exc
 
     def is_dirty(self) -> bool:
         status = self._repo.status()

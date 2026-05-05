@@ -13,10 +13,14 @@ def merge_texts(current: str, base: str, incoming: str) -> tuple[str, bool]:
     Returns (merged_text, has_conflicts). Uses git merge-file under the hood.
     """
     with (
-        tempfile.NamedTemporaryFile(mode="w", suffix=".current", delete=False) as f_cur,
-        tempfile.NamedTemporaryFile(mode="w", suffix=".base", delete=False) as f_base,
         tempfile.NamedTemporaryFile(
-            mode="w", suffix=".incoming", delete=False
+            mode="w", suffix=".current", delete=False, encoding="utf-8"
+        ) as f_cur,
+        tempfile.NamedTemporaryFile(
+            mode="w", suffix=".base", delete=False, encoding="utf-8"
+        ) as f_base,
+        tempfile.NamedTemporaryFile(
+            mode="w", suffix=".incoming", delete=False, encoding="utf-8"
         ) as f_inc,
     ):
         f_cur.write(current)
@@ -43,9 +47,14 @@ def merge_texts(current: str, base: str, incoming: str) -> tuple[str, bool]:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
         )
 
     for p in [f_cur.name, f_base.name, f_inc.name]:
         Path(p).unlink(missing_ok=True)
 
+    # Negative returncode means the process was killed by a signal.
+    if result.returncode < 0:
+        msg = f"git merge-file failed: killed by signal {-result.returncode}"
+        raise RuntimeError(msg)
     return result.stdout, result.returncode > 0
