@@ -34,8 +34,14 @@ def provide_configure_job(
 
     data: dict[str, Any] = {"python_version": config.python_version}
 
+    # Preserve version tracking fields that other commands manage.
+    if config.workflow_version:
+        data["workflow-version"] = config.workflow_version
+    if config.skill_version:
+        data["skill-version"] = config.skill_version
+
     if params.clear:
-        # Keep python_version, drop everything else.
+        # Keep python_version and version fields, drop everything else.
         pass
     else:
         latest = params.latest if params.latest is not None else config.latest_package
