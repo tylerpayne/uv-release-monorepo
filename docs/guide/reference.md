@@ -58,8 +58,8 @@ uvr version [options]
 |---|---|
 | *(none)* | Display current package versions. |
 | `--set VERSION` | Set all targeted packages to an explicit version string. |
-| `--bump {dev,patch,minor,major,post}` | Bump along a version axis. |
-| `--promote [next\|a\|alpha\|b\|beta\|rc\|final]` | Enter or advance a pre-release track, or promote to final. Defaults to `next`. |
+| `--bump [AXIS]` | Increment a version number. With no argument, auto-detects the last section (dev, pre-release, post, or patch) and increments it. Explicit axes: `dev`, `patch`, `minor`, `major`, `post`. |
+| `--promote [TARGET]` | Advance to the next version type. With no argument, follows: dev → alpha → beta → rc → final. Explicit targets: `a`, `alpha`, `b`, `beta`, `rc`, `final`. |
 
 **Scope:**
 

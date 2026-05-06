@@ -4,9 +4,10 @@ Read, set, bump, or promote package versions. With no flags, displays current ve
 
 ```bash
 uvr version                                    # show versions
-uvr version --bump minor                       # bump all changed packages
+uvr version --bump                             # increment the last version section
+uvr version --bump minor                       # bump all changed packages to next minor
 uvr version --packages foo --bump patch        # bump one package
-uvr version --promote alpha                    # enter alpha pre-release
+uvr version --promote                          # advance to next type (dev→a→b→rc→final)
 uvr version --promote final                    # strip pre/dev suffixes
 uvr version --set 2.0.0                        # set an explicit version
 ```
@@ -15,19 +16,34 @@ uvr version --set 2.0.0                        # set an explicit version
 
 Exactly one mode flag is accepted. If none is given, versions are displayed (read-only).
 
+### `--bump [AXIS]`
+
+Increments a version number. With no argument, auto-detects the last section and increments it.
+
 | Flag | Effect |
 |------|--------|
-| `--set VERSION` | Set all targeted packages to the given version string |
+| `--bump` | Auto-detect and increment the last section (dev, pre-release, post, or patch) |
 | `--bump dev` | Increment the dev number |
 | `--bump patch` | Next patch, dev track (`1.2.3.dev0` to `1.2.4.dev0`) |
 | `--bump minor` | Next minor, dev track (`1.2.3.dev0` to `1.3.0.dev0`) |
 | `--bump major` | Next major, dev track (`1.2.3.dev0` to `2.0.0.dev0`) |
 | `--bump post` | Enter or advance post-release track (`1.2.3` to `1.2.3.post0.dev0`) |
-| `--promote` | Advance to the next pre-release kind (alpha to beta, beta to rc, etc.) |
-| `--promote alpha` | Enter or advance alpha pre-release |
-| `--promote beta` | Enter or advance beta pre-release |
+
+### `--promote [TARGET]`
+
+Advances to the next version type. With no argument, follows the chain: dev → alpha → beta → rc → final.
+
+| Flag | Effect |
+|------|--------|
+| `--promote` | Advance to the next type in the chain |
+| `--promote a` | Enter or advance alpha pre-release |
+| `--promote b` | Enter or advance beta pre-release |
 | `--promote rc` | Enter or advance release candidate |
 | `--promote final` | Strip pre-release and dev suffixes for a clean version |
+
+### `--set VERSION`
+
+Sets all targeted packages to the given version string.
 
 Not all transitions are valid. For example, you cannot promote from beta back to alpha. Invalid transitions raise an error.
 

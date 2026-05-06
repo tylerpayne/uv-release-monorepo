@@ -21,12 +21,13 @@ uvr release --dry-run    # preview only
 | `1.2.3a2.dev0` | `1.2.3a2` (pre-release) | `1.2.3a3.dev0` |
 | `1.2.3.post0.dev0` | `1.2.3.post0` (post-release) | `1.2.3.post1.dev0` |
 
-To change what gets released, use `uvr bump` before releasing:
+To change what gets released, use `uvr version` before releasing:
 
 ```bash
-uvr bump --all --minor       # prepare a minor release
-uvr bump --all --alpha       # enter alpha pre-release cycle
-uvr bump --all --post        # advance post-release number
+uvr version --bump minor         # prepare a minor release
+uvr version --promote            # advance to the next pre-release type
+uvr version --promote a          # enter alpha pre-release cycle
+uvr version --bump post          # advance post-release number
 ```
 
 ## Mode flags

@@ -7,7 +7,7 @@ Post-releases publish a corrected version of an already-released package without
 Use `uvr version` to enter the post-release cycle, then `uvr release` to publish:
 
 ```bash
-uvr version --all-packages --bump post        # advance post number → 1.2.3.post1.dev0
+uvr version --bump post         # advance post number → 1.2.3.post1.dev0
 uvr release                  # publishes 1.2.3.post1
 ```
 
@@ -66,7 +66,7 @@ git commit -m "fix: correct widget parsing in my-pkg"
 git push -u origin post-release/my-pkg/v1.2.3
 
 # 5. Enter post-release cycle and publish
-uvr version --all-packages --bump post
+uvr version --bump post
 uvr release
 ```
 

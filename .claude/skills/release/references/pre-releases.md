@@ -4,25 +4,25 @@ Pre-releases let you publish alpha, beta, or release candidate versions for test
 
 ## Usage
 
-Use `uvr bump` to enter a pre-release cycle, then `uvr release` to publish:
+Use `uvr version --promote` to enter a pre-release cycle, then `uvr release` to publish:
 
 ```bash
-uvr bump --all --alpha       # enter alpha cycle → 1.2.3a0.dev0
-uvr release                  # publishes 1.2.3a0, bumps to 1.2.3a1.dev0
+uvr version --promote            # advance to alpha → 1.2.3a0.dev0
+uvr release                      # publishes 1.2.3a0, bumps to 1.2.3a1.dev0
 ```
 
 ## How it works
 
-1. `uvr bump --alpha` (or `--beta`, `--rc`) sets each package's version to `X.Y.Za0.dev0`
+1. `uvr version --promote` advances to the next pre-release type (dev → alpha → beta → rc → final)
 2. `uvr release` strips `.devN` and publishes `X.Y.Za0`
 3. After release, the pyproject.toml version is bumped to `X.Y.Za1.dev0` (dev toward the next pre-release of the same kind)
 4. Subsequent `uvr release` calls publish `X.Y.Za1`, `X.Y.Za2`, etc.
 
-To advance to the next kind (alpha → beta → rc), bump again:
+To advance to the next kind (alpha → beta → rc), promote again:
 
 ```bash
-uvr bump --all --beta        # advance to beta → 1.2.3b0.dev0
-uvr release                  # publishes 1.2.3b0
+uvr version --promote            # advance to beta → 1.2.3b0.dev0
+uvr release                      # publishes 1.2.3b0
 ```
 
 ## Version ordering
@@ -37,7 +37,7 @@ Pre-releases sort before the stable release:
 
 ```bash
 # Enter alpha cycle
-uvr bump --all --alpha
+uvr version --promote
 # pyproject.toml: 1.2.3a0.dev0
 
 uvr release
@@ -50,15 +50,15 @@ uvr release
 # → bumps to 1.2.3a2.dev0
 
 # Advance to release candidate
-uvr bump --all --rc
+uvr version --promote rc
 # pyproject.toml: 1.2.3rc0.dev0
 
 uvr release
 # → publishes 1.2.3rc0
 
 # Final release
-uvr bump --all --stable
-# pyproject.toml: 1.2.3.dev0
+uvr version --promote final
+# pyproject.toml: 1.2.3
 
 uvr release
 # → publishes 1.2.3
@@ -67,26 +67,30 @@ uvr release
 
 ## Kind advancement rules
 
-`uvr bump` enforces that pre-release kinds only move forward:
+`uvr version --promote` follows this chain: dev → alpha → beta → rc → final. You can also jump to a specific type with an explicit target:
 
-| Current | Allowed | Blocked |
+| Current | `--promote` (no arg) | Explicit targets |
 |---|---|---|
-| alpha | `--alpha`, `--beta`, `--rc` | — |
-| beta | `--beta`, `--rc` | `--alpha` (downgrade) |
-| rc | `--rc` | `--alpha`, `--beta` (downgrade) |
+| dev | alpha | `a`, `b`, `rc`, `final` |
+| alpha | beta | `b`, `rc`, `final` |
+| beta | rc | `rc`, `final` |
+| rc | final | `final` |
+
+Downgrading (e.g. beta → alpha) is blocked.
 
 ## Merging
 
 **DO NOT merge pre-release branches back to main.** Stay on the branch through the entire cycle (alpha → beta → rc → stable) and merge only after the stable release.
 
-After a pre-release, finalize bumps the pyproject.toml version to something like `1.2.3a1.dev0`. If you merged that to main, main's version would be an intermediate pre-release dev version — confusing and unnecessary.
+After a pre-release, finalize bumps the pyproject.toml version to something like `1.2.3a1.dev0`. If you merged that to main, main's version would be an intermediate pre-release dev version, which is confusing and unnecessary.
 
 Keep iterating on the branch until you're ready for the stable release:
 
 ```bash
-uvr bump --all --alpha && uvr release   # 1.2.3a0 — stay on branch
-uvr bump --all --rc && uvr release      # 1.2.3rc0 — stay on branch
-uvr bump --all --stable && uvr release  # 1.2.3 — now merge to main
+uvr version --promote && uvr release      # 1.2.3a0 — stay on branch
+uvr version --promote && uvr release      # 1.2.3b0 — stay on branch
+uvr version --promote rc && uvr release   # 1.2.3rc0 — stay on branch
+uvr version --promote final && uvr release # 1.2.3 — now merge to main
 ```
 
 Merge to main only after the stable release.

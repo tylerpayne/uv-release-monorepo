@@ -52,7 +52,7 @@ Present the output to the user. For each changed package, show:
 Ask the user whether any packages need a minor bump instead of patch. Patch is the default — bump minor for new features, new public API, or breaking changes:
 
 ```bash
-uvr bump --packages <package-name> --minor
+uvr version --packages <package-name> --bump minor
 ```
 
 ## 4. Review
@@ -186,7 +186,7 @@ User says: "Let's release the new changes"
 2. Create branch `release/parser-export` and push it
 3. Run `uvr release`, decline the prompt
 4. Present to user: "my-lib will bump 0.2.1 -> 0.2.2 (patch). It has a new public export — should this be a minor bump instead?"
-5. User says "yes, bump minor" — run `uvr bump --packages my-lib --minor`
+5. User says "yes, bump minor" — run `uvr version --packages my-lib --bump minor`
 6. Review docstrings and docs against current API — new `Parser` class exported but not documented. Fix docs.
 7. Draft release notes: "Added `Parser` class for structured input handling. Fixed crash on empty input." Present to user for approval.
 8. Write approved notes to `.uvr/release-notes/my-lib/0.3.0.md`

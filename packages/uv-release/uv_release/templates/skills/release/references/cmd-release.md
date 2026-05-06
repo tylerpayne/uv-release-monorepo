@@ -24,9 +24,10 @@ uvr release --dry-run    # preview only
 To change what gets released, use `uvr version` before releasing:
 
 ```bash
-uvr version --all-packages --bump minor       # prepare a minor release
-uvr version --all-packages --promote alpha    # enter alpha pre-release cycle
-uvr version --all-packages --bump post        # advance post-release number
+uvr version --bump minor         # prepare a minor release
+uvr version --promote            # advance to the next pre-release type
+uvr version --promote a          # enter alpha pre-release cycle
+uvr version --bump post          # advance post-release number
 ```
 
 ## Mode flags
