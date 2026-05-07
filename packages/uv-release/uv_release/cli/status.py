@@ -11,14 +11,6 @@ from ..dependencies.shared.changed_packages import ChangedPackages
 from ..dependencies.shared.workspace_packages import WorkspacePackages
 
 
-# Map ChangedPackages reasons to badge kinds. Anything not present here
-# falls through to the literal reason string with a dim style.
-_REASON_TO_BADGE = {
-    "unchanged": "unchanged",
-    "changed": "changed",
-}
-
-
 @inject
 def cmd_status(
     workspace_packages: WorkspacePackages,
@@ -41,24 +33,19 @@ def cmd_status(
     ui.section("Packages")
     rows: list[list[str]] = []
     for name, pkg in sorted(items.items()):
-        reason = changed_packages.reasons.get(name, "unchanged")
+        reason = changed_packages.reasons.get(name)
         baseline = baseline_tags.items.get(name)
         diff_from = baseline.raw if baseline else "(initial)"
-        # `changed`/`unchanged` get colored badges; any other reason
-        # (e.g. "new package") shows verbatim in dim — still padded so
-        # columns line up with the badge kinds.
-        if reason in _REASON_TO_BADGE:
-            status_cell = ui.badge_markup(_REASON_TO_BADGE[reason])
-        else:
-            status_cell = f"[uvr.dim]{reason:<9}[/]"
-        # Color the package name to match the badge: bright for changed,
-        # dim for unchanged. Keeps the row visually unified.
-        if reason == "changed":
-            name_cell = f"[uvr.accent]{name}[/]"
-        elif reason == "unchanged":
+        # ChangedPackages reasons are specific ("files changed", "dependency
+        # changed", "initial release"); we collapse them to the badge column
+        # and keep the verbose reason as a dim suffix on the package name so
+        # users can still tell *why* a package changed.
+        if reason is None:
+            status_cell = ui.badge_markup("unchanged")
             name_cell = f"[uvr.dim]{name}[/]"
         else:
-            name_cell = name
+            status_cell = ui.badge_markup("changed")
+            name_cell = f"[uvr.accent]{name}[/] [uvr.dim]({reason})[/]"
         rows.append([status_cell, name_cell, pkg.version.raw, diff_from])
     ui.print_table(["status", "package", "version", "diff from"], rows)
 
