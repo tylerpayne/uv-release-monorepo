@@ -59,13 +59,23 @@ def _find_baseline_tag(name: str, version: Version, repo: GitRepo) -> Tag | None
             name, version, repo
         )
 
-    # Clean: diff against previous release.
+    # Clean: prefer the dev0 baseline tag for this version if one exists —
+    # that's the cycle anchor (e.g. v0.34.2 was just stripped from
+    # 0.34.2.dev0, the v0.34.2.dev0-base tag still marks where the cycle
+    # started). Fall back to the previous release tag if no baseline
+    # exists (initial release, or pre-`uvr` history).
     if state in (
         VersionState.CLEAN_STABLE,
         VersionState.CLEAN_PREN,
         VersionState.CLEAN_PRE0,
     ):
-        return _previous_release(name, version, repo)
+        # `with_dev(0)` preserves pre_kind so `0.34.2a0` resolves to
+        # `0.34.2a0.dev0-base`, not `0.34.2.dev0-base`.
+        dev0 = version.with_dev(0)
+        tag_name = Tag.baseline_tag_name(name, dev0)
+        return repo.resolve_tag(
+            name, tag_name, is_baseline=True
+        ) or _previous_release(name, version, repo)
 
     # Post-release: diff against the base stable release.
     if state in (VersionState.CLEAN_POST0, VersionState.CLEAN_POSTM):
