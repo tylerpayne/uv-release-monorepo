@@ -66,11 +66,16 @@ def cmd_release(
         baseline = baseline_tags.items.get(name)
         rows.append(
             [
-                f"[uvr.accent]{name}[/]",
-                pkg.version.raw,
-                f"[b]{rel_ver.raw}[/]",
-                next_ver.raw if next_ver else "",
-                baseline.raw if baseline else "[uvr.dim](initial)[/]",
+                # Package name and every version/tag here are refs ("things
+                # the system tracks") — cyan. The release version stays bold
+                # on top of cyan so the new value still draws the eye.
+                f"[uvr.value]{name}[/]",
+                f"[uvr.value]{pkg.version.raw}[/]",
+                # Nested tags: Rich silently drops styling when combining
+                # a custom theme name with `b` in one tag (`[b uvr.value]`).
+                f"[uvr.value][b]{rel_ver.raw}[/b][/]",
+                f"[uvr.value]{next_ver.raw}[/]" if next_ver else "",
+                f"[uvr.value]{baseline.raw}[/]" if baseline else "(initial)",
             ]
         )
     ui.print_table(["package", "current", "release", "next", "diff from"], rows)
@@ -83,7 +88,7 @@ def cmd_release(
         ui.console.print()
         ui.section("Release notes")
         for name, notes in sorted(release_notes.items.items()):
-            ui.console.print(f"  [uvr.accent]{name}[/]:")
+            ui.console.print(f"  [uvr.value]{name}[/]:")
             for line in notes.splitlines()[:5]:
                 ui.console.print(f"    {line}")
 
@@ -110,7 +115,7 @@ def cmd_release(
                     label="Dispatch to GitHub Actions", plan_json=plan_json
                 )
             ],
-        )  # type: ignore[arg-type]
+        )
         execute_job(dispatch_job, hooks)
         return
 
@@ -136,10 +141,13 @@ def _print_jobs(plan: Plan, workflow_state: WorkflowState) -> None:
 
 
 def _print_job_status(name: str, job: Job | None, plan: Plan) -> None:
+    # Job names (validate, build, release, …) are pipeline structure, not
+    # refs the system tracks — render plain. Only the items they act on
+    # (package and version names below) get the ref color.
     if name in plan.skip:
-        ui.console.print(f"  {name}: [uvr.dim](skip)[/]")
+        ui.console.print(f"  {name}: (skip)")
         return
-    ui.console.print(f"  [uvr.value]{name}[/]")
+    ui.console.print(f"  {name}")
     if job and job.commands:
         _print_job_detail(job, plan)
 
@@ -160,19 +168,19 @@ def _print_job_detail(job: Job, plan: Plan) -> None:
                 ui.console.print("      [uvr.dim]targets:[/]")
                 for t in targets:
                     name = t.label.removeprefix("Build ")
-                    ui.console.print(f"        [uvr.accent]{name}[/]")
+                    ui.console.print(f"        [uvr.value]{name}[/]")
             if build_deps or downloaded_deps:
                 ui.console.print("      [uvr.dim]deps:[/]")
                 for b in build_deps:
                     name = b.label.removeprefix("Build ")
-                    ui.console.print(f"        {name} [uvr.dim](build)[/]")
+                    ui.console.print(f"        {name} (build)")
                 for d in downloaded_deps:
                     ui.console.print(f"        {d.tag_name}")
     elif job.name == "release":
         releases = [c for c in job.commands if isinstance(c, CreateReleaseCommand)]
         for rel in releases:
-            ui.console.print(f"    [uvr.accent]{rel.title}[/]")
+            ui.console.print(f"    [uvr.value]{rel.title}[/]")
     elif job.name == "publish":
         publishes = [c for c in job.commands if isinstance(c, PublishToIndexCommand)]
         for pub in publishes:
-            ui.console.print(f"    [uvr.accent]{pub.package_name}[/]")
+            ui.console.print(f"    [uvr.value]{pub.package_name}[/]")

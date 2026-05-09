@@ -20,10 +20,16 @@ class SetVersionCommand(Command):
     def execute(self) -> int:
         import tomlkit
 
-        if self.label:
-            console.print(f"  {self.label}")
         path = Path(self.package_path) / "pyproject.toml"
         doc = tomlkit.loads(path.read_text())
+        old = str(doc["project"]["version"])  # type: ignore[index]
+        # Print our own diff line in the design grammar: package + versions
+        # in cyan (refs the system tracks), arrow in dim (chrome).
+        package_name = path.parent.name
+        console.print(
+            f"  Updated [uvr.value]{package_name}[/] "
+            f"[uvr.value]v{old}[/] [uvr.dim]->[/] [uvr.value]v{self.version}[/]"
+        )
         doc["project"]["version"] = self.version  # type: ignore[index]
         path.write_text(tomlkit.dumps(doc))
         return 0

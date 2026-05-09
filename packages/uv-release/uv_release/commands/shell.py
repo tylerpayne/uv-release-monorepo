@@ -21,6 +21,10 @@ class ShellCommand(Command):
         result = subprocess.run(self.args)
         return result.returncode
 
+    def to_shell(self) -> str:
+        # Literal: this is exactly what subprocess.run will execute.
+        return " ".join(self.args)
+
 
 class CreateTagCommand(Command):
     """Create an annotated git tag. Skips if the tag already exists.
@@ -39,7 +43,7 @@ class CreateTagCommand(Command):
         )
         if check.stdout.strip() == self.tag_name:
             if self.label:
-                console.print(f"  {self.label} [uvr.dim](already exists, skipping)[/]")
+                console.print(f"  {self.label} (already exists, skipping)")
             return 0
         if self.label:
             console.print(f"  {self.label}")
