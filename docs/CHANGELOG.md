@@ -16,8 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Changed
 - The whole CLI now speaks the design grammar: `status`, `release`, `version`, `build`, `configure`, `workflow validate`, every `Command.execute()` label.
 - Color language is six semantic tokens: magenta (brand / things you type), green (success), yellow ("look here, nothing broken"), red (error), cyan (refs — package names, tags, baselines, version strings), dim (chrome only). Default fg is the workhorse for everything else.
-- `SetVersionCommand` prints a branded diff line (`Updated <pkg> v<old> -> v<new>`) instead of a generic label.
-- Argparse errors humanized: `error: Unknown command 'foo' for \`uvr\`.` instead of `argument <internal-dest>: invalid choice ...`.
+- `SetVersionCommand` prints a branded diff line (`Updated PKG vOLD -> vNEW`) instead of a generic label.
+- Argparse errors humanized: `error: Unknown command 'foo' for uvr.` instead of `argument wf_subcommand: invalid choice ...`.
 - Confirm prompts read `Apply fix? (y/N): ` — capital marks the default, only the `(y/N)` token is brand-colored.
 - Bump commit messages now reflect the actual CLI intent. `--bump stable` → `chore: set release versions`; `--bump minor` → `chore: bump minor versions`; `--set X` → `chore: set versions`.
 - `DIFF FROM` resolution prefers the dev0 baseline tag for clean stable versions. After strip-dev, `0.34.2` correctly diffs from `v0.34.2.dev0-base` (the cycle anchor) instead of skipping back to the previous release.
