@@ -59,7 +59,9 @@ class TestVersion:
         with diny.provide():
             run_cli("version", "--bump", "minor", "--no-push")
         log = git(workspace, "log", "--oneline", "-1").stdout
-        assert "bump to next dev versions" in log
+        # Commit message reflects the bump axis (`minor`), not a generic
+        # "next dev" string.
+        assert "bump minor versions" in log
 
     def test_no_commit_skips_commit(self, workspace: Path) -> None:
         head_before = git_head(workspace)

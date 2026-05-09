@@ -71,7 +71,9 @@ def cmd_release(
                 # on top of cyan so the new value still draws the eye.
                 f"[uvr.value]{name}[/]",
                 f"[uvr.value]{pkg.version.raw}[/]",
-                f"[b uvr.value]{rel_ver.raw}[/]",
+                # Nested tags: Rich silently drops styling when combining
+                # a custom theme name with `b` in one tag (`[b uvr.value]`).
+                f"[uvr.value][b]{rel_ver.raw}[/b][/]",
                 f"[uvr.value]{next_ver.raw}[/]" if next_ver else "",
                 f"[uvr.value]{baseline.raw}[/]" if baseline else "(initial)",
             ]
@@ -139,10 +141,13 @@ def _print_jobs(plan: Plan, workflow_state: WorkflowState) -> None:
 
 
 def _print_job_status(name: str, job: Job | None, plan: Plan) -> None:
+    # Job names (validate, build, release, …) are pipeline structure, not
+    # refs the system tracks — render plain. Only the items they act on
+    # (package and version names below) get the ref color.
     if name in plan.skip:
         ui.console.print(f"  {name}: (skip)")
         return
-    ui.console.print(f"  [uvr.value]{name}[/]")
+    ui.console.print(f"  {name}")
     if job and job.commands:
         _print_job_detail(job, plan)
 
