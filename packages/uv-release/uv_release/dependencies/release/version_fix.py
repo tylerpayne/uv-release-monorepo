@@ -49,21 +49,21 @@ def provide_strip_dev(
     if dev_release.value:
         return StripDev()
 
-    # Find packages whose current version has a .devN suffix.
-    needs_strip: list[str] = []
-    for name, pkg in build_packages.items.items():
-        release_version = compute_release_version(pkg.version)
-        if pkg.version.raw != release_version.raw:
-            needs_strip.append(name)
-
+    # Trigger only when at least one release target carries a .devN suffix.
+    # Once triggered, the fix delegates to `uvr version --bump stable`,
+    # which selects the same set of packages we'd be releasing (changed
+    # since baseline by default) and is a no-op on already-stable versions.
+    needs_strip = any(
+        compute_release_version(pkg.version).raw != pkg.version.raw
+        for pkg in build_packages.items.values()
+    )
     if not needs_strip:
         return StripDev()
 
-    # The strip-dev fix is one literal `uvr version --bump stable` call —
-    # which already pins deps, regenerates the lockfile, commits, and (on
-    # CI target) pushes. We pass `--no-push` for local target so the user
-    # can review before pushing themselves.
-    args = ["uvr", "version", "--bump", "stable", "--packages", *needs_strip]
+    # `uvr version --bump stable` already pins deps, regenerates the
+    # lockfile, commits, and (on CI target) pushes. `--no-push` for local
+    # target so the user can review before pushing themselves.
+    args = ["uvr", "version", "--bump", "stable"]
     if release_target.value != "ci":
         args.append("--no-push")
 
