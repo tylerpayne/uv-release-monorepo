@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- `uvr release` Packages table dropped the `CURRENT` and `DIFF FROM` columns. The current version is the working-tree state the user just edited and the diff-from baseline is internal accounting; both still surface in `uvr status`. Release output stays focused on what is about to happen.
+- `uvr release` pipeline rendering now surfaces the most informative datum per job. Release lines show `name TAG_NAME` (e.g., `my-core my-core/v0.35.1`) — the actual git tag and GitHub release that will be created. Publish lines show `name INDEX` (`my-core pypi`) — where the wheel is going. Bump lines show `name NEXT_VERSION` (`my-core 0.35.2.dev0`) — the post-release dev cycle anchor. Names are right-padded so columns align across packages.
+
 ### Fixed
 - `uvr workflow install --print-template` and `uvr skill install --print-template` no longer raise "already exists" when run in a workspace that has the workflow or skill files installed. The provider now short-circuits before the existence and mode checks so the uvx-based fetch path used by `--upgrade` works regardless of cwd state.
 

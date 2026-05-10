@@ -9,7 +9,7 @@ Release management for [uv](https://github.com/astral-sh/uv) workspaces.
 
 ```bash
 uv add --dev uv-release
-uvr workflow init
+uvr workflow install
 ```
 
 ## Release with confidence
@@ -18,45 +18,50 @@ uvr workflow init
 uvr release
 ```
 
-Detects changes, pins dependencies, and plans a topologically ordered build, publish, and bump. Validates everything locally before dispatch. Version conflicts, stale pins, and dirty working trees are caught on your machine, not in CI.
-
-
 ```
-Planning
---------
-  |##########| Discovered 3 packages (9ms)
-  |----------| Resolved 3 baselines (57us)
-  |#####-----| Detected 2 changed, 1 unchanged (4ms)
-  |###-------| Computed versions for 2 packages (2ms)
-  |----------| Generated 2 release notes (625ns)
-  Planned 2 releases in 16ms
-
 Packages
 --------
-  STATUS     PACKAGE  VERSION      PREVIOUS  CHANGES  COMMITS
-  changed    my-auth     0.2.0.dev0   0.1.0     3        2
-  changed    my-api      0.1.1.dev0   0.1.0     1        1
-  unchanged  my-cli      1.0.0        1.0.0     -        -
+PACKAGE       RELEASE    NEXT       
+my-core       0.35.1     0.35.2.dev0
+my-extra      0.42.3     0.42.4.dev0
 
 Pipeline
 --------
-  run   uvr-build
-          [ubuntu-latest]
-            layer 0
-              my-auth  0.2.0
-            layer 1
-              my-api   0.1.1
-  run   uvr-release
-          my-auth/v0.2.0
-          my-api/v0.1.1
-  run   uvr-publish
-          my-auth → pypi
-          my-api  → pypi
-  run   uvr-bump
-          my-auth → 0.2.1.dev0
-          my-api  → 0.1.2.dev0
+  validate
+  check
+  build
+    ubuntu-latest
+      targets:
+        my-core
+        my-extra
+    windows-latest
+      deps:
+        my-core
+      targets:
+        my-extra
+    macos-latest
+      deps:
+        my-core
+      targets:
+        my-extra
+  release
+    my-core  my-core/v0.35.1
+    my-extra my-extra/v0.42.3
+  publish
+    my-core  pypi
+    my-extra pypi
+  bump
+    my-core  0.35.2.dev0
+    my-extra 0.42.4.dev0
 
-Dispatch release? [y/N]
+Release notes
+-------------
+  my-core:
+    b2075ab fix: bug
+  my-extra:
+    b38h3kl fix: bug 
+
+Proceed? (y/N):
 ```
 
 ## Documentation

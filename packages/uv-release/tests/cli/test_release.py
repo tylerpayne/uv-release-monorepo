@@ -17,6 +17,48 @@ class TestRelease:
         out = capsys.readouterr().out
         assert "Pipeline" in out
 
+    def test_pipeline_lines_carry_version_data(
+        self, workspace: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with diny.provide():
+            run_cli("release", "--dry-run", "--where", "local", "--dev")
+        out = capsys.readouterr().out
+        lines = [line.rstrip() for line in out.splitlines()]
+
+        # Find the indexes of each job heading so we can scope the asserts
+        # to lines under the right job.
+        def _section_lines(heading: str) -> list[str]:
+            try:
+                start = lines.index(f"  {heading}")
+            except ValueError:
+                return []
+            collected: list[str] = []
+            for line in lines[start + 1 :]:
+                if line.startswith("  ") and not line.startswith("    "):
+                    break
+                collected.append(line)
+            return collected
+
+        # release: each line is `    name name/vVERSION`.
+        for line in _section_lines("release"):
+            stripped = line.strip()
+            if stripped.startswith("pkg-"):
+                name, _, tag = stripped.partition(" ")
+                assert tag.startswith(f"{name}/v"), (
+                    f"release line should carry a tag name: {line!r}"
+                )
+
+        # bump: each line is `    name VERSION` with no arrow.
+        bump_pkg_lines = [
+            line for line in _section_lines("bump") if line.lstrip().startswith("pkg-")
+        ]
+        assert bump_pkg_lines, f"expected at least one bump line, got:\n{out}"
+        for line in bump_pkg_lines:
+            assert " -> " not in line, f"bump line should not carry an arrow: {line!r}"
+            tokens = line.split()
+            # Last token should be a version-shaped string with at least one dot.
+            assert "." in tokens[-1], f"bump line should end with a version: {line!r}"
+
     def test_nothing_changed(
         self, workspace: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

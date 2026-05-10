@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from diny import inject, resolve
 
 from .. import ui
@@ -11,13 +13,13 @@ from ..commands import (
     DispatchWorkflowCommand,
     DownloadWheelsCommand,
     PublishToIndexCommand,
+    SetVersionCommand,
 )
 from ..dependencies.params.release_target import ReleaseTarget
 from ..dependencies.release.plan import Plan
 from ..dependencies.release.release_bump_versions import ReleaseBumpVersions
 from ..dependencies.release.release_notes import ReleaseNotes
 from ..dependencies.release.release_versions import ReleaseVersions
-from ..dependencies.shared.baseline_tags import BaselineTags
 from ..dependencies.shared.hooks import Hooks
 from ..dependencies.shared.workflow_state import WorkflowState
 from ..dependencies.shared.workspace_packages import WorkspacePackages
@@ -33,7 +35,6 @@ def cmd_release(
     release_notes: ReleaseNotes,
     release_versions: ReleaseVersions,
     bump_versions: ReleaseBumpVersions,
-    baseline_tags: BaselineTags,
     hooks: Hooks,
     workspace: WorkspacePackages,
     workflow_state: WorkflowState,
@@ -55,30 +56,29 @@ def cmd_release(
         ui.console.print("Nothing changed since last release.")
         return
 
-    # Packages table.
+    # Packages table. CURRENT and DIFF FROM are intentionally omitted: the
+    # current version is the working-tree state the user just edited, and
+    # the diff-from baseline is internal accounting. Both surface in
+    # `uvr status`. Release output stays focused on what's about to happen.
     ui.console.print()
     ui.section("Packages")
     rows: list[list[str]] = []
     for name in sorted(release_versions.items):
-        pkg = workspace.items[name]
         rel_ver = release_versions.items[name]
         next_ver = bump_versions.items.get(name)
-        baseline = baseline_tags.items.get(name)
         rows.append(
             [
-                # Package name and every version/tag here are refs ("things
+                # Package name and every version here are refs ("things
                 # the system tracks") — cyan. The release version stays bold
                 # on top of cyan so the new value still draws the eye.
                 f"[uvr.value]{name}[/]",
-                f"[uvr.value]{pkg.version.raw}[/]",
                 # Nested tags: Rich silently drops styling when combining
                 # a custom theme name with `b` in one tag (`[b uvr.value]`).
                 f"[uvr.value][b]{rel_ver.raw}[/b][/]",
                 f"[uvr.value]{next_ver.raw}[/]" if next_ver else "",
-                f"[uvr.value]{baseline.raw}[/]" if baseline else "(initial)",
             ]
         )
-    ui.print_table(["package", "current", "release", "next", "diff from"], rows)
+    ui.print_table(["package", "release", "next"], rows)
 
     ui.console.print()
     ui.section("Pipeline")
@@ -177,10 +177,43 @@ def _print_job_detail(job: Job, plan: Plan) -> None:
                 for d in downloaded_deps:
                     ui.console.print(f"        {d.tag_name}")
     elif job.name == "release":
+        # Show the tag name (e.g., `my-core/v0.35.1`) — that is what the
+        # release job actually creates in git and on GitHub. The bare
+        # version is already in the Packages table above.
         releases = [c for c in job.commands if isinstance(c, CreateReleaseCommand)]
-        for rel in releases:
-            ui.console.print(f"    [uvr.value]{rel.title}[/]")
+        # CreateReleaseCommand.title is `"{name} {version}"`; package names
+        # don't contain spaces, so the prefix split is exact.
+        rows = [(rel.title.split(" ", 1)[0], rel.tag_name) for rel in releases]
+        name_width = max((len(n) for n, _ in rows), default=0)
+        for name, tag in rows:
+            ui.console.print(
+                f"    [uvr.value]{name:<{name_width}}[/] [uvr.value]{tag}[/]"
+            )
     elif job.name == "publish":
+        # Show the destination index, not the version. The version is in
+        # the Packages table; the publish step's distinguishing data is
+        # *where* it goes. Empty index falls back to "pypi" (uv's default).
         publishes = [c for c in job.commands if isinstance(c, PublishToIndexCommand)]
+        name_width = max((len(p.package_name) for p in publishes), default=0)
         for pub in publishes:
-            ui.console.print(f"    [uvr.value]{pub.package_name}[/]")
+            index = pub.index or "pypi"
+            ui.console.print(
+                f"    [uvr.value]{pub.package_name:<{name_width}}[/]"
+                f" [uvr.value]{index}[/]"
+            )
+    elif job.name == "bump":
+        # Show the post-release dev version per package. The Next column in
+        # the Packages table shows the same thing, but having it here keeps
+        # the pipeline self-describing. Other bump commands (PinDeps,
+        # SyncLockfile, Commit, CreateTag, Push) are plumbing and don't
+        # carry a version worth surfacing.
+        bumps = [c for c in job.commands if isinstance(c, SetVersionCommand)]
+        # SetVersionCommand stores the package directory path; the basename
+        # is the package name under the canonical `packages/<name>` layout
+        # this codebase uses (matches SetVersionCommand.execute() itself).
+        rows = [(Path(b.package_path).name, b.version) for b in bumps]
+        name_width = max((len(n) for n, _ in rows), default=0)
+        for name, next_v in rows:
+            ui.console.print(
+                f"    [uvr.value]{name:<{name_width}}[/] [uvr.value]{next_v}[/]"
+            )
