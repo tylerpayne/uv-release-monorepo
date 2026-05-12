@@ -52,17 +52,18 @@ uvr release
 ```
 Packages
 --------
-  files changed     auth    0.2.0.dev0
-  files changed     api     0.1.1.dev0
-  unchanged         cli     1.0.0
+PACKAGE    RELEASE    NEXT
+auth       0.2.0      0.2.1.dev0
+api        0.1.1      0.1.2.dev0
 
 Pipeline
 --------
-  run     validate
-  run     build
-  run     release
-  run     publish
-  run     bump
+  validate
+  check
+  build
+  release
+  publish
+  bump
 
 Proceed? [y/N]
 ```

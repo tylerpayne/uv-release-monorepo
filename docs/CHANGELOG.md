@@ -6,16 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [uv-release v0.35.2] - 2026-05-12
+
 ### Changed
 - `uvr release` Packages table dropped the `CURRENT` and `DIFF FROM` columns. The current version is the working-tree state the user just edited and the diff-from baseline is internal accounting; both still surface in `uvr status`. Release output stays focused on what is about to happen.
 - `uvr release` pipeline rendering now surfaces the most informative datum per job. Release lines show `name TAG_NAME` (e.g., `my-core my-core/v0.35.1`) — the actual git tag and GitHub release that will be created. Publish lines show `name INDEX` (`my-core pypi`) — where the wheel is going. Bump lines show `name NEXT_VERSION` (`my-core 0.35.2.dev0`) — the post-release dev cycle anchor. Names are right-padded so columns align across packages.
 
 ### Fixed
-- `uvr workflow install --print-template` and `uvr skill install --print-template` no longer raise "already exists" when run in a workspace that has the workflow or skill files installed. The provider now short-circuits before the existence and mode checks so the uvx-based fetch path used by `--upgrade` works regardless of cwd state.
+- Wheel platform compatibility filter in the build job now uses `packaging.tags.sys_tags()`, the canonical check used by pip and uv. The previous hand-rolled substring check only inspected arch tokens (`x86_64`/`arm64`/`aarch64`) and ignored the OS, so it could keep macOS wheels on a Linux runner or drop a valid `manylinux_2_17_x86_64` wheel. Each removal now logs `Removing incompatible wheel: <name>` so the filter's behavior is visible.
 - `uvr workflow install --upgrade` and `uvr skill install --upgrade` no longer hard-fail when `[tool.uvr.config].workflow-version` / `skill-version` is missing (users who installed before version tracking landed in 0.32.2). The provider now falls back to uv-release 0.32.0 as the merge baseline — the oldest released version that shipped the bundled workflow and skill templates. A yellow warning prints the chosen baseline. Hand edits stay safe because the three-way merge surfaces divergent regions as conflicts in the editor rather than overwriting.
 
 ### Added
 - `--from-version VERSION` flag on `uvr workflow install` and `uvr skill install`. One-shot override for the `--upgrade` merge baseline; takes precedence over both the recorded `*-version` and the 0.32.0 fallback. Useful when you know the version you originally installed with.
+
+## [uv-release v0.35.1] - 2026-05-10
+
+### Fixed
+- `uvr workflow install --print-template` and `uvr skill install --print-template` no longer raise "already exists" when run in a workspace that has the workflow or skill files installed. The provider now short-circuits before the existence and mode checks so the uvx-based fetch path used by `--upgrade` works regardless of cwd state.
 
 ### Added
 - `FetchWorkflowBaseCommand` and `FetchSkillBasesCommand` now fall back to extracting templates directly when the `uvx --print-template` path fails. The fallback runs `uv pip install --no-deps --target <tmp> uv-release=={version}` and reads template files straight out of the installed site-packages. This rescues `uvr workflow install --upgrade` and `uvr skill install --upgrade` against older releases on PyPI that ship the `--print-template` bug.
