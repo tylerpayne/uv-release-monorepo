@@ -435,6 +435,16 @@ def parse_args() -> ParsedArgs:
         default="",
         help="Editor to launch for resolving merge conflicts during --upgrade.",
     )
+    wf_inst.add_argument(
+        "--from-version",
+        default="",
+        metavar="VERSION",
+        help=(
+            "Override the merge baseline for --upgrade. Use when "
+            "[tool.uvr.config].workflow-version is unset (workflow predates "
+            "version tracking) and you know what you originally installed."
+        ),
+    )
     # Hidden: print the bundled template to stdout and exit. Used by
     # --upgrade via `uvx --with uv-release=={prev} uvr workflow install
     # --print-template` to fetch the base for three-way merge.
@@ -462,6 +472,16 @@ def parse_args() -> ParsedArgs:
         "--editor",
         default="",
         help="Editor to launch for resolving merge conflicts during --upgrade.",
+    )
+    sk_inst.add_argument(
+        "--from-version",
+        default="",
+        metavar="VERSION",
+        help=(
+            "Override the merge baseline for --upgrade. Use when "
+            "[tool.uvr.config].skill-version is unset (skills predate "
+            "version tracking) and you know what you originally installed."
+        ),
     )
     # Hidden: print the bundled templates to stdout (concatenated with path
     # markers) and exit. Used by --upgrade via uvx to fetch base content.
@@ -687,6 +707,7 @@ def provide_workflow_params(args: ParsedArgs) -> WorkflowParams:
         or ".github/workflows",
         editor=editor,
         show_diff=args.values.get("show_diff", False),
+        from_version=args.values.get("from_version", "") or "",
     )
 
 
@@ -700,6 +721,7 @@ def provide_skill_params(args: ParsedArgs) -> SkillParams:
         upgrade=args.values.get("upgrade", False),
         print_template=args.values.get("print_template", False),
         editor=editor,
+        from_version=args.values.get("from_version", "") or "",
     )
 
 

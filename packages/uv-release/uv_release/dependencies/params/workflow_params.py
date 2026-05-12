@@ -18,3 +18,8 @@ class WorkflowParams(Frozen):
     workflow_dir: str = ".github/workflows"
     editor: str = ""
     show_diff: bool = False
+    # One-shot override for the three-way merge baseline. Used when
+    # `[tool.uvr.config].workflow-version` is missing (workflow predates
+    # version tracking) or wrong, and the user knows the version they
+    # installed with.
+    from_version: str = ""

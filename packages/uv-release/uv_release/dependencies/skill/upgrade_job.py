@@ -19,6 +19,7 @@ from pathlib import Path
 
 from diny import singleton, provider
 
+from ... import ui
 from ...commands import (
     AnyCommand,
     FetchSkillBasesCommand,
@@ -39,6 +40,13 @@ class SkillUpgradeJob(Job):
 
 
 _SKILL_BASE_ROOT = Path(".uvr") / "bases" / ".claude" / "skills"
+
+# Backwards-compat fallback for users whose skills predate skill-version
+# tracking (added in uv-release 0.32.2). Picked as the first release that
+# shipped Claude skills — the oldest plausible baseline. Hand edits stay
+# safe because three-way merge surfaces divergent regions as conflicts in
+# the editor; only files that are clean upstream get the upgrade applied.
+_FALLBACK_SKILL_VERSION = "0.32.0"
 
 
 @provider(SkillUpgradeJob)
@@ -101,18 +109,30 @@ def provide_skill_upgrade_job(
         raise ValueError(msg)
 
     if params.upgrade:
-        if not config.skill_version:
-            msg = (
-                "No skill-version recorded in [tool.uvr.config]. "
-                "Cannot --upgrade without knowing the previous template version. "
-                "Use --force to reset to the current templates."
+        # Resolve the merge baseline in priority order:
+        #   1. --from-version flag (one-shot override the user just typed)
+        #   2. [tool.uvr.config].skill-version (recorded after each --upgrade)
+        #   3. _FALLBACK_SKILL_VERSION (oldest known baseline; preserves
+        #      hand edits via merge conflicts)
+        # Hand edits are always preserved because the three-way merge
+        # surfaces divergent regions in the editor rather than overwriting.
+        from_version = params.from_version or config.skill_version
+        if not from_version:
+            from_version = _FALLBACK_SKILL_VERSION
+            ui.console.print(
+                "  [yellow]No skill-version recorded; falling back to "
+                f"uv-release {from_version} as the merge baseline.[/]"
             )
-            raise ValueError(msg)
+            ui.console.print(
+                "  [yellow]Hand edits stay safe — divergent regions land "
+                "in your editor as conflicts. Override with [/]"
+                "[uvr.cmd]--from-version VERSION[/][yellow].[/]"
+            )
         # One fetch populates every base file under .uvr/bases/.claude/skills/.
         commands.append(
             FetchSkillBasesCommand(
-                label=f"Fetch skill bases from uv-release {config.skill_version}",
-                from_version=config.skill_version,
+                label=f"Fetch skill bases from uv-release {from_version}",
+                from_version=from_version,
                 output_root=str(_SKILL_BASE_ROOT),
             )
         )

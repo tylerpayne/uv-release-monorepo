@@ -17,6 +17,7 @@ from pathlib import Path
 
 from diny import singleton, provider
 
+from ... import ui
 from ...commands import (
     AnyCommand,
     FetchWorkflowBaseCommand,
@@ -34,6 +35,14 @@ from ..shared.workflow_template import WorkflowTemplate
 @singleton
 class WorkflowUpgradeJob(Job):
     """Upgrade the release workflow file."""
+
+
+# Backwards-compat fallback for users whose workflow predates
+# workflow-version tracking. Picked as the first release that shipped a
+# bundled workflow. Hand edits stay safe because three-way merge surfaces
+# divergent regions as conflicts in the editor; only files that are
+# clean upstream get the upgrade applied.
+_FALLBACK_WORKFLOW_VERSION = "0.32.0"
 
 
 @provider(WorkflowUpgradeJob)
@@ -90,17 +99,27 @@ def provide_workflow_upgrade_job(
         raise ValueError(msg)
 
     if params.upgrade:
-        if not config.workflow_version:
-            msg = (
-                "No workflow-version recorded in [tool.uvr.config]. "
-                "Cannot --upgrade without knowing the previous template version. "
-                "Use --force to reset to the current template."
+        # Resolve the merge baseline in priority order:
+        #   1. --from-version flag (one-shot override the user just typed)
+        #   2. [tool.uvr.config].workflow-version (recorded after --upgrade)
+        #   3. _FALLBACK_WORKFLOW_VERSION (oldest known baseline; preserves
+        #      hand edits via merge conflicts)
+        from_version = params.from_version or config.workflow_version
+        if not from_version:
+            from_version = _FALLBACK_WORKFLOW_VERSION
+            ui.console.print(
+                "  [yellow]No workflow-version recorded; falling back to "
+                f"uv-release {from_version} as the merge baseline.[/]"
             )
-            raise ValueError(msg)
+            ui.console.print(
+                "  [yellow]Hand edits stay safe — divergent regions land "
+                "in your editor as conflicts. Override with [/]"
+                "[uvr.cmd]--from-version VERSION[/][yellow].[/]"
+            )
         commands.append(
             FetchWorkflowBaseCommand(
-                label=f"Fetch base from uv-release {config.workflow_version}",
-                from_version=config.workflow_version,
+                label=f"Fetch base from uv-release {from_version}",
+                from_version=from_version,
                 output_path=base_path,
             )
         )

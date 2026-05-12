@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 - `uvr workflow install --print-template` and `uvr skill install --print-template` no longer raise "already exists" when run in a workspace that has the workflow or skill files installed. The provider now short-circuits before the existence and mode checks so the uvx-based fetch path used by `--upgrade` works regardless of cwd state.
+- `uvr workflow install --upgrade` and `uvr skill install --upgrade` no longer hard-fail when `[tool.uvr.config].workflow-version` / `skill-version` is missing (users who installed before version tracking landed in 0.32.2). The provider now falls back to uv-release 0.32.0 as the merge baseline — the oldest released version that shipped the bundled workflow and skill templates. A yellow warning prints the chosen baseline. Hand edits stay safe because the three-way merge surfaces divergent regions as conflicts in the editor rather than overwriting.
+
+### Added
+- `--from-version VERSION` flag on `uvr workflow install` and `uvr skill install`. One-shot override for the `--upgrade` merge baseline; takes precedence over both the recorded `*-version` and the 0.32.0 fallback. Useful when you know the version you originally installed with.
 
 ### Added
 - `FetchWorkflowBaseCommand` and `FetchSkillBasesCommand` now fall back to extracting templates directly when the `uvx --print-template` path fails. The fallback runs `uv pip install --no-deps --target <tmp> uv-release=={version}` and reads template files straight out of the installed site-packages. This rescues `uvr workflow install --upgrade` and `uvr skill install --upgrade` against older releases on PyPI that ship the `--print-template` bug.
