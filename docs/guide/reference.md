@@ -192,10 +192,11 @@ uvr workflow install [options]
 |---|---|
 | `--force` | Overwrite existing workflow with the bundled template. Records the new `workflow-version`. |
 | `--upgrade` | Upgrade existing workflow via three-way merge against the previously-recorded `workflow-version`. |
+| `--from-version VERSION` | Override the merge baseline for this run. Useful when `workflow-version` is missing or you know a tighter baseline than the default. |
 | `--workflow-dir PATH` | Workflow directory (default: `.github/workflows`). |
 | `--editor CMD` | Editor for conflict resolution. |
 
-Without flags, `install` scaffolds the workflow if missing and errors if it already exists. `--upgrade` requires `[tool.uvr.config].workflow-version` to be set (recorded automatically by previous `install` runs).
+Without flags, `install` scaffolds the workflow if missing and errors if it already exists. `--upgrade` resolves the merge baseline in order: `--from-version`, then `[tool.uvr.config].workflow-version`, then `0.32.0` as a conservative fallback (with a warning) for installations that predate version tracking.
 
 ## `uvr skill install`
 
@@ -209,9 +210,10 @@ uvr skill install [options]
 |---|---|
 | `--force` | Overwrite existing skill files with the bundled templates. Records the new `skill-version`. |
 | `--upgrade` | Three-way merge each existing skill file against the previously-recorded `skill-version`. |
+| `--from-version VERSION` | Override the merge baseline for this run. Useful when `skill-version` is missing or you know a tighter baseline than the default. |
 | `--editor CMD` | Editor for conflict resolution. |
 
-Without flags, `install` scaffolds any missing skill files. Files that already exist are left untouched unless `--upgrade` or `--force` is passed. `--upgrade` requires `[tool.uvr.config].skill-version` to be set.
+Without flags, `install` scaffolds any missing skill files. Files that already exist are left untouched unless `--upgrade` or `--force` is passed. `--upgrade` resolves the merge baseline in order: `--from-version`, then `[tool.uvr.config].skill-version`, then `0.32.0` as a conservative fallback (with a warning) for installations that predate version tracking.
 
 ## `uvr clean`
 
