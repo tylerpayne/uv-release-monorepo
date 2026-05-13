@@ -38,6 +38,7 @@ _BUMP_MESSAGES: dict[BumpKind, str] = {
     BumpKind.ALPHA: "chore: bump alpha versions",
     BumpKind.BETA: "chore: bump beta versions",
     BumpKind.RC: "chore: bump rc versions",
+    BumpKind.RELEASE: "chore: strip dev versions",
     BumpKind.AUTO: "chore: bump versions",
 }
 
