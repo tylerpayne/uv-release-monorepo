@@ -99,6 +99,11 @@ def compute_bumped_version(version: Version, bump_kind: BumpKind) -> Version:
             return _bump_pre(version, "b")
         case BumpKind.RC:
             return _bump_pre(version, "rc")
+        case BumpKind.RELEASE:
+            # Strip only the .devN suffix. Pre-release and post suffixes
+            # carry through unchanged so a pre-release dev version
+            # (1.0.0a0.dev0) resolves to its release form (1.0.0a0).
+            return compute_release_version(version)
         case BumpKind.AUTO:
             return _auto_bump(version)
 

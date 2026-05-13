@@ -238,6 +238,7 @@ def parse_args() -> ParsedArgs:
             "minor",
             "major",
             "post",
+            "release",
             "stable",
             "alpha",
             "a",
@@ -249,7 +250,8 @@ def parse_args() -> ParsedArgs:
         dest="bump_kind",
         help=(
             "Bump the version. Without an argument, bumps the smallest sensible "
-            "axis. `stable` strips pre-release/dev suffixes. `alpha`/`beta`/`rc` "
+            "axis. `release` strips only `.devN` (preserves pre/post). `stable` "
+            "strips both pre-release and dev suffixes. `alpha`/`beta`/`rc` "
             "(aliases `a`/`b`) enter or advance a pre-release cycle."
         ),
     )

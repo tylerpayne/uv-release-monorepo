@@ -16,6 +16,10 @@ class BumpKind(Enum):
     ALPHA = "alpha"
     BETA = "beta"
     RC = "rc"
+    # Strips only the .devN suffix, preserving any pre-release or post
+    # suffix. This is the operation the release pipeline uses to turn a
+    # working-tree dev version into the version it actually publishes.
+    RELEASE = "release"
     # Strips pre/dev suffix to produce a clean release.
     STABLE = "stable"
     # Auto-detect the last version section and increment its number.

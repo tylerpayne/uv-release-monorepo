@@ -237,6 +237,51 @@ class TestComputeBumpedVersion:
         with pytest.raises(ValueError, match="Cannot bump rc from post-release"):
             compute_bumped_version(Version.parse("1.0.0.post1"), BumpKind.RC)
 
+    # --- Release: strip only .devN, preserve pre/post ---
+    def test_release_strips_dev_from_stable_dev(self) -> None:
+        assert (
+            compute_bumped_version(Version.parse("1.0.0.dev0"), BumpKind.RELEASE).raw
+            == "1.0.0"
+        )
+
+    def test_release_preserves_alpha(self) -> None:
+        assert (
+            compute_bumped_version(Version.parse("1.0.0a0.dev0"), BumpKind.RELEASE).raw
+            == "1.0.0a0"
+        )
+
+    def test_release_preserves_beta(self) -> None:
+        assert (
+            compute_bumped_version(Version.parse("1.0.0b2.dev1"), BumpKind.RELEASE).raw
+            == "1.0.0b2"
+        )
+
+    def test_release_preserves_rc(self) -> None:
+        assert (
+            compute_bumped_version(Version.parse("1.0.0rc1.dev0"), BumpKind.RELEASE).raw
+            == "1.0.0rc1"
+        )
+
+    def test_release_preserves_post(self) -> None:
+        assert (
+            compute_bumped_version(
+                Version.parse("1.0.0.post2.dev0"), BumpKind.RELEASE
+            ).raw
+            == "1.0.0.post2"
+        )
+
+    def test_release_on_stable_is_noop(self) -> None:
+        assert (
+            compute_bumped_version(Version.parse("1.0.0"), BumpKind.RELEASE).raw
+            == "1.0.0"
+        )
+
+    def test_release_on_pre_release_is_noop(self) -> None:
+        assert (
+            compute_bumped_version(Version.parse("1.0.0a3"), BumpKind.RELEASE).raw
+            == "1.0.0a3"
+        )
+
 
 class TestComputeDependencyPins:
     def test_pins_internal_dep(self) -> None:

@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- `uvr version --bump release` strips only the `.devN` suffix, preserving any pre-release or post-release suffix. `1.0.0a0.dev0` becomes `1.0.0a0`; `1.0.0.dev0` becomes `1.0.0`. Mirrors what the release pipeline does when it turns a working-tree dev version into a published version.
+
+### Fixed
+- The `uvr release` strip-dev fixup now uses `--bump release` instead of `--bump stable`. `--bump stable` strips both `.devN` and the pre-release suffix, which silently turned `1.0.0a0.dev0` into `1.0.0` and published a stable release instead of the alpha. `--bump release` preserves the pre-release suffix so the alpha cycle survives.
+
+## [uv-release v0.36.0] - 2026-05-13
+
+### Added
 - `uvr version --bump alpha|a|beta|b|rc` enters or advances a pre-release cycle. Same-kind input increments the pre-number with `.dev0` (`1.0.0a2` -> `1.0.0a3.dev0`); a higher kind resets to 0 (`1.0.0a2` -> `--bump beta` -> `1.0.0b0.dev0`); regressions (`rc` -> `alpha`) and post-release sources are rejected. `a` and `b` are short-form aliases for `alpha` and `beta`. Restores the pre-release axis removed in 0.34.0 when the `--promote` flag was deleted, this time on `--bump` itself with no auto-promote chain.
 
 ## [uv-release v0.35.2] - 2026-05-12

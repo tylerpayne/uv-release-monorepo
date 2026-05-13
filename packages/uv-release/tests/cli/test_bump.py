@@ -17,6 +17,7 @@ class TestVersion:
             (["--bump", "patch"], "0.1.1.dev0"),
             (["--bump", "dev"], "0.1.0.dev1"),
             (["--bump", "stable"], "0.1.0"),
+            (["--bump", "release"], "0.1.0"),
             (["--bump", "alpha"], "0.1.0a0.dev0"),
             (["--bump", "a"], "0.1.0a0.dev0"),
             (["--bump", "beta"], "0.1.0b0.dev0"),
@@ -114,3 +115,14 @@ class TestVersion:
         out = capsys.readouterr().out
         assert "pkg-a" in out
         assert "0.1.0.dev0" in out
+
+    def test_release_preserves_pre_release(self, workspace: Path) -> None:
+        # Regression: `--bump release` must strip only `.devN`, not the
+        # pre-release suffix. `--bump stable` over-strips here and would
+        # leave `0.1.0`, killing the alpha cycle the user just entered.
+        with diny.provide():
+            run_cli("version", "--bump", "alpha", "--no-commit", "--no-push")
+        with diny.provide():
+            run_cli("version", "--bump", "release", "--no-commit", "--no-push")
+        ver = read_toml(workspace / "packages" / "pkg-a" / "pyproject.toml")
+        assert ver["project"]["version"] == "0.1.0a0"

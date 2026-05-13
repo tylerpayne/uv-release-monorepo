@@ -45,6 +45,7 @@ uvr version --packages pkg-alpha --bump major --force
 | `--bump alpha` (alias `a`) | `1.3.0` → `1.3.0a0.dev0` | Enter or advance alpha cycle |
 | `--bump beta` (alias `b`) | `1.3.0a3` → `1.3.0b0.dev0` | Advance to beta (resets pre-number) |
 | `--bump rc` | `1.3.0b1` → `1.3.0rc0.dev0` | Advance to rc (resets pre-number) |
+| `--bump release` | `1.3.0a2.dev0` → `1.3.0a2` | Strip only `.devN` (preserves pre/post) |
 | `--bump stable` | `1.3.0a2.dev0` → `1.3.0` | Strip pre-release and dev suffixes |
 
 With no argument, `--bump` detects the last section of the version and increments it. If the version ends in `.devN`, it bumps dev. If it ends in a pre-release like `a2`, it bumps the pre-release number. Otherwise it bumps patch.
