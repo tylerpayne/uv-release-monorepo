@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- `uvr status` and `uvr release` no longer mark a package as changed because one of its workspace dependencies changed. Change detection is purely file-based: a package is dirty when its own files have moved since its baseline tag, or when it has no baseline. To coordinate a cross-package release, run `uvr version --bump <axis> --packages <pkg>` first. The bump now rewrites the pins on every workspace dependent whose existing specifier rejects the new version's stripped-dev form, so the bump commit produces file changes in the dependents and the next `uvr release` picks them up in the same cycle. Patch-level bumps that stay within an existing pin range no longer cascade. See ADR-0018.
+- `compute_dependency_pins` emits a pin only when the dependent's current `Dependency` specifier does not already accept the new release form. The lower bound uses the stripped-dev form (`compute_release_version`), so `uvr version --bump minor` on `0.1.0.dev0` writes pins referencing `0.2.0` rather than `0.2.0.dev0`. The previous unconditional rewrite tightened every dependent's lower bound on every bump, including patches.
+- `ReleaseDependencyPins` now feeds `ReleaseVersions` (the just-published form) into the pin computer instead of `ReleaseBumpVersions` (next-dev). Under the new pin lower-bound semantics, the next-dev source would have pinned consumers at versions that did not exist yet. With the conditional rule this is typically a no-op safety net.
+
 ### Fixed
 - `uvr release --packages X` now forwards the package filter to the strip-dev fixup. Previously the suggested `uvr version --bump release` ran over every changed package, so accepting the fix on a filtered release stripped dev versions on packages the user had not selected. `--not-packages` and `--all-packages` are forwarded the same way.
 
